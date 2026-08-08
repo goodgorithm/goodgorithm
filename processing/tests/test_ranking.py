@@ -43,6 +43,15 @@ def test_recency_decay_half_life():
     assert ranking.recency_decay(older.created_at, NOW) < ranking.recency_decay(at_half_life.created_at, NOW)
 
 
+def test_recency_decay_snaps_to_zero_for_very_old_posts():
+    # run_cycle() computes base_score for every fetched post unconditionally
+    # (no age bound -- that only applies later, in rank_posts), so real
+    # backlog/boosted content genuinely months old must not produce a
+    # nonzero-but-unrepresentable-in-REAL value (Postgres NumericValueOutOfRange).
+    very_old = make_post(age_hours=535 * 24)  # ~535 days, a real value seen in production
+    assert ranking.recency_decay(very_old.created_at, NOW) == 0.0
+
+
 def test_compute_base_score_multiplies_components():
     post = make_post(sentiment_score=0.5, topicality_score=2.0, age_hours=0.0)
     assert abs(ranking.compute_base_score(post, NOW) - 1.0) < 1e-9  # positivity(0.5) * 2.0 * decay(1.0)

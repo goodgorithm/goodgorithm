@@ -39,9 +39,23 @@ def positivity(sentiment_score: float) -> float:
     return max(0.0, sentiment_score)
 
 
+MIN_DECAY = 1e-30  # comfortably above float4/REAL's underflow range (~1.4e-45)
+
+
 def recency_decay(created_at: datetime, now: datetime) -> float:
+    """run_cycle() computes base_score for every fetched post unconditionally
+    (the 72h MMR window is only applied later, in rank_posts), so this has to
+    handle arbitrarily old posts — e.g. backlog/boosted content ingestion can
+    surface that's genuinely months old. 0.5 ** (age_hours / HALF_LIFE_HOURS)
+    for a post that old is still a valid nonzero Python float (float64 has a
+    much wider range), but is too small for Postgres's REAL (float4) column
+    to store, raising `NumericValueOutOfRange: underflow` on write. Snap
+    anything below float4's range to exactly 0.0, which is both safely
+    representable and the semantically correct value for "no recency weight
+    left" anyway."""
     age_hours = max(0.0, (now - created_at).total_seconds() / 3600.0)
-    return 0.5 ** (age_hours / HALF_LIFE_HOURS)
+    decay = 0.5 ** (age_hours / HALF_LIFE_HOURS)
+    return decay if decay >= MIN_DECAY else 0.0
 
 
 def compute_base_score(post: RankablePost, now: datetime) -> float:
