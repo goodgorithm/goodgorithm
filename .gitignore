@@ -1,0 +1,38 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / web
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+coverage/
+
+# ML artifacts (models/datasets are large and versioned separately, not in git)
+*.ckpt
+*.pt
+*.h5
+/data/
+/models/
