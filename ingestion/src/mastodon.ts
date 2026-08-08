@@ -1,6 +1,6 @@
 import { insertPost } from "./db";
 
-const INSTANCES = ["mastodon.social", "fosstodon.org", "hachyderm.io"];
+const INSTANCES = ["fosstodon.org", "hachyderm.io"];
 
 const POLL_INTERVAL_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 10_000;
