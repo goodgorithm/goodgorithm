@@ -88,5 +88,40 @@ def upsert_processed_post(
         )
 
 
+@dataclass
+class RankableRow:
+    raw_post_id: UUID
+    text: str
+    created_at: datetime
+    sentiment_score: float
+    topicality_score: float
+    entities: list
+    is_bot: bool
+    is_dedup_canonical: bool
+
+
+def fetch_rankable_posts(since: datetime) -> list[RankableRow]:
+    with pool.connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT r.id, r.text, r.created_at, p.sentiment_score, p.topicality_score,
+                   p.entities, p.is_bot, p.is_dedup_canonical
+            FROM processed_posts p
+            JOIN raw_posts r ON r.id = p.raw_post_id
+            WHERE r.created_at >= %s
+            """,
+            (since,),
+        ).fetchall()
+    return [RankableRow(*row) for row in rows]
+
+
+def update_rank_score(raw_post_id: UUID, base_score: float, rank_score: float) -> None:
+    with pool.connection() as conn:
+        conn.execute(
+            "UPDATE processed_posts SET base_score = %s, rank_score = %s WHERE raw_post_id = %s",
+            (base_score, rank_score, raw_post_id),
+        )
+
+
 def close() -> None:
     pool.close()
