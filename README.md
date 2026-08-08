@@ -13,7 +13,9 @@ An open-source algorithmic feed of positive/uplifting public social posts, curat
 
 ## Docs
 
-Project docs (decisions log, algorithm research, naming/legal notes) live in the team's Notion workspace, not in this repo. This README and in-repo `docs/` (as code lands) cover setup and architecture specifics only.
+Project docs (decisions log, algorithm research, naming/legal notes) live in the team's Notion workspace, not in this repo. This README covers setup and architecture specifics only.
+
+For a public writeup of the infrastructure this project runs on and why — hosting, storage, ML training compute, and how you'd set up an equivalent stack — see [Infrastructure](https://app.notion.com/p/3b69243701a78144b4fafb22665c07b2).
 
 ## A note on LLMs
 
