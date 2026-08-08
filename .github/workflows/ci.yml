@@ -61,7 +61,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
         run: |
-          npx -y @railway/cli@latest up --service goodgorithm --ci
+          npx -y @railway/cli@latest up --service goodgorithm-ingestion --ci
           npx -y @railway/cli@latest up --service goodgorithm-api --ci
 
   deploy-production:
@@ -74,5 +74,5 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PRODUCTION }}
         run: |
-          npx -y @railway/cli@latest up --service goodgorithm --ci
+          npx -y @railway/cli@latest up --service goodgorithm-ingestion --ci
           npx -y @railway/cli@latest up --service goodgorithm-api --ci
