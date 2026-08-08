@@ -63,6 +63,7 @@ jobs:
         run: |
           npx -y @railway/cli@latest up --service goodgorithm-ingestion --ci
           npx -y @railway/cli@latest up --service goodgorithm-api --ci
+          npx -y @railway/cli@latest up --service goodgorithm-processing --ci
 
   deploy-production:
     needs: [processing-tests, ingestion-build, api-tests]
@@ -74,5 +75,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PRODUCTION }}
         run: |
+          # goodgorithm-processing is staging-only for now -- add it here
+          # once it's actually created in the production environment.
           npx -y @railway/cli@latest up --service goodgorithm-ingestion --ci
           npx -y @railway/cli@latest up --service goodgorithm-api --ci
