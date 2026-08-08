@@ -24,8 +24,8 @@ class InMemoryDedupIndex:
             result |= self.bands.get(h, set())
         return result
 
-    def get_signature(self, post_id: str) -> dedup.MinHash | None:
-        return self.signatures.get(post_id)
+    def get_signatures(self, post_ids: set[str]) -> dict[str, dedup.MinHash | None]:
+        return {post_id: self.signatures.get(post_id) for post_id in post_ids}
 
     def get_cluster(self, post_id: str) -> str | None:
         return self.clusters.get(post_id)

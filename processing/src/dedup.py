@@ -68,7 +68,7 @@ def deserialize_minhash(data: str) -> MinHash:
 
 class DedupIndex(Protocol):
     def find_candidates(self, hashes: list[str]) -> set[str]: ...
-    def get_signature(self, post_id: str) -> MinHash | None: ...
+    def get_signatures(self, post_ids: set[str]) -> dict[str, MinHash | None]: ...
     def get_cluster(self, post_id: str) -> str | None: ...
     def record(self, post_id: str, mh: MinHash, hashes: list[str], cluster_id: str) -> None: ...
 
@@ -90,9 +90,18 @@ class RedisDedupIndex:
             candidates.update(members or [])
         return candidates
 
-    def get_signature(self, post_id: str) -> MinHash | None:
-        data = self.client.get(f"mh:{post_id}")
-        return deserialize_minhash(data) if data else None
+    def get_signatures(self, post_ids: set[str]) -> dict[str, MinHash | None]:
+        if not post_ids:
+            return {}
+        ids = list(post_ids)
+        pipe = self.client.pipeline()
+        for post_id in ids:
+            pipe.get(f"mh:{post_id}")
+        results = pipe.exec()
+        return {
+            post_id: (deserialize_minhash(data) if data else None)
+            for post_id, data in zip(ids, results)
+        }
 
     def get_cluster(self, post_id: str) -> str | None:
         return self.client.get(f"dedup:cluster:{post_id}")
@@ -128,10 +137,10 @@ def dedup_posts(
         mh = compute_minhash(post.text)
         hashes = band_hashes(mh)
         candidate_ids = index.find_candidates(hashes) - {str(post.id)}
+        candidate_signatures = index.get_signatures(candidate_ids)
 
         matched_cluster: str | None = None
-        for candidate_id in candidate_ids:
-            candidate_mh = index.get_signature(candidate_id)
+        for candidate_id, candidate_mh in candidate_signatures.items():
             if candidate_mh is None:
                 continue
             if mh.jaccard(candidate_mh) >= jaccard_threshold:
