@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, staging]
+    branches: [main, staging, production]
   pull_request:
 
 jobs:
@@ -50,3 +50,29 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+
+  deploy-staging:
+    needs: [processing-tests, ingestion-build, api-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Railway staging
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
+        run: |
+          npx -y @railway/cli@latest up --service goodgorithm --ci
+          npx -y @railway/cli@latest up --service goodgorithm-api --ci
+
+  deploy-production:
+    needs: [processing-tests, ingestion-build, api-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/production'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Railway production
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PRODUCTION }}
+        run: |
+          npx -y @railway/cli@latest up --service goodgorithm --ci
+          npx -y @railway/cli@latest up --service goodgorithm-api --ci

@@ -31,14 +31,14 @@ Bluesky Jetstream (public WebSocket firehose) and Mastodon public timelines. Bot
 - **Railway** — service `goodgorithm`, with separate `production` and `staging` environments. Runs (or will run) ingestion + pipeline + API.
 - **Supabase** — Postgres. Production project + a `staging` branch off it.
 - **Upstash** — serverless Redis, REST API (not raw `redis://`). For burst-detection counters and dedup signature lookups.
-- **GitHub** — this repo, org `goodgorithm`. `main` + `staging` branches, mirroring the Railway/Supabase environments.
+- **GitHub** — this repo, org `goodgorithm`. Three long-lived branches (`main` → `staging` → `production`), mirroring the Railway/Supabase environment promotion flow — see Git conventions below.
 
 Env var names are documented in `.env.example` — never commit actual values. Real values live in Railway's environment variables (set separately per environment) and nowhere else in this repo.
 
 ## Git conventions
 
 - Commit messages: plain, descriptive. Include a `Co-Authored-By: Claude <noreply@anthropic.com>` trailer on commits produced by/with Claude (not required retroactively on the very first commit).
-- Two long-lived branches: `main` (production) and `staging`, matching the Railway/Supabase environment split.
+- Three long-lived branches, promoted in sequence: feature branches merge into `main` first; `main` promotes to `staging`; `staging` promotes to `production`. `staging` and `production` map directly to the matching Railway/Supabase environments — `main` itself isn't deployed anywhere, it's just the integration branch. CI (`.github/workflows/ci.yml`) runs tests/build on all three branches; pushes to `staging`/`production` additionally trigger a deploy to the matching Railway environment once CI passes.
 
 ## Docs
 
