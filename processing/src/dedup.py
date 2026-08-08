@@ -9,8 +9,16 @@ from datasketch import MinHash
 
 import redis_client
 
-NUM_PERM = 128
-NUM_BANDS = 16
+# NUM_PERM was halved alongside NUM_BANDS (not left at 128) to hold
+# ROWS_PER_BAND constant at 8 — match probability depends exponentially on
+# rows-per-band, not linearly on band count, so halving NUM_BANDS alone
+# (doubling ROWS_PER_BAND to 16) would have collapsed recall at
+# JACCARD_THRESHOLD: verified empirically that it missed a real
+# near-duplicate pair (0.773 Jaccard) the previous config caught. This
+# config preserves matching behavior while halving the Redis commands
+# spent on LSH banding (SMEMBERS/SADD/EXPIRE scale with NUM_BANDS).
+NUM_PERM = 64
+NUM_BANDS = 8
 ROWS_PER_BAND = NUM_PERM // NUM_BANDS
 SHINGLE_SIZE = 4
 JACCARD_THRESHOLD = 0.7

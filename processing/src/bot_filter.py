@@ -71,16 +71,24 @@ class RedisBotFilterIndex:
     def bump_velocity(self, author_id: str) -> int:
         key = f"botvel:{author_id}"
         count = self.client.incr(key)
-        # refreshes the window on every post, so a persistently active
-        # spammer keeps accumulating rather than getting a clean reset
-        # mid-burst — a deliberate choice for a defensive filter.
-        self.client.expire(key, VELOCITY_WINDOW_SECONDS)
+        if count == 1:
+            # only the author's first post in the window needs a fresh TTL --
+            # skipping it on every later post also cuts a full Redis command
+            # per repeat post, which matters at volume. Trade-off: the window
+            # is now fixed (resets exactly VELOCITY_WINDOW_SECONDS after the
+            # first post) rather than extending with continued activity.
+            self.client.expire(key, VELOCITY_WINDOW_SECONDS)
         return count
 
     def check_and_record_self_duplicate(self, author_id: str, cluster_id: str) -> bool:
         key = f"cluster:{cluster_id}:authors"
         added = self.client.sadd(key, author_id)
-        self.client.expire(key, SELF_DUP_TTL_SECONDS)
+        if added:
+            # only refresh TTL when a genuinely new author joins the cluster --
+            # repeat-duplicate confirmations (added == 0) don't need it, and
+            # that's exactly the call pattern that fires most during a real
+            # spam burst, so this is where the savings concentrate.
+            self.client.expire(key, SELF_DUP_TTL_SECONDS)
         return added == 0  # already a member => this author already posted into this cluster
 
 
