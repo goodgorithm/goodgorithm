@@ -5,8 +5,11 @@ description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
     "datasketch>=2.0.0",
+    "en-core-web-sm",
     "psycopg[binary,pool]>=3.3.4",
     "python-dotenv>=1.2.2",
+    "scikit-learn>=1.9.0",
+    "spacy>=3.8.15",
     "upstash-redis>=1.7.0",
 ]
 
@@ -17,3 +20,6 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+[tool.uv.sources]
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
