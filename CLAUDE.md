@@ -44,6 +44,14 @@ Mastodon polling ───┘                  (dedup, bot filter, topicality,
 
 `processing/` tries once per process to load the trained CNN from R2 (`sentiment-cnn/latest.json` → versioned `model.onnx`/`vocab.json`/`config.json`); on any failure (R2 not configured, network error, nothing published yet) it falls back to VADER and keeps running. `sentiment_method` on every scored post records which one actually produced that score. To train and publish a new model version, use the `release-sentiment-model` skill (`.claude/skills/release-sentiment-model/`) rather than improvising the R2 upload — it covers the tokenizer commit-pinning requirement and the versioned/gated-promotion release process.
 
+### Data retention
+
+Alpha-stage cap, not a correctness requirement: both Postgres and Redis only retain the last 24 hours of data. `processing/src/pipeline.py`'s `RETENTION_HOURS = 24` drives a `cleanup_old_data()` step that runs every cycle, deleting `raw_posts` older than the cutoff; `processed_posts` rows cascade-delete via FK (`supabase/migrations/0003_cascade_delete_processed_posts.sql`). Redis TTLs for dedup (`BAND_TTL_SECONDS`, `dedup.py`) and bot-filter self-dup tracking (`SELF_DUP_TTL_SECONDS`, `bot_filter.py`) are aligned to the same 24h window — no point holding LSH/dedup state for posts that no longer exist in Postgres.
+
+Note `ranking.py`'s `MMR_WINDOW_HOURS` is still `72.0` in code but is now effectively capped at 24h by retention (a post can't survive long enough to hit the 72h boundary) — left as-is rather than changed, so it becomes meaningful again automatically if retention is raised post-alpha. Don't "fix" this mismatch without checking the Decisions Log entry first.
+
+As of 2026-08-09 the retention code and migration exist locally; the migration is applied on the Supabase `staging` branch but not yet on `production`, and none of it has been deployed to Railway yet. Check actual state (`git log`, Supabase migration list, Railway deploy status) before assuming this is live everywhere — code/infra changes now happen via Claude Code, not this session, so this file may lag reality until the next doc sync.
+
 ## Data sources
 
 Bluesky Jetstream (public WebSocket firehose, filtered to `app.bsky.feed.post` creates) and Mastodon public timelines (polling `fosstodon.org` + `hachyderm.io`, 30s interval). Both are open, unauthenticated protocols — no paid APIs, no scraping behind logins. English-only on both paths; every downstream model is English-only. This is deliberate: keeps the pipeline reproducible without special access.
