@@ -56,6 +56,12 @@ jobs:
     defaults:
       run:
         working-directory: web
+    env:
+      # placeholder — this job only gates build/typecheck/test, it doesn't
+      # need to reach a real API (client.ts just requires the var to be set
+      # at all). Needed for both build (Vite inlines it) and test (vitest
+      # imports client.ts too, which throws at module load if unset).
+      VITE_API_BASE_URL: https://example.invalid
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -65,11 +71,6 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run build
-        env:
-          # placeholder — this job only gates build/typecheck/test, it
-          # doesn't need to reach a real API (client.ts just requires the
-          # var to be set at all)
-          VITE_API_BASE_URL: https://example.invalid
       - run: npm test
 
   deploy-staging:
