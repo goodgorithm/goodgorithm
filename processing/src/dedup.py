@@ -68,8 +68,16 @@ def serialize_minhash(mh: MinHash) -> str:
     return ",".join(str(v) for v in mh.hashvalues)
 
 
-def deserialize_minhash(data: str) -> MinHash:
+def deserialize_minhash(data: str) -> MinHash | None:
+    """Returns None (treated by callers the same as no signature at all) for
+    a signature serialized under a since-changed NUM_PERM -- e.g. still-live
+    Redis data from before a NUM_PERM change deploys. Without this check,
+    comparing it against a freshly computed MinHash raises inside
+    datasketch's jaccard(), crashing the whole cycle rather than just
+    skipping one stale candidate."""
     values = np.array([int(v) for v in data.split(",")], dtype=np.uint32)
+    if len(values) != NUM_PERM:
+        return None
     mh = MinHash(num_perm=NUM_PERM)
     mh.hashvalues = values
     return mh

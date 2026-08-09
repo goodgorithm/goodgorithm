@@ -66,6 +66,34 @@ def test_minhash_serialize_roundtrip():
     assert mh.jaccard(restored) == 1.0
 
 
+def test_deserialize_minhash_rejects_stale_num_perm():
+    # simulates a signature written to Redis under a since-changed NUM_PERM
+    # (e.g. still-live data from before a deploy) -- must be treated as no
+    # usable signature, not raise, or a single stale candidate crashes the
+    # whole dedup_posts cycle.
+    stale_data = ",".join(str(v) for v in range(dedup.NUM_PERM // 2))
+    assert dedup.deserialize_minhash(stale_data) is None
+
+
+def test_dedup_posts_skips_candidate_with_unusable_signature():
+    # a candidate reachable via LSH banding whose signature came back None --
+    # the shape get_signatures ends up in for a stale-NUM_PERM Redis entry,
+    # since RedisDedupIndex.get_signatures runs every value through
+    # deserialize_minhash. Must be skipped like a genuinely missing
+    # signature, not crash the cycle.
+    index = InMemoryDedupIndex()
+    stale_id = str(uuid4())
+    real_mh = dedup.compute_minhash("Scientists discover a new species of frog")
+    index.signatures[stale_id] = None
+    for h in dedup.band_hashes(real_mh):
+        index.bands.setdefault(h, set()).add(stale_id)
+
+    post = FakePost(id=uuid4(), text="Scientists discover a new species of frog")
+    results = dedup.dedup_posts([post], index)
+
+    assert results[post.id].is_canonical is True
+
+
 def test_near_duplicate_posts_join_same_cluster():
     index = InMemoryDedupIndex()
     posts = [
