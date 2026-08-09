@@ -176,3 +176,38 @@ def test_rank_posts_scales_to_production_volume():
 
     assert len(results) == len(posts)
     assert elapsed < 15.0, f"rank_posts took {elapsed:.1f}s for 2000 posts - likely an O(n^2) Python-loop regression"
+
+
+def test_rank_posts_caps_candidate_pool_by_base_score():
+    # Regression test for a real 2026-08-09 production incident: the MMR
+    # window held 29,770 eligible posts (still growing) by the time this
+    # was diagnosed. _similarity_matrix's vectorized-but-still-dense n x n
+    # float64 arrays are ~7GB at that n - the earlier vectorization fix
+    # (ea4fcb6) made the O(n^2) pass fast, not small, and the process was
+    # OOM-killed on a 1GB container regardless. rank_posts now caps the
+    # pool to the top MMR_CANDIDATE_POOL_SIZE posts by base_score before
+    # building any O(n^2) structure, bounding memory no matter how large
+    # the eligible window grows.
+    n = ranking.MMR_CANDIDATE_POOL_SIZE + 500
+    posts = [
+        ranking.RankablePost(
+            id=uuid4(),
+            text=f"distinct post number {i} about nothing in particular",
+            created_at=NOW,
+            sentiment_score=0.3 + (i / n) * 0.7,  # strictly increasing base_score
+            topicality_score=1.0,
+            entities=[],
+            is_bot=False,
+            is_dedup_canonical=True,
+        )
+        for i in range(n)
+    ]
+
+    results = ranking.rank_posts(posts, now=NOW)
+
+    assert len(results) == ranking.MMR_CANDIDATE_POOL_SIZE
+    # the lowest-base_score posts (smallest i) must be the ones dropped
+    kept_ids = set(results)
+    dropped = [p for p in posts if p.id not in kept_ids]
+    kept = [p for p in posts if p.id in kept_ids]
+    assert max(p.sentiment_score for p in dropped) <= min(p.sentiment_score for p in kept)

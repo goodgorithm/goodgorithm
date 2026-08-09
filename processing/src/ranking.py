@@ -12,6 +12,7 @@ from dedup import normalize_text
 POSITIVITY_THRESHOLD = 0.3  # eligibility bar — only clearly-positive posts rank at all
 HALF_LIFE_HOURS = 12.0  # a post's recency weight halves every 12h
 MMR_WINDOW_HOURS = 72.0  # ranking pool bound — also keeps MMR's O(n^2) pass cheap
+MMR_CANDIDATE_POOL_SIZE = 2000  # hard cap on MMR's O(n^2) *memory* — see rank_posts
 MMR_LAMBDA = 0.7  # weight on relevance (base_score) vs diversity penalty
 SIMILARITY_TFIDF_WEIGHT = 0.5
 SIMILARITY_ENTITY_WEIGHT = 0.5
@@ -153,6 +154,23 @@ def rank_posts(posts: list[RankablePost], now: datetime | None = None) -> dict[U
         return results
 
     base_scores = {p.id: compute_base_score(p, now) for p in windowed}
+
+    # MMR_WINDOW_HOURS bounds the pool by time, not size — under real
+    # ingestion volume it's held 5k-30k+ eligible posts and kept growing
+    # (confirmed in production 2026-08-09). ea4fcb6 vectorized the O(n^2)
+    # *compute* here (cosine_similarity + the entity Jaccard matmul), but
+    # both still materialize dense n x n float64 arrays: at n=29,770 a
+    # single one is ~7GB, and _similarity_matrix builds three of them
+    # (tfidf_sim, entity_sim, the combined result) against a 1GB container
+    # limit — an OOM kill regardless of how fast the vectorized math runs.
+    # A feed only ever surfaces a bounded slice anyway, so cap the pool to
+    # the top candidates by base_score before the O(n^2) pass — same idea
+    # as the time-based window, just a size-based one. Self-correcting:
+    # the pool is reselected fresh every cycle, so a post that misses the
+    # cut can still enter later once higher-scoring posts decay past it.
+    if len(windowed) > MMR_CANDIDATE_POOL_SIZE:
+        windowed = sorted(windowed, key=lambda p: base_scores[p.id], reverse=True)[:MMR_CANDIDATE_POOL_SIZE]
+
     sim_matrix = _similarity_matrix(windowed)
 
     # Same greedy MMR as before (each round still needs the *current* best
