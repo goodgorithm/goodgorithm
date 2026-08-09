@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <rect width="512" height="512" fill="#111111"/>
-  <text x="256" y="326" font-family="system-ui, sans-serif" font-size="300" font-weight="700"
+  <text x="256" y="291" font-family="system-ui, sans-serif" font-size="170" font-weight="700"
         fill="#ffffff" text-anchor="middle">G</text>
 </svg>
