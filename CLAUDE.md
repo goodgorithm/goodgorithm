@@ -58,8 +58,6 @@ Bluesky Jetstream (public WebSocket firehose, filtered to `app.bsky.feed.post` c
 
 Env var names are documented in `.env.example` at the repo root — never commit actual values. Real values live in Railway's environment variables (set separately per service, per environment) and nowhere else in this repo. Each service only needs a subset — `ingestion/` and `api/` just need `DATABASE_URL`; `processing/` additionally needs the Redis and R2 vars.
 
-**Known gap:** `goodgorithm-processing` has env vars set and migrations applied in the `production` Railway environment, but the CI `deploy-production` job (`.github/workflows/ci.yml`) doesn't deploy it yet — only `deploy-staging` does. A push to `production` currently redeploys `ingestion` and `api` but leaves `processing` on whatever was last deployed there manually. Fix is a one-line addition to that job, deliberately not made without a decision about timing — see the Decisions Log's "Known gap" note.
-
 ## Development
 
 Each service is independent — install/run/test from within its own directory.
