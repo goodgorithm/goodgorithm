@@ -1,6 +1,7 @@
 import type { FeedPost } from "../api/types";
 import { EntityTags } from "./EntityTags";
 import styles from "./PostCard.module.css";
+import { PostAttachments } from "./PostAttachments";
 import { RelativeTime } from "./RelativeTime";
 import { ScoreDetails } from "./ScoreDetails";
 import { SourceBadge } from "./SourceBadge";
@@ -25,6 +26,7 @@ export function PostCard({ post }: { post: FeedPost }) {
 
       <p className={styles.text}>{post.text}</p>
       <EntityTags entities={post.entities} />
+      <PostAttachments post={post} />
 
       <div className={styles.footer}>
         {post.permalink && (

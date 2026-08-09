@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
+import { buildAttachments } from "../attachments";
 import { fetchFeed } from "../db";
 import { decodeCursor, encodeCursor, type Cursor } from "../pagination";
 import { buildPermalink } from "../permalink";
@@ -45,25 +46,30 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
         hasNext && last ? encodeCursor({ rank_score: last.rank_score, id: last.id }) : null;
 
       return {
-        posts: page.map((row) => ({
-          id: row.id,
-          source: row.source,
-          author_id: row.author_id,
-          text: row.text,
-          created_at: row.created_at,
-          entities: row.entities ?? [],
-          permalink: buildPermalink(row),
-          author: {
-            display_name: row.mastodon_display_name,
-            avatar_url: row.mastodon_avatar_url,
-          },
-          scores: {
-            sentiment: row.sentiment_score,
-            topicality: row.topicality_score,
-            base: row.base_score,
-            rank: row.rank_score,
-          },
-        })),
+        posts: page.map((row) => {
+          const { attachments, sensitive } = buildAttachments(row);
+          return {
+            id: row.id,
+            source: row.source,
+            author_id: row.author_id,
+            text: row.text,
+            created_at: row.created_at,
+            entities: row.entities ?? [],
+            permalink: buildPermalink(row),
+            author: {
+              display_name: row.mastodon_display_name,
+              avatar_url: row.mastodon_avatar_url,
+            },
+            scores: {
+              sentiment: row.sentiment_score,
+              topicality: row.topicality_score,
+              base: row.base_score,
+              rank: row.rank_score,
+            },
+            attachments,
+            sensitive,
+          };
+        }),
         next_cursor,
       };
     },

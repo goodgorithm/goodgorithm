@@ -4,13 +4,21 @@ export interface PermalinkSource {
   mastodon_permalink: string | null;
 }
 
+// Shared by buildPermalink (below) and attachments.ts's quote-link parsing -
+// both need to turn a Bluesky did+rkey pair into the same bsky.app URL,
+// just sourced from different fields (source_id vs. a quote embed's at://
+// URI).
+export function buildBlueskyPostUrl(did: string, rkey: string): string {
+  return `https://bsky.app/profile/${did}/post/${rkey}`;
+}
+
 // Bluesky's Jetstream firehose carries no profile/permalink data, but a
 // working bsky.app URL is fully constructible from the DID + rkey already in
 // source_id. Mastodon's raw_json already has the real permalink from the API.
 export function buildPermalink(row: PermalinkSource): string {
   if (row.source === "bluesky") {
     const [did, rkey] = row.source_id.split("/");
-    return `https://bsky.app/profile/${did}/post/${rkey}`;
+    return buildBlueskyPostUrl(did, rkey);
   }
   return row.mastodon_permalink ?? "";
 }

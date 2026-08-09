@@ -12,6 +12,25 @@ export interface FeedPostAuthor {
   avatar_url: string | null;
 }
 
+export type Attachment =
+  | {
+      kind: "image";
+      thumbnailUrl: string;
+      fullUrl: string;
+      alt: string | null;
+      width: number | null;
+      height: number | null;
+    }
+  | {
+      kind: "link";
+      url: string;
+      title: string | null;
+      description: string | null;
+      thumbnailUrl: string | null;
+      providerName: string | null;
+    }
+  | { kind: "quote"; url: string };
+
 export interface FeedPost {
   id: string;
   source: Source;
@@ -22,6 +41,8 @@ export interface FeedPost {
   permalink: string;
   author: FeedPostAuthor;
   scores: FeedPostScores;
+  attachments: Attachment[];
+  sensitive: boolean;
 }
 
 export interface FeedResponse {
