@@ -16,7 +16,13 @@
       "name": "goodgorithm-web-staging"
     },
     "production": {
-      "name": "goodgorithm-web-production"
+      "name": "goodgorithm-web-production",
+      // Requires goodgorithm.com to already be an active zone on this
+      // Cloudflare account (it is) and to have no existing conflicting
+      // CNAME record on the apex - Cloudflare will refuse to attach a
+      // Custom Domain otherwise. Deploying this creates the DNS record
+      // and edge certificate automatically, no manual DNS step needed.
+      "routes": [{ "pattern": "goodgorithm.com", "custom_domain": true }]
     }
   }
 }
