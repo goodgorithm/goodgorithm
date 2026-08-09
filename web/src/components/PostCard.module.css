@@ -1,0 +1,44 @@
+.card {
+  border: 1px solid var(--card-border, #ddd);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin-bottom: 0.5em;
+  font-size: 0.85rem;
+  color: var(--muted-fg, #666);
+}
+
+.avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.authorName {
+  font-weight: 600;
+  color: inherit;
+}
+
+.text {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  margin: 0;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.6em;
+}
+
+.permalink {
+  font-size: 0.85rem;
+}

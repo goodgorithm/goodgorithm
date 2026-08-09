@@ -1,0 +1,20 @@
+.details {
+  font-size: 0.8rem;
+}
+
+.summary {
+  cursor: pointer;
+  color: var(--muted-fg, #666);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0.2em 0.8em;
+  margin-top: 0.4em;
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  color: var(--muted-fg, #666);
+}
