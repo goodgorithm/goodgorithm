@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 
 import { fetchFeed } from "../db";
 import { decodeCursor, encodeCursor, type Cursor } from "../pagination";
+import { buildPermalink } from "../permalink";
 
 const feedQuerySchema = {
   querystring: {
@@ -51,6 +52,11 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
           text: row.text,
           created_at: row.created_at,
           entities: row.entities ?? [],
+          permalink: buildPermalink(row),
+          author: {
+            display_name: row.mastodon_display_name,
+            avatar_url: row.mastodon_avatar_url,
+          },
           scores: {
             sentiment: row.sentiment_score,
             topicality: row.topicality_score,
