@@ -11,6 +11,6 @@
   font-size: 0.75rem;
   padding: 0.1em 0.5em;
   border-radius: 4px;
-  background: var(--tag-bg, #f0f0f0);
-  color: var(--tag-fg, #555);
+  background: #f0f0f0;
+  color: #555;
 }

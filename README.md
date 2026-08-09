@@ -2,7 +2,7 @@
 
 An open-source algorithmic feed of positive/uplifting public social posts, curated by classic, tried-and-tested ML — built to counter the negativity bias of mainstream platform algorithms.
 
-**Status:** early development. Ingestion, the scoring/ranking pipeline, and a read-only feed API are built, tested, and deployed to staging and production. No web frontend yet.
+**Status:** early development. Ingestion, the scoring/ranking pipeline, and a read-only feed API are built, tested, and deployed to staging and production. A PWA frontend (`web/`) is built and passing CI, but not deployed yet — pending one-time Cloudflare Workers account setup.
 
 ## What this is
 
@@ -20,6 +20,7 @@ For the full step-by-step walkthrough of how a post moves from ingestion to the 
 | `ingestion/` | TypeScript | Long-lived process consuming Bluesky Jetstream + polling Mastodon, writes raw posts to Postgres. |
 | `processing/` | Python | Dedup, bot filter, topicality, sentiment, ranking — the actual algorithm. |
 | `api/` | TypeScript (Fastify) | Read-only `/feed` and `/health` endpoints. |
+| `web/` | TypeScript (React + Vite) | PWA frontend — infinite-scroll feed, deployed as static assets on Cloudflare Workers. |
 | `training/` | Python (notebook) | Sentiment CNN training, run manually on Colab/Kaggle, plus model-release tooling. |
 | `supabase/migrations/` | SQL | Postgres schema. |
 

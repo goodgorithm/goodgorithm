@@ -6,6 +6,6 @@
   font-weight: 600;
   padding: 0.15em 0.6em;
   border-radius: 999px;
-  background: var(--badge-bg, #eee);
-  color: var(--badge-fg, #333);
+  background: #eee;
+  color: #333;
 }

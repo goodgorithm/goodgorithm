@@ -6,7 +6,7 @@ Read this before starting work. It's the condensed version of decisions made in 
 
 An open-source, free-forever, ad-free algorithmic feed of positive/uplifting public social posts. The pitch: counter the negativity bias of mainstream platform algorithms, and reclaim "algorithm" from its usual "platform manipulating you" connotation.
 
-**Status:** early development. `ingestion/`, `processing/`, and `api/` are built, tested, and deployed to `staging` and `production` on Railway. No web frontend yet — that's the next major piece of work, once the pipeline has run against enough real data to be worth building a UI on top of.
+**Status:** early development. `ingestion/`, `processing/`, and `api/` are built, tested, and deployed to `staging` and `production` on Railway. `web/` (PWA frontend) is built and passing CI, but not deployed yet — needs a one-time Cloudflare Workers account setup (create the `goodgorithm-web` Worker, add a `CLOUDFLARE_API_TOKEN` repo secret) before `deploy-web-staging`/`deploy-web-production` in `ci.yml` can actually ship it.
 
 ## Two constraints that are load-bearing, not aspirational
 
@@ -16,13 +16,14 @@ An open-source, free-forever, ad-free algorithmic feed of positive/uplifting pub
 
 ## Architecture (as built)
 
-Four services, each independently deployable:
+Five services, each independently deployable:
 
 | Path | Language | Deployed as | What it does |
 |---|---|---|---|
 | `ingestion/` | TypeScript | Railway service `goodgorithm-ingestion` | Long-lived process: Bluesky Jetstream WebSocket + Mastodon polling → `raw_posts` in Postgres. |
 | `processing/` | Python | Railway service `goodgorithm-processing` | Long-lived loop: dedup → bot filter → topicality → sentiment → base score → MMR ranking → `processed_posts`. |
 | `api/` | TypeScript (Fastify) | Railway service `goodgorithm-api` | Stateless, read-only, unauthenticated HTTP. `/feed` (cursor-paginated, ordered by `rank_score`), `/health`. |
+| `web/` | TypeScript (React + Vite) | Cloudflare Workers static assets (`goodgorithm-web`, staging/production named environments) — not yet deployed, see Status above | PWA: infinite-scroll feed consuming `api/`'s `/feed`, no accounts/personalization. `VITE_API_BASE_URL` baked in at build time (static site, no server component). |
 | `training/` | Python (notebook) | Run manually on Colab/Kaggle, not deployed | Trains the sentiment CNN, exports to ONNX, publishes versioned artifacts to R2. |
 
 Schema lives in `supabase/migrations/` (`raw_posts`, `processed_posts`, applied via Supabase's migration tooling — don't hand-edit the schema elsewhere).
@@ -33,7 +34,7 @@ Schema lives in `supabase/migrations/` (`raw_posts`, `processed_posts`, applied 
 
 ```
 Bluesky Jetstream ─┐
-                    ├─> ingestion/ ─> raw_posts ─> processing/ ─> processed_posts ─> api/ ─> /feed
+                    ├─> ingestion/ ─> raw_posts ─> processing/ ─> processed_posts ─> api/ ─> /feed ─> web/
 Mastodon polling ───┘                  (dedup, bot filter, topicality,
                                          sentiment, base score, MMR rank)
 ```
@@ -58,7 +59,7 @@ Bluesky Jetstream (public WebSocket firehose, filtered to `app.bsky.feed.post` c
 
 ## Infra (provisioned and live)
 
-- **Cloudflare** — DNS, R2 for object storage (bucket `goodgorithm-models`: model checkpoints, datasets, transparency samples), Pages for the PWA (not built yet).
+- **Cloudflare** — DNS, R2 for object storage (bucket `goodgorithm-models`: model checkpoints, datasets, transparency samples), Workers static assets for the PWA (`goodgorithm-web` — deliberately Workers over Pages, so deploys stay CI-driven like every other service rather than Pages' dashboard git-integration; account/token setup still pending, see Status above).
 - **Railway** — project `goodgorithm`, three services (`goodgorithm-ingestion`, `goodgorithm-processing`, `goodgorithm-api`), each with `staging` and `production` environments.
 - **Supabase** — Postgres. Production project + a `staging` branch off it. Migrations applied via `supabase/migrations/`.
 - **Upstash** — serverless Redis, REST API (not raw `redis://`). Ephemeral, TTL'd state only: LSH bands + MinHash signatures (dedup), author velocity + self-dup tracking (bot filter), entity burst counters (topicality). Postgres holds every durable result; Redis is disposable.
@@ -71,10 +72,11 @@ Env var names are documented in `.env.example` at the repo root — never commit
 Each service is independent — install/run/test from within its own directory.
 
 - **`ingestion/`, `api/`** (Node/TypeScript): `npm install`, `npm run dev` (watch mode via `tsx`), `npm run build` (type-check + compile), `npm test` (`api/` only, uses Node's built-in test runner).
+- **`web/`** (Node/TypeScript, React + Vite): `npm install`, `npm run dev` (Vite dev server), `npm run build` (type-check + build, also generates the PWA manifest/service worker), `npm test` (Vitest), `npm run lint` (oxlint). Needs `VITE_API_BASE_URL` set (see `web/.env.example`) — points at a running `api/` instance.
 - **`processing/`** (Python, managed with `uv`): `uv sync`, `uv run python src/main.py --once` (single cycle, for local testing) or without `--once` for the long-lived loop, `uv run pytest` (unit tests — many run without any real DB/Redis/R2 credentials, since `config.validate()` is only called explicitly from entrypoints, not at import time).
 - **`training/sentiment_cnn.ipynb`**: not run locally — needs a GPU. Open in Colab or Kaggle. See the `release-sentiment-model` skill before touching this.
 
-CI (`.github/workflows/ci.yml`) runs `processing`'s pytest suite, and builds/tests `ingestion`/`api`, on every push and PR to `main`/`staging`/`production`.
+CI (`.github/workflows/ci.yml`) runs `processing`'s pytest suite, and builds/tests `ingestion`/`api`/`web`, on every push and PR to `main`/`staging`/`production`.
 
 ## Git conventions
 
@@ -86,6 +88,6 @@ CI (`.github/workflows/ci.yml`) runs `processing`'s pytest suite, and builds/tes
 This file is the condensed bridge for coding sessions. Full project documentation lives in Notion, not in this repo:
 
 - **Published, public docs** ("Goodgorithm — Public Docs") — distilled, publish-safe docs meant for users/contributors: [Algorithm](https://app.notion.com/p/3b79243701a781a8997ed17609a60bc7) (step-by-step pipeline mechanics — the detailed companion to the "Architecture" section above) and [Infrastructure](https://app.notion.com/p/3b69243701a78144b4fafb22665c07b2) (hosting/tooling and why). Link new user-facing docs here, not in the internal workspace.
-- **Internal workspace** ("Goodgorithm Docs") — Decisions Log (including implementation-phase decisions and known gaps), Project Research, Infrastructure Plan (with pricing/account specifics), MVP Setup Checklist. Private, not for external sharing.
+- **Internal workspace** ("Goodgorithm Docs") — Decisions Log (including implementation-phase decisions and known gaps), Project Research. Private, not for external sharing. Superseded planning docs (Infrastructure Plan, MVP Setup Checklist) live under "Goodgorithm Archive" — historical reference, not kept current.
 
 If you have the Notion MCP connector available and need more context than this file provides (exact rationale for a past decision, full pricing research, etc.), check the internal workspace first.

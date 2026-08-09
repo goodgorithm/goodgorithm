@@ -1,5 +1,5 @@
 .card {
-  border: 1px solid var(--card-border, #ddd);
+  border: 1px solid #ddd;
   border-radius: 8px;
   padding: 1rem;
   margin-bottom: 1rem;
@@ -11,7 +11,7 @@
   gap: 0.6em;
   margin-bottom: 0.5em;
   font-size: 0.85rem;
-  color: var(--muted-fg, #666);
+  color: #666;
 }
 
 .avatar {
