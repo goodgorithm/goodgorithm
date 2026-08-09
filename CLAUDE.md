@@ -1,50 +1,85 @@
 # Goodgorithm — project context
 
-Read this before starting work. It's the condensed version of decisions made in planning; the full history lives in Notion (links at the bottom).
+Read this before starting work. It's the condensed version of decisions made in planning and in code; the full history lives in Notion (links at the bottom).
 
 ## What this is
 
 An open-source, free-forever, ad-free algorithmic feed of positive/uplifting public social posts. The pitch: counter the negativity bias of mainstream platform algorithms, and reclaim "algorithm" from its usual "platform manipulating you" connotation.
 
-**Status:** pre-alpha. Infra is provisioned (see below) but no pipeline code exists yet. First build target is data ingestion, validated against real data, before pipeline or web work starts.
+**Status:** early development. `ingestion/`, `processing/`, and `api/` are built, tested, and deployed to `staging` and `production` on Railway. No web frontend yet — that's the next major piece of work, once the pipeline has run against enough real data to be worth building a UI on top of.
 
 ## Two constraints that are load-bearing, not aspirational
 
-**1. No LLM in the algorithm itself.** Content selection (sentiment scoring, topic/newsworthiness detection, ranking) runs on classic ML: TF-IDF, spaCy NER, a small CNN over word embeddings for sentiment. Not an LLM. The reasoning: the whole pitch is "trust why a post got selected," and classical ML is small, auditable, and doesn't drift or hallucinate the way an LLM can. This is specifically about what powers the algorithm — it does not extend to how the project is built. LLM tools (including Claude) are used openly for development, research, and docs. Don't blur this distinction in code comments, docs, or commit messages: "no LLMs in the filter," not "no LLMs anywhere."
+**1. No LLM in the algorithm itself.** Content selection (sentiment scoring, topic/newsworthiness detection, ranking) runs on classic ML: TF-IDF, spaCy NER, MinHash/LSH, a small CNN over word embeddings for sentiment. Not an LLM. The reasoning: the whole pitch is "trust why a post got selected," and classical ML is small, auditable, and doesn't drift or hallucinate the way an LLM can. This is specifically about what powers the algorithm — it does not extend to how the project is built. LLM tools (including Claude) are used openly for development, research, and docs. Don't blur this distinction in code comments, docs, or commit messages: "no LLMs in the filter," not "no LLMs anywhere."
 
-**2. No engagement signals in ranking.** The ranking/dedup pipeline must never read likes, reposts, replies, or follower counts from the source platform. An earlier draft violated this (used an HN-style upvote-decay formula) and got caught and rewritten — see the Decisions Log for what happened. Ranking signals must be content-derived only: positivity strength × topicality/burst score × recency decay, plus MMR for diversity re-ranking. Bot-filtering is allowed but must stay defensive-only (a filter, never a ranking boost) — it can't smuggle engagement-style signals back in.
+**2. No engagement signals in ranking.** The ranking/dedup pipeline must never read likes, reposts, replies, or follower counts from the source platform. An earlier draft violated this (used an HN-style upvote-decay formula) and got caught and rewritten — see the Decisions Log for what happened. `processing/src/ranking.py`'s `compute_base_score` is the literal enforcement of this: `positivity(sentiment) × topicality × recency_decay`, no other fields exist on `RankablePost` for this to accidentally read. Bot-filtering (`bot_filter.py`) is allowed but stays defensive-only — a hard eligibility filter, never a score boost, so it can't become a backdoor engagement signal.
+
+## Architecture (as built)
+
+Four services, each independently deployable:
+
+| Path | Language | Deployed as | What it does |
+|---|---|---|---|
+| `ingestion/` | TypeScript | Railway service `goodgorithm-ingestion` | Long-lived process: Bluesky Jetstream WebSocket + Mastodon polling → `raw_posts` in Postgres. |
+| `processing/` | Python | Railway service `goodgorithm-processing` | Long-lived loop: dedup → bot filter → topicality → sentiment → base score → MMR ranking → `processed_posts`. |
+| `api/` | TypeScript (Fastify) | Railway service `goodgorithm-api` | Stateless, read-only, unauthenticated HTTP. `/feed` (cursor-paginated, ordered by `rank_score`), `/health`. |
+| `training/` | Python (notebook) | Run manually on Colab/Kaggle, not deployed | Trains the sentiment CNN, exports to ONNX, publishes versioned artifacts to R2. |
+
+Schema lives in `supabase/migrations/` (`raw_posts`, `processed_posts`, applied via Supabase's migration tooling — don't hand-edit the schema elsewhere).
+
+**For the exact step-by-step mechanics of every pipeline stage** (thresholds, formulas, why each one works the way it does), see the published **Algorithm** page in Notion (link at the bottom) — that's the canonical, kept-current explanation. Don't duplicate it at length here; it'll drift.
+
+### Data flow
+
+```
+Bluesky Jetstream ─┐
+                    ├─> ingestion/ ─> raw_posts ─> processing/ ─> processed_posts ─> api/ ─> /feed
+Mastodon polling ───┘                  (dedup, bot filter, topicality,
+                                         sentiment, base score, MMR rank)
+```
+
+`raw_posts` and `processed_posts` are separate tables, joined at read time — nothing is ever mutated in `raw_posts` after ingestion, so the original data is always intact for audit/replay even as scoring logic evolves.
+
+### Sentiment model loading
+
+`processing/` tries once per process to load the trained CNN from R2 (`sentiment-cnn/latest.json` → versioned `model.onnx`/`vocab.json`/`config.json`); on any failure (R2 not configured, network error, nothing published yet) it falls back to VADER and keeps running. `sentiment_method` on every scored post records which one actually produced that score. To train and publish a new model version, use the `release-sentiment-model` skill (`.claude/skills/release-sentiment-model/`) rather than improvising the R2 upload — it covers the tokenizer commit-pinning requirement and the versioned/gated-promotion release process.
 
 ## Data sources
 
-Bluesky Jetstream (public WebSocket firehose) and Mastodon public timelines. Both are open, unauthenticated protocols — no paid APIs, no scraping behind logins. This is deliberate: keeps the pipeline reproducible without special access.
+Bluesky Jetstream (public WebSocket firehose, filtered to `app.bsky.feed.post` creates) and Mastodon public timelines (polling `fosstodon.org` + `hachyderm.io`, 30s interval). Both are open, unauthenticated protocols — no paid APIs, no scraping behind logins. English-only on both paths; every downstream model is English-only. This is deliberate: keeps the pipeline reproducible without special access.
 
-## Algorithm pipeline (planned shape)
-
-1. **Ingestion** — long-lived process consuming Jetstream + polling Mastodon. Always-on, not request-triggered.
-2. **Processing** — dedup (MinHash/LSH), sentiment CNN, NER + TF-IDF burst scoring for topicality, bot filter, ranking (see constraint #2 above).
-3. **API/backend** — serves the ranked feed. Stateless HTTP.
-4. **ML training** — periodic (not continuous) fine-tuning of the sentiment CNN. Small model, runs fine on free-tier GPU notebook quotas (Colab/Kaggle). Inference is CPU-only.
-
-## Infra (already provisioned)
+## Infra (provisioned and live)
 
 - **Cloudflare** — DNS, R2 for object storage (bucket `goodgorithm-models`: model checkpoints, datasets, transparency samples), Pages for the PWA (not built yet).
-- **Railway** — service `goodgorithm`, with separate `production` and `staging` environments. Runs (or will run) ingestion + pipeline + API.
-- **Supabase** — Postgres. Production project + a `staging` branch off it.
-- **Upstash** — serverless Redis, REST API (not raw `redis://`). For burst-detection counters and dedup signature lookups.
+- **Railway** — project `goodgorithm`, three services (`goodgorithm-ingestion`, `goodgorithm-processing`, `goodgorithm-api`), each with `staging` and `production` environments.
+- **Supabase** — Postgres. Production project + a `staging` branch off it. Migrations applied via `supabase/migrations/`.
+- **Upstash** — serverless Redis, REST API (not raw `redis://`). Ephemeral, TTL'd state only: LSH bands + MinHash signatures (dedup), author velocity + self-dup tracking (bot filter), entity burst counters (topicality). Postgres holds every durable result; Redis is disposable.
 - **GitHub** — this repo, org `goodgorithm`. Three long-lived branches (`main` → `staging` → `production`), mirroring the Railway/Supabase environment promotion flow — see Git conventions below.
 
-Env var names are documented in `.env.example` — never commit actual values. Real values live in Railway's environment variables (set separately per environment) and nowhere else in this repo.
+Env var names are documented in `.env.example` at the repo root — never commit actual values. Real values live in Railway's environment variables (set separately per service, per environment) and nowhere else in this repo. Each service only needs a subset — `ingestion/` and `api/` just need `DATABASE_URL`; `processing/` additionally needs the Redis and R2 vars.
+
+**Known gap:** `goodgorithm-processing` has env vars set and migrations applied in the `production` Railway environment, but the CI `deploy-production` job (`.github/workflows/ci.yml`) doesn't deploy it yet — only `deploy-staging` does. A push to `production` currently redeploys `ingestion` and `api` but leaves `processing` on whatever was last deployed there manually. Fix is a one-line addition to that job, deliberately not made without a decision about timing — see the Decisions Log's "Known gap" note.
+
+## Development
+
+Each service is independent — install/run/test from within its own directory.
+
+- **`ingestion/`, `api/`** (Node/TypeScript): `npm install`, `npm run dev` (watch mode via `tsx`), `npm run build` (type-check + compile), `npm test` (`api/` only, uses Node's built-in test runner).
+- **`processing/`** (Python, managed with `uv`): `uv sync`, `uv run python src/main.py --once` (single cycle, for local testing) or without `--once` for the long-lived loop, `uv run pytest` (unit tests — many run without any real DB/Redis/R2 credentials, since `config.validate()` is only called explicitly from entrypoints, not at import time).
+- **`training/sentiment_cnn.ipynb`**: not run locally — needs a GPU. Open in Colab or Kaggle. See the `release-sentiment-model` skill before touching this.
+
+CI (`.github/workflows/ci.yml`) runs `processing`'s pytest suite, and builds/tests `ingestion`/`api`, on every push and PR to `main`/`staging`/`production`.
 
 ## Git conventions
 
 - Commit messages: plain, descriptive. Include a `Co-Authored-By: Claude <noreply@anthropic.com>` trailer on commits produced by/with Claude (not required retroactively on the very first commit).
-- Three long-lived branches, promoted in sequence: feature branches merge into `main` first; `main` promotes to `staging`; `staging` promotes to `production`. `staging` and `production` map directly to the matching Railway/Supabase environments — `main` itself isn't deployed anywhere, it's just the integration branch. CI (`.github/workflows/ci.yml`) runs tests/build on all three branches; pushes to `staging`/`production` additionally trigger a deploy to the matching Railway environment once CI passes.
+- Three long-lived branches, promoted in sequence: feature branches merge into `main` first; `main` promotes to `staging`; `staging` promotes to `production`. `staging` and `production` map directly to the matching Railway/Supabase environments — `main` itself isn't deployed anywhere, it's just the integration branch. CI runs tests/build on all three branches; pushes to `staging`/`production` additionally trigger a deploy to the matching Railway environment (per-service) once CI passes.
 
 ## Docs
 
 This file is the condensed bridge for coding sessions. Full project documentation lives in Notion, not in this repo:
 
-- **Internal workspace** ("Goodgorithm Docs") — Decisions Log, Project Research (algorithm landscape scan, naming), Infrastructure Plan (with pricing/account specifics), MVP Setup Checklist. Private, not for external sharing.
-- **Public workspace** ("Goodgorithm — Public Docs") — distilled, publish-safe docs meant for users/contributors, e.g. the [Infrastructure](https://app.notion.com/p/3b69243701a78144b4fafb22665c07b2) page. Link new user-facing docs here, not in the internal workspace.
+- **Published, public docs** ("Goodgorithm — Public Docs") — distilled, publish-safe docs meant for users/contributors: [Algorithm](https://app.notion.com/p/3b79243701a781a8997ed17609a60bc7) (step-by-step pipeline mechanics — the detailed companion to the "Architecture" section above) and [Infrastructure](https://app.notion.com/p/3b69243701a78144b4fafb22665c07b2) (hosting/tooling and why). Link new user-facing docs here, not in the internal workspace.
+- **Internal workspace** ("Goodgorithm Docs") — Decisions Log (including implementation-phase decisions and known gaps), Project Research, Infrastructure Plan (with pricing/account specifics), MVP Setup Checklist. Private, not for external sharing.
 
 If you have the Notion MCP connector available and need more context than this file provides (exact rationale for a past decision, full pricing research, etc.), check the internal workspace first.
