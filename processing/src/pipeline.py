@@ -94,8 +94,8 @@ def refresh_rankings() -> int:
     ]
 
     results = ranking.rank_posts(posts)
-    for post_id, result in results.items():
-        db.update_rank_score(post_id, result.base_score, result.rank_score)
+    updates = [(post_id, result.base_score, result.rank_score) for post_id, result in results.items()]
+    db.update_rank_scores(updates)
 
     logger.info("refreshed rankings for %d posts", len(results))
     return len(results)

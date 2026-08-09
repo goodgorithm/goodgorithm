@@ -115,12 +115,37 @@ def fetch_rankable_posts(since: datetime) -> list[RankableRow]:
     return [RankableRow(*row) for row in rows]
 
 
-def update_rank_score(raw_post_id: UUID, base_score: float, rank_score: float) -> None:
+RANK_SCORE_UPDATE_CHUNK_SIZE = 1000
+
+
+def update_rank_scores(updates: list[tuple[UUID, float, float]]) -> None:
+    """Bulk-writes (raw_post_id, base_score, rank_score) after MMR ranking.
+
+    refresh_rankings can touch thousands of posts a cycle (the eligible
+    window isn't bounded to a handful of rows - it's whatever passed the
+    bot/dedup/sentiment filters in the last MMR_WINDOW_HOURS). One UPDATE
+    per row was the actual production crash: even a modest per-round-trip
+    latency compounds into minutes at that volume, all inside a single
+    process cycle with nothing else able to run. Batched into chunks
+    rather than one giant statement so query size/param count stay
+    bounded as the eligible pool grows.
+    """
+    if not updates:
+        return
     with pool.connection() as conn:
-        conn.execute(
-            "UPDATE processed_posts SET base_score = %s, rank_score = %s WHERE raw_post_id = %s",
-            (base_score, rank_score, raw_post_id),
-        )
+        for i in range(0, len(updates), RANK_SCORE_UPDATE_CHUNK_SIZE):
+            chunk = updates[i : i + RANK_SCORE_UPDATE_CHUNK_SIZE]
+            values_sql = ", ".join(["(%s::uuid, %s::real, %s::real)"] * len(chunk))
+            params = [value for row in chunk for value in row]
+            conn.execute(
+                f"""
+                UPDATE processed_posts AS p
+                SET base_score = v.base_score, rank_score = v.rank_score
+                FROM (VALUES {values_sql}) AS v(raw_post_id, base_score, rank_score)
+                WHERE p.raw_post_id = v.raw_post_id
+                """,
+                params,
+            )
 
 
 def delete_old_raw_posts(cutoff: datetime) -> int:
