@@ -41,12 +41,14 @@ def main() -> None:
     if args.once:
         pipeline.run_cycle(args.batch_size)
         pipeline.refresh_rankings()
+        pipeline.cleanup_old_data()
         db.close()
         return
 
     while not _shutdown:
         pipeline.run_cycle(args.batch_size)
         pipeline.refresh_rankings()
+        pipeline.cleanup_old_data()
         if _shutdown:
             break
         time.sleep(args.interval)

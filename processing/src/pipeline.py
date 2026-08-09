@@ -10,6 +10,12 @@ import topicality
 
 logger = logging.getLogger("processing")
 
+# Alpha-stage cap on stored data, not a correctness requirement -- raise
+# post-alpha if needed. Note this makes ranking.MMR_WINDOW_HOURS (72h)
+# effectively capped at this value too, since a post older than
+# RETENTION_HOURS is deleted before it could ever be 72h old.
+RETENTION_HOURS = 24
+
 
 def run_cycle(batch_size: int) -> int:
     """Fetches a batch of unprocessed posts and scores them through dedup,
@@ -93,3 +99,15 @@ def refresh_rankings() -> int:
 
     logger.info("refreshed rankings for %d posts", len(results))
     return len(results)
+
+
+def cleanup_old_data() -> int:
+    """Deletes raw_posts older than RETENTION_HOURS; processed_posts rows
+    for them cascade-delete automatically. Safe to run every cycle -- the
+    delete is indexed (raw_posts_created_at_idx) and typically matches
+    nothing once the initial backlog is cleared."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=RETENTION_HOURS)
+    deleted = db.delete_old_raw_posts(cutoff)
+    if deleted:
+        logger.info("cleaned up %d posts older than %dh", deleted, RETENTION_HOURS)
+    return deleted

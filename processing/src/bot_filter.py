@@ -7,7 +7,7 @@ import redis_client
 
 VELOCITY_WINDOW_SECONDS = 60 * 60  # 1 hour
 VELOCITY_THRESHOLD = 15  # posts/hour at which the velocity component maxes out
-SELF_DUP_TTL_SECONDS = 14 * 24 * 60 * 60  # matches dedup's cluster-membership TTL
+SELF_DUP_TTL_SECONDS = 24 * 60 * 60  # matches dedup's cluster-membership TTL
 
 URL_DENSITY_CAP = 0.3
 HASHTAG_DENSITY_CAP = 0.4

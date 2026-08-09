@@ -22,7 +22,9 @@ NUM_BANDS = 8
 ROWS_PER_BAND = NUM_PERM // NUM_BANDS
 SHINGLE_SIZE = 4
 JACCARD_THRESHOLD = 0.7
-BAND_TTL_SECONDS = 14 * 24 * 60 * 60  # 14 days
+# matches RETENTION_HOURS (pipeline.py) -- no point deduplicating against a
+# post whose row will already have been deleted from Postgres.
+BAND_TTL_SECONDS = 24 * 60 * 60
 
 _URL_RE = re.compile(r"https?://\S+")
 _MENTION_RE = re.compile(r"@[\w.-]+")

@@ -123,5 +123,13 @@ def update_rank_score(raw_post_id: UUID, base_score: float, rank_score: float) -
         )
 
 
+def delete_old_raw_posts(cutoff: datetime) -> int:
+    """processed_posts rows cascade-delete automatically (FK ON DELETE
+    CASCADE, see migration 0003)."""
+    with pool.connection() as conn:
+        cur = conn.execute("DELETE FROM raw_posts WHERE created_at < %s", (cutoff,))
+        return cur.rowcount
+
+
 def close() -> None:
     pool.close()
