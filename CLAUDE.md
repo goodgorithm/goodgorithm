@@ -50,7 +50,7 @@ Alpha-stage cap, not a correctness requirement: both Postgres and Redis only ret
 
 Note `ranking.py`'s `MMR_WINDOW_HOURS` is still `72.0` in code but is now effectively capped at 24h by retention (a post can't survive long enough to hit the 72h boundary) — left as-is rather than changed, so it becomes meaningful again automatically if retention is raised post-alpha. Don't "fix" this mismatch without checking the Decisions Log entry first.
 
-As of 2026-08-09 the retention code and migration exist locally; the migration is applied on the Supabase `staging` branch but not yet on `production`, and none of it has been deployed to Railway yet. Check actual state (`git log`, Supabase migration list, Railway deploy status) before assuming this is live everywhere — code/infra changes now happen via Claude Code, not this session, so this file may lag reality until the next doc sync.
+As of 2026-08-09 migration 0003 is applied on both the Supabase `staging` branch and `production`, and the retention code is committed on `main`, but not yet promoted through `staging`/`production` or deployed to Railway. Check actual state (`git log`, Supabase migration list, Railway deploy status) before assuming this is live everywhere — code/infra changes now happen via Claude Code, not this session, so this file may lag reality until the next doc sync.
 
 ## Data sources
 
