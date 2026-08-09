@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import numpy as np
+from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -72,11 +73,46 @@ def filter_eligible(posts: list[RankablePost]) -> list[RankablePost]:
     ]
 
 
-def _entity_jaccard(a: set[str], b: set[str]) -> float:
-    union = a | b
-    if not union:
-        return 0.0
-    return len(a & b) / len(union)
+def _entity_similarity_matrix(entity_lists: list[list[str]]) -> np.ndarray:
+    """Pairwise Jaccard similarity for n sets, vectorized. A pure-Python
+    double loop here is O(n^2) *Python-level* work (set ops + function calls
+    per pair) - fine for a handful of posts, but at real production volume
+    (thousands of eligible posts in the MMR window) it's tens of millions of
+    interpreted operations per cycle, slow and memory-hungry enough to crash
+    the process outright (confirmed 2026-08-09: silently OOM-killed every
+    cycle once the window hit ~5,200 eligible posts, no traceback since a
+    kill -9 gives Python no chance to log one).
+
+    Same math (intersection/union), done as one sparse matrix multiply
+    instead: build an n x |vocab| binary "post mentions entity" matrix M;
+    M @ M.T gives pairwise intersection counts in a single (C-level) sparse
+    matmul, and union follows from each set's own size via broadcasting.
+    """
+    n = len(entity_lists)
+    if n == 0:
+        return np.zeros((0, 0))
+
+    vocab: dict[str, int] = {}
+    rows: list[int] = []
+    cols: list[int] = []
+    for i, entities in enumerate(entity_lists):
+        for entity in set(entities):
+            col = vocab.setdefault(entity, len(vocab))
+            rows.append(i)
+            cols.append(col)
+
+    if not vocab:
+        return np.zeros((n, n))
+
+    membership = csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(n, len(vocab)))
+    intersection = (membership @ membership.T).toarray()
+    sizes = np.asarray(membership.sum(axis=1)).ravel()
+    union = sizes[:, None] + sizes[None, :] - intersection
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        jaccard = np.where(union > 0, intersection / union, 0.0)
+    np.fill_diagonal(jaccard, 0.0)  # self-similarity is never consulted, but keep it clean
+    return jaccard
 
 
 def _similarity_matrix(posts: list[RankablePost]) -> np.ndarray:
@@ -92,13 +128,7 @@ def _similarity_matrix(posts: list[RankablePost]) -> np.ndarray:
     except ValueError:
         tfidf_sim = np.zeros((n, n))
 
-    entity_sets = [set(p.entities) for p in posts]
-    entity_sim = np.zeros((n, n))
-    for i in range(n):
-        for j in range(i + 1, n):
-            sim = _entity_jaccard(entity_sets[i], entity_sets[j])
-            entity_sim[i, j] = sim
-            entity_sim[j, i] = sim
+    entity_sim = _entity_similarity_matrix([p.entities for p in posts])
 
     return SIMILARITY_TFIDF_WEIGHT * tfidf_sim + SIMILARITY_ENTITY_WEIGHT * entity_sim
 
@@ -125,26 +155,32 @@ def rank_posts(posts: list[RankablePost], now: datetime | None = None) -> dict[U
     base_scores = {p.id: compute_base_score(p, now) for p in windowed}
     sim_matrix = _similarity_matrix(windowed)
 
-    remaining = set(range(len(windowed)))
-    selected: list[int] = []
+    # Same greedy MMR as before (each round still needs the *current* best
+    # remaining candidate given everything already selected, which is
+    # inherently sequential), but tracked with a running per-post "max
+    # similarity to anything selected so far" vector instead of
+    # recomputing max(sim_matrix[i, j] for j in selected) from scratch for
+    # every remaining i on every round - that was the second O(n^2)
+    # pure-Python hot spot alongside the entity-similarity loop, same
+    # production crash (see _entity_similarity_matrix).
+    n = len(windowed)
+    base_scores_arr = np.array([base_scores[p.id] for p in windowed])
+    max_sim_to_selected = np.zeros(n)
+    remaining_mask = np.ones(n, dtype=bool)
 
-    while remaining:
-        best_idx: int | None = None
-        best_mmr: float | None = None
-        for i in remaining:
-            max_sim = max((sim_matrix[i, j] for j in selected), default=0.0)
-            mmr = MMR_LAMBDA * base_scores[windowed[i].id] - (1 - MMR_LAMBDA) * max_sim
-            if best_mmr is None or mmr > best_mmr:
-                best_mmr = mmr
-                best_idx = i
+    for rank_position in range(n):
+        mmr_values = MMR_LAMBDA * base_scores_arr - (1 - MMR_LAMBDA) * max_sim_to_selected
+        mmr_values = np.where(remaining_mask, mmr_values, -np.inf)
+        best_idx = int(np.argmax(mmr_values))
 
-        selected.append(best_idx)
-        remaining.discard(best_idx)
         post = windowed[best_idx]
         results[post.id] = RankResult(
             base_score=base_scores[post.id],
-            rank_score=best_mmr,
-            rank_position=len(selected) - 1,
+            rank_score=float(mmr_values[best_idx]),
+            rank_position=rank_position,
         )
+
+        remaining_mask[best_idx] = False
+        max_sim_to_selected = np.maximum(max_sim_to_selected, sim_matrix[:, best_idx])
 
     return results

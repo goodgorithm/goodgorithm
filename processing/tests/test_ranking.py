@@ -1,3 +1,6 @@
+import random
+import string
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -136,3 +139,40 @@ def test_mmr_spreads_out_near_duplicate_topics():
     assert order[0] == e1.id  # highest raw base_score still goes first
     assert order.index(diverse.id) < order.index(e2.id)
     assert order.index(diverse.id) < order.index(e3.id)
+
+
+def test_rank_posts_scales_to_production_volume():
+    # Regression test for a real 2026-08-09 production incident: the MMR
+    # window can genuinely hold thousands of eligible posts (5,238 seen in
+    # prod), and both the entity-similarity pass and the MMR selection loop
+    # used to be pure-Python O(n^2) - tens of millions of interpreted
+    # operations, slow and memory-hungry enough that the process was
+    # silently OOM-killed every cycle with no traceback. Both are now
+    # vectorized (see _entity_similarity_matrix and rank_posts). A generous
+    # time bound here (not a tight one - CI machines vary) exists
+    # specifically to catch a regression back to the O(n^2) Python loops,
+    # which would blow well past it at this n.
+    rng = random.Random(1234)
+
+    def make_random_post(i):
+        entities = ["".join(rng.choices(string.ascii_lowercase, k=6)) for _ in range(rng.randint(0, 5))]
+        text = " ".join("".join(rng.choices(string.ascii_lowercase, k=6)) for _ in range(rng.randint(10, 40)))
+        return ranking.RankablePost(
+            id=uuid4(),
+            text=text,
+            created_at=NOW - timedelta(minutes=i),
+            sentiment_score=rng.uniform(0.3, 1.0),
+            topicality_score=rng.uniform(0.5, 2.0),
+            entities=entities,
+            is_bot=False,
+            is_dedup_canonical=True,
+        )
+
+    posts = [make_random_post(i) for i in range(2000)]
+
+    start = time.monotonic()
+    results = ranking.rank_posts(posts, now=NOW)
+    elapsed = time.monotonic() - start
+
+    assert len(results) == len(posts)
+    assert elapsed < 15.0, f"rank_posts took {elapsed:.1f}s for 2000 posts - likely an O(n^2) Python-loop regression"
