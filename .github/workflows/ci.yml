@@ -99,3 +99,49 @@ jobs:
           npx -y @railway/cli@latest up --service goodgorithm-ingestion --ci
           npx -y @railway/cli@latest up --service goodgorithm-api --ci
           npx -y @railway/cli@latest up --service goodgorithm-processing --ci
+
+  # Independent from deploy-staging/deploy-production (Railway) so a web-only
+  # failure can't block the backend services deploying, or vice versa.
+  deploy-web-staging:
+    needs: [web-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_API_BASE_URL: https://goodgorithm-api-staging.up.railway.app
+      - run: npx wrangler deploy --env staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+  deploy-web-production:
+    needs: [web-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/production'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_API_BASE_URL: https://goodgorithm-api-production.up.railway.app
+      - run: npx wrangler deploy --env production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

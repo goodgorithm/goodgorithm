@@ -29,6 +29,7 @@ build/
 .next/
 .turbo/
 coverage/
+.wrangler/
 
 # ML artifacts (models/datasets are large and versioned separately, not in git)
 *.ckpt

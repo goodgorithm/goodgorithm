@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "goodgorithm-web",
+  "compatibility_date": "2026-08-01",
+  // account_id intentionally omitted - wrangler resolves it automatically
+  // from CLOUDFLARE_API_TOKEN as long as the token only has access to one
+  // account. If CI ever fails with an "ambiguous account" error, add
+  // account_id here (it's a public identifier, not a secret) or set
+  // CLOUDFLARE_ACCOUNT_ID alongside the token.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "env": {
+    "staging": {
+      "name": "goodgorithm-web-staging"
+    },
+    "production": {
+      "name": "goodgorithm-web-production"
+    }
+  }
+}
