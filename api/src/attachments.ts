@@ -1,5 +1,21 @@
 import { buildBlueskyPostUrl } from "./permalink";
 
+// Pre-shaped by processing/'s quote_resolver.py at scoring time (batched
+// AppView calls, content-filtered before storage) and passed straight
+// through here - api/ does no further shaping or network calls of its
+// own. "not_found" covers deleted/blocked/detached alike (getPosts, the
+// batch endpoint used to resolve these, doesn't distinguish which - only
+// per-thread embed views do, and resolving each quote's own thread just
+// to get that distinction wasn't worth the extra AppView calls).
+export type QuoteContent =
+  | {
+      status: "available";
+      author: { displayName: string | null; handle: string | null; avatarUrl: string | null };
+      text: string;
+      createdAt: string | null;
+    }
+  | { status: "unavailable"; reason: "not_found" | "filtered" };
+
 export type Attachment =
   | {
       kind: "image";
@@ -25,7 +41,7 @@ export type Attachment =
       width: number | null;
       height: number | null;
     }
-  | { kind: "quote"; url: string };
+  | { kind: "quote"; url: string; content: QuoteContent | null };
 
 export interface AttachmentSource {
   source: "bluesky" | "mastodon";
@@ -35,6 +51,7 @@ export interface AttachmentSource {
   mastodon_card: unknown;
   mastodon_sensitive: boolean | null;
   bluesky_labels: unknown;
+  quote_content: unknown;
 }
 
 export interface AttachmentResult {
@@ -160,7 +177,38 @@ function parseBlueskyVideo(did: string, embed: unknown): Attachment | null {
 
 const AT_URI_PATTERN = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/;
 
-function parseBlueskyQuote(record: unknown): Attachment | null {
+// quote_content is a straight column on processed_posts, written by
+// processing/'s quote_resolver.py in the exact shape below - this is a
+// defensive validation pass (never trust stored JSON blindly, same rule
+// every other field in this file follows), not a transform.
+function parseQuoteContent(raw: unknown): QuoteContent | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const typed = raw as { status?: unknown; text?: unknown; author?: unknown; createdAt?: unknown; reason?: unknown };
+
+  if (typed.status === "unavailable") {
+    return typed.reason === "not_found" || typed.reason === "filtered"
+      ? { status: "unavailable", reason: typed.reason }
+      : null;
+  }
+
+  if (typed.status === "available" && typeof typed.text === "string" && typeof typed.author === "object" && typed.author !== null) {
+    const author = typed.author as { displayName?: unknown; handle?: unknown; avatarUrl?: unknown };
+    return {
+      status: "available",
+      author: {
+        displayName: typeof author.displayName === "string" ? author.displayName : null,
+        handle: typeof author.handle === "string" ? author.handle : null,
+        avatarUrl: typeof author.avatarUrl === "string" ? author.avatarUrl : null,
+      },
+      text: typed.text,
+      createdAt: typeof typed.createdAt === "string" ? typed.createdAt : null,
+    };
+  }
+
+  return null;
+}
+
+function parseBlueskyQuote(record: unknown, quoteContent: QuoteContent | null): Attachment | null {
   if (typeof record !== "object" || record === null) return null;
   const uri = (record as { uri?: unknown }).uri;
   if (typeof uri !== "string") return null;
@@ -173,7 +221,7 @@ function parseBlueskyQuote(record: unknown): Attachment | null {
   const [, did, collection, rkey] = match;
   if (collection !== "app.bsky.feed.post") return null;
 
-  return { kind: "quote", url: buildBlueskyPostUrl(did, rkey) };
+  return { kind: "quote", url: buildBlueskyPostUrl(did, rkey), content: quoteContent };
 }
 
 function parseBlueskyMediaUnion(did: string, media: unknown): Attachment[] {
@@ -192,7 +240,7 @@ function parseBlueskyMediaUnion(did: string, media: unknown): Attachment[] {
   return []; // gallery/etc - not yet observed in production, deferred
 }
 
-function parseBlueskyEmbed(did: string, embed: unknown): Attachment[] {
+function parseBlueskyEmbed(did: string, embed: unknown, quoteContent: QuoteContent | null): Attachment[] {
   if (typeof embed !== "object" || embed === null) return [];
   const typed = embed as { $type?: unknown; images?: unknown; external?: unknown; record?: unknown; media?: unknown };
 
@@ -211,7 +259,7 @@ function parseBlueskyEmbed(did: string, embed: unknown): Attachment[] {
     }
 
     case "app.bsky.embed.record": {
-      const quote = parseBlueskyQuote(typed.record);
+      const quote = parseBlueskyQuote(typed.record, quoteContent);
       return quote ? [quote] : [];
     }
 
@@ -220,7 +268,7 @@ function parseBlueskyEmbed(did: string, embed: unknown): Attachment[] {
       // embed.record.record, not embed.record directly.
       const media = parseBlueskyMediaUnion(did, typed.media);
       const recordWrapper = typed.record as { record?: unknown } | null | undefined;
-      const quote = parseBlueskyQuote(recordWrapper?.record);
+      const quote = parseBlueskyQuote(recordWrapper?.record, quoteContent);
       return quote ? [...media, quote] : media;
     }
 
@@ -318,7 +366,7 @@ function isSensitive(mastodonSensitive: boolean | null, blueskyLabels: unknown):
 export function buildAttachments(row: AttachmentSource): AttachmentResult {
   let attachments: Attachment[];
   if (row.source === "bluesky") {
-    attachments = parseBlueskyEmbed(row.author_id, row.bluesky_embed);
+    attachments = parseBlueskyEmbed(row.author_id, row.bluesky_embed, parseQuoteContent(row.quote_content));
   } else {
     const card = parseMastodonCard(row.mastodon_card);
     attachments = [...parseMastodonMedia(row.mastodon_media), ...(card ? [card] : [])];

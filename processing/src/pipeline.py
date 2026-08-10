@@ -5,6 +5,7 @@ import bot_filter
 import content_filter
 import db
 import dedup
+import quote_resolver
 import ranking
 import sentiment
 import topicality
@@ -50,6 +51,15 @@ def run_cycle(batch_size: int) -> int:
     burst_index = topicality.RedisBurstIndex()
     topicality_results = topicality.score_topicality(kept_posts, burst_index)
 
+    # One batched resolve call per cycle rather than one per post -
+    # extract_quote_uri returns None for the vast majority of posts (no
+    # quote embed), so this is typically a handful of AppView requests per
+    # cycle, not hundreds.
+    quote_uris_by_post = {post.id: quote_resolver.extract_quote_uri(post.raw_json) for post in kept_posts}
+    quote_content_by_uri = quote_resolver.resolve_quotes(
+        [uri for uri in quote_uris_by_post.values() if uri is not None]
+    )
+
     now = datetime.now(timezone.utc)
 
     for post in kept_posts:
@@ -70,6 +80,9 @@ def run_cycle(batch_size: int) -> int:
         )
         base_score = ranking.compute_base_score(rankable, now)
 
+        quote_uri = quote_uris_by_post.get(post.id)
+        quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None
+
         db.upsert_processed_post(
             raw_post_id=post.id,
             dedup_cluster_id=cluster.cluster_id,
@@ -82,6 +95,7 @@ def run_cycle(batch_size: int) -> int:
             entities=topic.entities,
             base_score=base_score,
             rank_score=None,
+            quote_content=quote_content,
         )
 
     filtered_count = len(posts) - len(kept_posts)

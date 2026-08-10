@@ -24,6 +24,7 @@ export interface FeedPost {
   mastodon_card: unknown;
   mastodon_sensitive: boolean | null;
   bluesky_labels: unknown;
+  quote_content: unknown;
 }
 
 export async function fetchFeed(limit: number, cursor: Cursor | null): Promise<FeedPost[]> {
@@ -37,7 +38,8 @@ export async function fetchFeed(limit: number, cursor: Cursor | null): Promise<F
            r.raw_json->'media_attachments' AS mastodon_media,
            r.raw_json->'card' AS mastodon_card,
            (r.raw_json->>'sensitive')::boolean AS mastodon_sensitive,
-           r.raw_json->'commit'->'record'->'labels' AS bluesky_labels
+           r.raw_json->'commit'->'record'->'labels' AS bluesky_labels,
+           p.quote_content
     FROM processed_posts p
     JOIN raw_posts r ON r.id = p.raw_post_id
     WHERE p.rank_score IS NOT NULL

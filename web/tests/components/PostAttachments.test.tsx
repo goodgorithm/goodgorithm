@@ -41,6 +41,24 @@ const link: Attachment = {
 const quote: Attachment = {
   kind: "quote",
   url: "https://bsky.app/profile/did:plc:other/post/xyz",
+  content: null,
+};
+
+const resolvedQuote: Attachment = {
+  kind: "quote",
+  url: "https://bsky.app/profile/did:plc:other/post/xyz",
+  content: {
+    status: "available",
+    author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: "https://example.com/a.jpg" },
+    text: "a genuinely lovely post",
+    createdAt: "2026-08-10T12:00:00Z",
+  },
+};
+
+const unavailableQuote: Attachment = {
+  kind: "quote",
+  url: "https://bsky.app/profile/did:plc:other/post/xyz",
+  content: { status: "unavailable", reason: "filtered" },
 };
 
 const gifVideo: Attachment = {
@@ -84,10 +102,23 @@ describe("PostAttachments", () => {
     );
   });
 
-  it("renders a quote attachment", () => {
+  it("renders a plain quote link when content hasn't been resolved (content: null)", () => {
     render(<PostAttachments post={makePost([quote])} />);
     const quoteLink = screen.getByRole("link", { name: /quotes a post/i });
     expect(quoteLink).toHaveAttribute("href", quote.url);
+  });
+
+  it("renders a resolved quote as a real card with author and text", () => {
+    render(<PostAttachments post={makePost([resolvedQuote])} />);
+    expect(screen.getByText("Someone Nice")).toBeInTheDocument();
+    expect(screen.getByText("a genuinely lovely post")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /someone nice/i })).toHaveAttribute("href", resolvedQuote.url);
+  });
+
+  it("renders an unavailable/filtered quote as a muted, non-clickable notice", () => {
+    render(<PostAttachments post={makePost([unavailableQuote])} />);
+    expect(screen.getByText(/quoted post unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("renders images and a quote together (recordWithMedia shape)", () => {

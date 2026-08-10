@@ -12,6 +12,17 @@ export interface FeedPostAuthor {
   avatar_url: string | null;
 }
 
+// Mirrors api/src/attachments.ts's QuoteContent exactly (hand-kept-in-sync,
+// no shared package across the API/web boundary).
+export type QuoteContent =
+  | {
+      status: "available";
+      author: { displayName: string | null; handle: string | null; avatarUrl: string | null };
+      text: string;
+      createdAt: string | null;
+    }
+  | { status: "unavailable"; reason: "not_found" | "filtered" };
+
 export type Attachment =
   | {
       kind: "image";
@@ -37,7 +48,7 @@ export type Attachment =
       width: number | null;
       height: number | null;
     }
-  | { kind: "quote"; url: string };
+  | { kind: "quote"; url: string; content: QuoteContent | null };
 
 export interface FeedPost {
   id: string;

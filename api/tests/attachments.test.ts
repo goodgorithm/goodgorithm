@@ -5,7 +5,7 @@ import { buildAttachments, type AttachmentSource } from "../src/attachments";
 
 const DID = "did:plc:ibf6ehn7ba3va4jyqhzx6vv3";
 
-function bskyRow(embed: unknown, labels: unknown = null): AttachmentSource {
+function bskyRow(embed: unknown, labels: unknown = null, quoteContent: unknown = null): AttachmentSource {
   return {
     source: "bluesky",
     author_id: DID,
@@ -14,6 +14,7 @@ function bskyRow(embed: unknown, labels: unknown = null): AttachmentSource {
     mastodon_card: null,
     mastodon_sensitive: null,
     bluesky_labels: labels,
+    quote_content: quoteContent,
   };
 }
 
@@ -30,6 +31,7 @@ function mastodonRow(
     mastodon_card: card,
     mastodon_sensitive: sensitive,
     bluesky_labels: null,
+    quote_content: null,
   };
 }
 
@@ -153,8 +155,79 @@ test("bluesky quote of a real post builds a permalink", () => {
   );
 
   assert.deepEqual(attachments, [
-    { kind: "quote", url: "https://bsky.app/profile/did:plc:7gtqafwrxxrqfjeq5vgjauir/post/3msljo7hyxc2o" },
+    {
+      kind: "quote",
+      url: "https://bsky.app/profile/did:plc:7gtqafwrxxrqfjeq5vgjauir/post/3msljo7hyxc2o",
+      content: null,
+    },
   ]);
+});
+
+test("bluesky quote with resolved content (available)", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(
+      {
+        $type: "app.bsky.embed.record",
+        record: {
+          cid: "bafyreie25lnxb35zt4ppydwcgrlw4vgkirbhe5hvtt5kbadrxnhxtmlgwe",
+          uri: "at://did:plc:7gtqafwrxxrqfjeq5vgjauir/app.bsky.feed.post/3msljo7hyxc2o",
+        },
+      },
+      null,
+      {
+        status: "available",
+        author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: "https://example.com/a.jpg" },
+        text: "a genuinely lovely post",
+        createdAt: "2026-08-10T12:00:00Z",
+      },
+    ),
+  );
+
+  assert.equal(attachments[0]?.kind, "quote");
+  if (attachments[0]?.kind === "quote") {
+    assert.deepEqual(attachments[0].content, {
+      status: "available",
+      author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: "https://example.com/a.jpg" },
+      text: "a genuinely lovely post",
+      createdAt: "2026-08-10T12:00:00Z",
+    });
+  }
+});
+
+test("bluesky quote with resolved content (unavailable/filtered)", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(
+      {
+        $type: "app.bsky.embed.record",
+        record: { cid: "x", uri: "at://did:plc:abc/app.bsky.feed.post/xyz" },
+      },
+      null,
+      { status: "unavailable", reason: "filtered" },
+    ),
+  );
+
+  assert.equal(attachments[0]?.kind, "quote");
+  if (attachments[0]?.kind === "quote") {
+    assert.deepEqual(attachments[0].content, { status: "unavailable", reason: "filtered" });
+  }
+});
+
+test("bluesky quote with malformed quote_content is dropped defensively, not thrown", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(
+      {
+        $type: "app.bsky.embed.record",
+        record: { cid: "x", uri: "at://did:plc:abc/app.bsky.feed.post/xyz" },
+      },
+      null,
+      { status: "available", text: 12345 }, // text should be a string
+    ),
+  );
+
+  assert.equal(attachments[0]?.kind, "quote");
+  if (attachments[0]?.kind === "quote") {
+    assert.equal(attachments[0].content, null);
+  }
 });
 
 test("bluesky quote of a non-post collection (e.g. a list) is skipped", () => {
@@ -189,6 +262,7 @@ test("recordWithMedia with images: media images + quote link, in that order", ()
   assert.deepEqual(attachments[1], {
     kind: "quote",
     url: "https://bsky.app/profile/did:plc:manzlgiqq2xg23us37wcy6df/post/3msloq6tgrc2f",
+    content: null,
   });
 });
 
