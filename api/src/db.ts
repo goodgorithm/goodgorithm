@@ -48,6 +48,27 @@ export async function fetchFeed(limit: number, cursor: Cursor | null): Promise<F
   return rows;
 }
 
+// Cheap enough to run on every /health hit (rate-limited to 100/min anyway)
+// - a real check, not just "the Node process is alive," since an external
+// uptime monitor watching this endpoint needs it to actually mean something.
+// Explicitly bounded: an unreachable DB should fail this check quickly, not
+// hang for postgres.js's default ~30s connect_timeout - a health check that
+// takes half a minute to say "unhealthy" is nearly as useless as one that
+// never answers.
+const HEALTH_CHECK_TIMEOUT_MS = 3000;
+
+export async function checkDatabaseConnection(): Promise<boolean> {
+  try {
+    await Promise.race([
+      sql`SELECT 1`,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("health check timeout")), HEALTH_CHECK_TIMEOUT_MS)),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function close(): Promise<void> {
   await sql.end();
 }

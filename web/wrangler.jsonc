@@ -11,6 +11,11 @@
     "directory": "./dist",
     "not_found_handling": "single-page-application"
   },
+  // Free - gives request/error analytics in the Workers dashboard. Applies
+  // to both named environments below via inheritance (not overridden per-env).
+  "observability": {
+    "enabled": true
+  },
   "env": {
     "staging": {
       "name": "goodgorithm-web-staging"

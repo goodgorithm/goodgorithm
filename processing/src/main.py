@@ -6,6 +6,7 @@ import time
 
 import config
 import db
+import heartbeat
 import pipeline
 
 logging.basicConfig(level=logging.INFO, format="[processing] %(message)s")
@@ -49,6 +50,11 @@ def main() -> None:
         pipeline.run_cycle(args.batch_size)
         pipeline.refresh_rankings()
         pipeline.cleanup_old_data()
+        # Only reached if the whole cycle completed without raising - an
+        # unhandled exception anywhere above crashes the process before
+        # this line, which is exactly the "missed ping" a dead-man's-switch
+        # monitor needs to see. No try/except here on purpose.
+        heartbeat.ping(config.HEARTBEAT_URL_PROCESSING)
         if _shutdown:
             break
         time.sleep(args.interval)

@@ -18,6 +18,11 @@ R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
 SENTIMENT_MODEL_VERSION = os.environ.get("SENTIMENT_MODEL_VERSION")
 
+# Optional dead-man's-switch heartbeat (e.g. a Healthchecks.io check URL) -
+# pinged once per fully successful processing cycle. Absence just means no
+# heartbeat is sent, same "optional, never blocks startup" pattern as R2 above.
+HEARTBEAT_URL_PROCESSING = os.environ.get("HEARTBEAT_URL_PROCESSING")
+
 _REQUIRED = {
     "DATABASE_URL": DATABASE_URL,
     "UPSTASH_REDIS_REST_URL": UPSTASH_REDIS_REST_URL,
