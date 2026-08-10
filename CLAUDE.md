@@ -53,6 +53,23 @@ Note `ranking.py`'s `MMR_WINDOW_HOURS` is still `72.0` in code but is now effect
 
 As of 2026-08-09 migration 0003 is applied on both the Supabase `staging` branch and `production`, and the retention code is committed on `main`, but not yet promoted through `staging`/`production` or deployed to Railway. Check actual state (`git log`, Supabase migration list, Railway deploy status) before assuming this is live everywhere — code/infra changes now happen via Claude Code, not this session, so this file may lag reality until the next doc sync.
 
+## Visual identity
+
+Settled 2026-08-10 through 7 rounds of live iteration (Artifact-based mood boards, real component mockups in both themes — not abstract swatches). **Not yet implemented in `web/`** — there's no theme/token system today (colors are hardcoded literals scattered across CSS Modules, e.g. `PostCard.module.css`, `LinkCard.module.css`) and the shipped icon is still a neutral placeholder monogram. Full rationale and the concepts that got ruled out (an open-arc icon that read as a loading spinner, an uppercase-G that read as a power/off glyph, a two-g composition that was too busy) are in the Decisions Log. **Flagged to be reviewed once more, fresh, before v1 ships** — see the Pre-v1 Roadmap's Review section.
+
+- **Palette — "Signal"**: a confident, non-pastel green. Light accent `#1F9D55`, dark accent `#3ECB79`. Dark-mode backgrounds are warm-tinted near-black (e.g. `#121815`/`#19221E`), not cold pure/blue-black — the dark theme needs to read as inviting, not an inverted afterthought.
+- **Typography**: Manrope, for both display and body use, including the wordmark.
+- **Mark**: a single lowercase **g**. SVG (100×100 viewBox, `stroke-width="9"`, `stroke-linecap="round"`):
+  ```html
+  <path d="M 66.13 44.45 A 20 20 0 1 1 66.13 27.55" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 55 55 C 57 76, 34 94, 16 82" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="66.13" cy="44.45" r="6" fill="currentColor"/>
+  <circle cx="66.13" cy="27.55" r="6" fill="currentColor"/>
+  <circle cx="16" cy="82" r="6" fill="currentColor"/>
+  ```
+  Open bowl (circle with a gap, not a closed ring — echoes "open source"), a hooked descender that curls back under the bowl rather than swinging outward (an earlier straight-diagonal-plus-ball version read as a magnifying glass), attached off-center at roughly 4 o'clock rather than dead-bottom (matches how real lowercase g's link asymmetrically), plus three small nodes at the bowl's open ends and the tail terminus.
+- **Wordmark**: "good" in the accent color at semibold/bold weight, "gorithm" in the body-text color at regular weight, set as one word with no space — `good` + `gorithm`.
+
 ## Data sources
 
 Bluesky Jetstream (public WebSocket firehose, filtered to `app.bsky.feed.post` creates) and Mastodon public timelines (polling `fosstodon.org` + `hachyderm.io`, 30s interval). Both are open, unauthenticated protocols — no paid APIs, no scraping behind logins. English-only on both paths; every downstream model is English-only. This is deliberate: keeps the pipeline reproducible without special access.
