@@ -22,6 +22,14 @@ class RawPost:
 
 
 def fetch_unprocessed_posts(batch_size: int) -> list[RawPost]:
+    # Newest-first, not FIFO: confirmed 2026-08-10 that oldest-first plus a
+    # deep backlog (ingestion outpacing processing) means processing spends
+    # all its time on posts already at the 24h retention edge - they get a
+    # rank_score and are cascade-deleted by cleanup_old_data() moments
+    # later, before /feed can ever see them. Newest-first guarantees fresh
+    # content always gets processed first; a post that never gets reached
+    # before it ages out was never going to make a useful feed entry
+    # anyway (MMR's recency_decay would have suppressed it too).
     with pool.connection() as conn:
         rows = conn.execute(
             """
@@ -29,7 +37,7 @@ def fetch_unprocessed_posts(batch_size: int) -> list[RawPost]:
             FROM raw_posts r
             LEFT JOIN processed_posts p ON p.raw_post_id = r.id
             WHERE p.id IS NULL
-            ORDER BY r.created_at ASC
+            ORDER BY r.created_at DESC
             LIMIT %s
             """,
             (batch_size,),
