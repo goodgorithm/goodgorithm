@@ -27,6 +27,21 @@ def test_url_density_counts_links_against_word_count():
     assert bot_filter.url_density("check https://a.com and https://b.com") == 2 / 4
 
 
+def test_url_density_matches_bare_www_links_with_no_scheme():
+    # Regression: a real promotional post's 4 Amazon links, written as
+    # "www.amazon.com/dp/..." with no "http(s)://", scored zero url_density
+    # and slipped through this filter (confirmed 2026-08-11).
+    text = (
+        "Book 4 out now\n"
+        "www.amazon.com/dp/B0HBRCJBS1\n"
+        "www.amazon.co.uk/dp/B0HBRCJBS1\n"
+        "www.amazon.com.au/dp/B0HBRCJBS1\n"
+        "www.amazon.ca/dp/B0HBRCJBS1"
+    )
+    # 8 whitespace-split words total (4 prose + 4 links), 4 of which match.
+    assert bot_filter.url_density(text) == 4 / 8
+
+
 def test_hashtag_density():
     assert bot_filter.hashtag_density("no hashtags here") == 0.0
     assert bot_filter.hashtag_density("#deal #sale #now buy") == 3 / 4

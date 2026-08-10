@@ -19,6 +19,7 @@ class RawPost:
     text: str
     lang: str | None
     created_at: datetime
+    raw_json: dict
 
 
 def fetch_unprocessed_posts(batch_size: int) -> list[RawPost]:
@@ -33,7 +34,7 @@ def fetch_unprocessed_posts(batch_size: int) -> list[RawPost]:
     with pool.connection() as conn:
         rows = conn.execute(
             """
-            SELECT r.id, r.source, r.source_id, r.author_id, r.text, r.lang, r.created_at
+            SELECT r.id, r.source, r.source_id, r.author_id, r.text, r.lang, r.created_at, r.raw_json
             FROM raw_posts r
             LEFT JOIN processed_posts p ON p.raw_post_id = r.id
             WHERE p.id IS NULL
@@ -162,6 +163,15 @@ def delete_old_raw_posts(cutoff: datetime) -> int:
     with pool.connection() as conn:
         cur = conn.execute("DELETE FROM raw_posts WHERE created_at < %s", (cutoff,))
         return cur.rowcount
+
+
+def delete_raw_post(post_id: UUID) -> bool:
+    """Single-row sibling of delete_old_raw_posts, for content-filter
+    exclusions. Same cascade behavior. Returns whether a row was actually
+    deleted (it may already be gone, e.g. aged out by retention)."""
+    with pool.connection() as conn:
+        cur = conn.execute("DELETE FROM raw_posts WHERE id = %s", (post_id,))
+        return cur.rowcount > 0
 
 
 def close() -> None:

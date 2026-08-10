@@ -18,7 +18,14 @@ SELF_DUP_WEIGHT = 0.35
 LEXICAL_WEIGHT = 0.25
 BOT_SCORE_THRESHOLD = 0.5
 
-_URL_RE = re.compile(r"https?://\S+")
+# Also matches bare www.-prefixed links with no scheme (confirmed 2026-08-11:
+# a promotional post's 4 Amazon links, written as "www.amazon.com/dp/..."
+# with no "http(s)://", scored zero url_density and slipped through this
+# filter). Deliberately not extended to fully bare domains with neither
+# prefix (e.g. "amazon.com/xyz") -- that needs a TLD allowlist to avoid
+# false positives on ordinary prose ("e.g.", "Mr. Smith"), a separate,
+# larger fix.
+_URL_RE = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
 _HASHTAG_RE = re.compile(r"#\w+")
 
 

@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import bot_filter
+import content_filter
 import db
 import dedup
 import ranking
@@ -27,16 +28,31 @@ def run_cycle(batch_size: int) -> int:
     if not posts:
         return 0
 
+    # Hard content-exclude runs before dedup/bot/topicality -- no point
+    # spending Redis/CPU on content that's about to be deleted. Excluded
+    # posts never get a processed_posts row at all.
+    kept_posts = []
+    for post in posts:
+        if content_filter.is_content_excluded(post.text, post.raw_json):
+            db.delete_raw_post(post.id)
+            logger.info("content-filtered post %s (hashtag/self-label)", post.id)
+        else:
+            kept_posts.append(post)
+
+    if not kept_posts:
+        logger.info("processed 0 posts (%d content-filtered)", len(posts))
+        return len(posts)
+
     dedup_index = dedup.RedisDedupIndex()
-    dedup_results = dedup.dedup_posts(posts, dedup_index)
+    dedup_results = dedup.dedup_posts(kept_posts, dedup_index)
 
     bot_index = bot_filter.RedisBotFilterIndex()
     burst_index = topicality.RedisBurstIndex()
-    topicality_results = topicality.score_topicality(posts, burst_index)
+    topicality_results = topicality.score_topicality(kept_posts, burst_index)
 
     now = datetime.now(timezone.utc)
 
-    for post in posts:
+    for post in kept_posts:
         cluster = dedup_results[post.id]
         bot_score = bot_filter.score_bot(post.author_id, post.text, cluster.cluster_id, bot_index)
         topic = topicality_results[post.id]
@@ -68,7 +84,14 @@ def run_cycle(batch_size: int) -> int:
             rank_score=None,
         )
 
-    logger.info("processed %d posts", len(posts))
+    filtered_count = len(posts) - len(kept_posts)
+    if filtered_count:
+        logger.info("processed %d posts (%d content-filtered)", len(kept_posts), filtered_count)
+    else:
+        logger.info("processed %d posts", len(kept_posts))
+    # Pre-filter count, not len(kept_posts) -- main.py's backlog-aware sleep
+    # needs "did this cycle do work", and a cycle that filters everything
+    # and keeps nothing should still count as work, not idle.
     return len(posts)
 
 
