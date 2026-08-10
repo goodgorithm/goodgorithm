@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { startBlueskyIngestion } from "./bluesky";
+import { startBlueskyLabelIngestion } from "./blueskyLabels";
 import { startMastodonIngestion } from "./mastodon";
 import { close } from "./db";
 import { startHeartbeat } from "./heartbeat";
@@ -11,6 +12,7 @@ if (!process.env.DATABASE_URL) {
 
 console.log("[ingestion] starting");
 startBlueskyIngestion();
+startBlueskyLabelIngestion();
 startMastodonIngestion();
 startHeartbeat(process.env.HEARTBEAT_URL_INGESTION);
 

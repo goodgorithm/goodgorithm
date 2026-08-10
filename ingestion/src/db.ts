@@ -34,6 +34,16 @@ export async function insertPost(post: RawPost): Promise<void> {
   recordInsert();
 }
 
+// Used by the labels-stream content filter -- no recordInsert() call,
+// deletes aren't the liveness signal the heartbeat tracks. Returns the
+// number of rows actually deleted (0 if none matched, e.g. a post we
+// never ingested in the first place under BLUESKY_SAMPLE_RATE, or one
+// that already aged out via retention).
+export async function deleteBySourceId(source: "bluesky" | "mastodon", sourceId: string): Promise<number> {
+  const result = await sql`DELETE FROM raw_posts WHERE source = ${source} AND source_id = ${sourceId}`;
+  return result.count;
+}
+
 export async function close(): Promise<void> {
   await sql.end();
 }
