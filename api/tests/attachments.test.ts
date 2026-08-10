@@ -212,10 +212,96 @@ test("recordWithMedia with external media", () => {
   assert.equal(attachments[1]?.kind, "quote");
 });
 
+// --- Bluesky video (real shape, captured from production) ---
+
+test("bluesky video, default presentation with aspectRatio", () => {
+  const { attachments } = buildAttachments(
+    bskyRow({
+      $type: "app.bsky.embed.video",
+      video: {
+        ref: { $link: "bafkreihcvn3lq7joeciv55ed3qzvich244z62kwzdtyhj2vbcyxsezbdge" },
+        size: 2279965,
+        $type: "blob",
+        mimeType: "video/mp4",
+      },
+      aspectRatio: { width: 1080, height: 1920 },
+      presentation: "default",
+    }),
+  );
+
+  assert.deepEqual(attachments, [
+    {
+      kind: "video",
+      playlistUrl:
+        "https://video.bsky.app/watch/did:plc:ibf6ehn7ba3va4jyqhzx6vv3/bafkreihcvn3lq7joeciv55ed3qzvich244z62kwzdtyhj2vbcyxsezbdge/playlist.m3u8",
+      thumbnailUrl: null,
+      isGif: false,
+      width: 1080,
+      height: 1920,
+    },
+  ]);
+});
+
+test("bluesky video with no aspectRatio/presentation (both optional in the lexicon)", () => {
+  const { attachments } = buildAttachments(
+    bskyRow({
+      $type: "app.bsky.embed.video",
+      video: {
+        ref: { $link: "bafkreih5k7zuvejx3xfn7bkf2ewqvlubnkc3neolptcqefiztjxcxbnlgy" },
+        size: 4761977,
+        $type: "blob",
+        mimeType: "video/mp4",
+      },
+    }),
+  );
+
+  assert.equal(attachments[0]?.kind, "video");
+  if (attachments[0]?.kind === "video") {
+    assert.equal(attachments[0].width, null);
+    assert.equal(attachments[0].height, null);
+    assert.equal(attachments[0].isGif, false);
+  }
+});
+
+test("bluesky video with presentation: gif is marked isGif", () => {
+  const { attachments } = buildAttachments(
+    bskyRow({
+      $type: "app.bsky.embed.video",
+      video: { ref: { $link: "bafkreitest" }, size: 1, $type: "blob", mimeType: "video/mp4" },
+      presentation: "gif",
+    }),
+  );
+
+  assert.equal(attachments[0]?.kind, "video");
+  if (attachments[0]?.kind === "video") {
+    assert.equal(attachments[0].isGif, true);
+  }
+});
+
+test("recordWithMedia with video media", () => {
+  const { attachments } = buildAttachments(
+    bskyRow({
+      $type: "app.bsky.embed.recordWithMedia",
+      media: {
+        $type: "app.bsky.embed.video",
+        video: { ref: { $link: "bafkreitest" }, size: 1, $type: "blob", mimeType: "video/mp4" },
+      },
+      record: {
+        $type: "app.bsky.embed.record",
+        record: { cid: "x", uri: "at://did:plc:abc/app.bsky.feed.post/xyz" },
+      },
+    }),
+  );
+
+  assert.equal(attachments.length, 2);
+  assert.equal(attachments[0]?.kind, "video");
+  assert.equal(attachments[1]?.kind, "quote");
+});
+
 // --- unrecognized / no embed ---
 
 test("unrecognized embed $type returns no attachments", () => {
-  const { attachments } = buildAttachments(bskyRow({ $type: "app.bsky.embed.video", video: {} }));
+  const { attachments } = buildAttachments(bskyRow({ $type: "app.bsky.embed.gallery", items: [] }));
   assert.deepEqual(attachments, []);
 });
 
@@ -290,9 +376,65 @@ test("mastodon card with image: null (confirmed real, ~13% of cards)", () => {
   }
 });
 
-test("mastodon non-image media types (video/gifv) are skipped for now", () => {
+test("mastodon video media_attachment", () => {
   const { attachments } = buildAttachments(
-    mastodonRow([{ type: "video", url: "https://example.com/v.mp4", preview_url: "https://example.com/v.jpg" }]),
+    mastodonRow([
+      {
+        type: "video",
+        url: "https://example.com/v.mp4",
+        preview_url: "https://example.com/v.jpg",
+        meta: { original: { width: 640, height: 360 } },
+      },
+    ]),
+  );
+
+  assert.deepEqual(attachments, [
+    {
+      kind: "video",
+      playlistUrl: "https://example.com/v.mp4",
+      thumbnailUrl: "https://example.com/v.jpg",
+      isGif: false,
+      width: 640,
+      height: 360,
+    },
+  ]);
+});
+
+test("mastodon gifv media_attachment (real shape, captured from production)", () => {
+  const { attachments } = buildAttachments(
+    mastodonRow([
+      {
+        id: "117071434916343238",
+        url: "https://cdn.fosstodon.org/cache/media_attachments/files/117/071/434/916/343/238/original/23b5a846c6e7cf0f.mp4",
+        type: "gifv",
+        meta: {
+          small: { size: "320x180", width: 320, aspect: 1.7777777777777777, height: 180 },
+          original: { width: 320, height: 180, bitrate: 214018, duration: 8, frame_rate: "10/1" },
+        },
+        description: null,
+        preview_url:
+          "https://cdn.fosstodon.org/cache/media_attachments/files/117/071/434/916/343/238/small/23b5a846c6e7cf0f.png",
+      },
+    ]),
+  );
+
+  assert.deepEqual(attachments, [
+    {
+      kind: "video",
+      playlistUrl:
+        "https://cdn.fosstodon.org/cache/media_attachments/files/117/071/434/916/343/238/original/23b5a846c6e7cf0f.mp4",
+      thumbnailUrl:
+        "https://cdn.fosstodon.org/cache/media_attachments/files/117/071/434/916/343/238/small/23b5a846c6e7cf0f.png",
+      isGif: true,
+      width: 320,
+      height: 180,
+    },
+  ]);
+});
+
+test("mastodon audio media_attachment is still dropped (not a supported kind)", () => {
+  const { attachments } = buildAttachments(
+    mastodonRow([{ type: "audio", url: "https://example.com/a.mp3", preview_url: null }]),
   );
   assert.deepEqual(attachments, []);
 });

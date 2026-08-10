@@ -29,6 +29,14 @@ export type Attachment =
       thumbnailUrl: string | null;
       providerName: string | null;
     }
+  | {
+      kind: "video";
+      playlistUrl: string;
+      thumbnailUrl: string | null;
+      isGif: boolean;
+      width: number | null;
+      height: number | null;
+    }
   | { kind: "quote"; url: string };
 
 export interface FeedPost {

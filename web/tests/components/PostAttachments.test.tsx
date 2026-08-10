@@ -43,6 +43,24 @@ const quote: Attachment = {
   url: "https://bsky.app/profile/did:plc:other/post/xyz",
 };
 
+const gifVideo: Attachment = {
+  kind: "video",
+  playlistUrl: "https://cdn.fosstodon.org/cache/media_attachments/files/117/original/gifv.mp4",
+  thumbnailUrl: "https://cdn.fosstodon.org/cache/media_attachments/files/117/small/gifv.jpg",
+  isGif: true,
+  width: 320,
+  height: 180,
+};
+
+const regularVideo: Attachment = {
+  kind: "video",
+  playlistUrl: "https://video.bsky.app/watch/did:plc:abc123/cid/playlist.m3u8",
+  thumbnailUrl: null,
+  isGif: false,
+  width: 1080,
+  height: 1920,
+};
+
 describe("PostAttachments", () => {
   it("renders nothing when there are no attachments", () => {
     const { container } = render(<PostAttachments post={makePost([])} />);
@@ -109,5 +127,34 @@ describe("PostAttachments", () => {
   it("blurs a sensitive link card's thumbnail too, not just inline images", () => {
     render(<PostAttachments post={makePost([link], true)} />);
     expect(screen.getByRole("button", { name: /show image/i })).toBeInTheDocument();
+  });
+
+  it("renders a gifv/gif-presentation video as autoplay/loop/muted with no controls", () => {
+    const { container } = render(<PostAttachments post={makePost([gifVideo])} />);
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video).toHaveAttribute("autoplay");
+    expect(video).toHaveAttribute("loop");
+    // React sets `muted` as a DOM property, not a reflected HTML attribute
+    // (a deliberate React quirk to avoid an autoplay-policy timing bug) -
+    // check the property, not toHaveAttribute.
+    expect((video as HTMLVideoElement).muted).toBe(true);
+    expect(video).not.toHaveAttribute("controls");
+    expect(video).toHaveAttribute("src", gifVideo.playlistUrl);
+  });
+
+  it("renders a regular video with controls, not autoplaying", () => {
+    const { container } = render(<PostAttachments post={makePost([regularVideo])} />);
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video).toHaveAttribute("controls");
+    expect(video).not.toHaveAttribute("autoplay");
+    expect(video).not.toHaveAttribute("loop");
+  });
+
+  it("blurs a sensitive video behind a real, accessible 'Show video' button", () => {
+    render(<PostAttachments post={makePost([gifVideo], true)} />);
+    const revealButton = screen.getByRole("button", { name: /show video/i });
+    expect(revealButton).toHaveAttribute("aria-pressed", "false");
   });
 });

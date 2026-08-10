@@ -2,10 +2,19 @@ import { useState, type ReactNode } from "react";
 
 import styles from "./SensitiveMedia.module.css";
 
-// Shared by ImageGrid and LinkCard - a sensitive-flagged post's link-card
-// thumbnail can be exactly as graphic as an attached image, so both need
-// the same blur-behind-a-real-button treatment, not just inline images.
-export function SensitiveMedia({ sensitive, children }: { sensitive: boolean; children: ReactNode }) {
+// Shared by ImageGrid, LinkCard, and VideoPlayer - a sensitive-flagged
+// post's link-card thumbnail or video can be exactly as graphic as an
+// attached image, so all three need the same blur-behind-a-real-button
+// treatment, not just inline images.
+export function SensitiveMedia({
+  sensitive,
+  revealLabel = "Show image",
+  children,
+}: {
+  sensitive: boolean;
+  revealLabel?: string;
+  children: ReactNode;
+}) {
   const [revealed, setRevealed] = useState(false);
 
   if (!sensitive || revealed) {
@@ -21,7 +30,7 @@ export function SensitiveMedia({ sensitive, children }: { sensitive: boolean; ch
         aria-pressed={revealed}
         onClick={() => setRevealed(true)}
       >
-        Show image
+        {revealLabel}
       </button>
     </div>
   );

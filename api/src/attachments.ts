@@ -17,6 +17,14 @@ export type Attachment =
       thumbnailUrl: string | null;
       providerName: string | null;
     }
+  | {
+      kind: "video";
+      playlistUrl: string;
+      thumbnailUrl: string | null;
+      isGif: boolean;
+      width: number | null;
+      height: number | null;
+    }
   | { kind: "quote"; url: string };
 
 export interface AttachmentSource {
@@ -35,6 +43,7 @@ export interface AttachmentResult {
 }
 
 const BLUESKY_CDN_BASE = "https://cdn.bsky.app/img";
+const BLUESKY_VIDEO_CDN_BASE = "https://video.bsky.app/watch";
 
 // Verified directly against production data: both feed_thumbnail and
 // feed_fullsize resolve for real did+cid pairs from both post images and
@@ -117,6 +126,38 @@ function parseBlueskyExternal(did: string, external: unknown): Attachment | null
   };
 }
 
+interface BlueskyVideoEmbed {
+  video?: { ref?: { $link?: unknown } };
+  aspectRatio?: { width?: unknown; height?: unknown };
+  presentation?: unknown;
+}
+
+// The raw record (what Jetstream relays, all we ever store) only has a
+// blob ref - no ready-to-play URL. The playlist URL is deterministically
+// constructable client-side from did+videoCid, confirmed against several
+// independent open-source Bluesky client implementations - same pattern
+// as blueskyImageUrls above, no AppView call needed. thumbnailUrl is only
+// available via the AppView's hydrated view shape, not the raw record -
+// not worth a network call just for a poster frame, ships null for now.
+function parseBlueskyVideo(did: string, embed: unknown): Attachment | null {
+  if (typeof embed !== "object" || embed === null) return null;
+  const typed = embed as BlueskyVideoEmbed;
+  const cid = typed.video?.ref?.$link;
+  if (typeof cid !== "string") return null;
+
+  const width = typeof typed.aspectRatio?.width === "number" ? typed.aspectRatio.width : null;
+  const height = typeof typed.aspectRatio?.height === "number" ? typed.aspectRatio.height : null;
+
+  return {
+    kind: "video",
+    playlistUrl: `${BLUESKY_VIDEO_CDN_BASE}/${did}/${cid}/playlist.m3u8`,
+    thumbnailUrl: null,
+    isGif: typed.presentation === "gif",
+    width,
+    height,
+  };
+}
+
 const AT_URI_PATTERN = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/;
 
 function parseBlueskyQuote(record: unknown): Attachment | null {
@@ -144,7 +185,11 @@ function parseBlueskyMediaUnion(did: string, media: unknown): Attachment[] {
     const link = parseBlueskyExternal(did, typed.external);
     return link ? [link] : [];
   }
-  return []; // video/gallery/etc - deferred, see plan
+  if (typed.$type === "app.bsky.embed.video") {
+    const video = parseBlueskyVideo(did, media);
+    return video ? [video] : [];
+  }
+  return []; // gallery/etc - not yet observed in production, deferred
 }
 
 function parseBlueskyEmbed(did: string, embed: unknown): Attachment[] {
@@ -158,6 +203,11 @@ function parseBlueskyEmbed(did: string, embed: unknown): Attachment[] {
     case "app.bsky.embed.external": {
       const link = parseBlueskyExternal(did, typed.external);
       return link ? [link] : [];
+    }
+
+    case "app.bsky.embed.video": {
+      const video = parseBlueskyVideo(did, embed);
+      return video ? [video] : [];
     }
 
     case "app.bsky.embed.record": {
@@ -184,6 +234,7 @@ interface MastodonMediaItem {
   url?: unknown;
   preview_url?: unknown;
   description?: unknown;
+  meta?: { original?: { width?: unknown; height?: unknown } };
 }
 
 function parseMastodonMedia(media: unknown): Attachment[] {
@@ -193,16 +244,35 @@ function parseMastodonMedia(media: unknown): Attachment[] {
   for (const item of media) {
     if (typeof item !== "object" || item === null) continue;
     const m = item as MastodonMediaItem;
-    if (m.type !== "image" || !isHttpUrl(m.url)) continue;
+    if (!isHttpUrl(m.url)) continue;
 
-    result.push({
-      kind: "image",
-      thumbnailUrl: isHttpUrl(m.preview_url) ? m.preview_url : m.url,
-      fullUrl: m.url,
-      alt: nonEmptyString(m.description),
-      width: null,
-      height: null,
-    });
+    if (m.type === "image") {
+      result.push({
+        kind: "image",
+        thumbnailUrl: isHttpUrl(m.preview_url) ? m.preview_url : m.url,
+        fullUrl: m.url,
+        alt: nonEmptyString(m.description),
+        width: null,
+        height: null,
+      });
+      continue;
+    }
+
+    // gifv is a silent looping MP4, not an actual animated GIF - already
+    // immediately playable, same as a regular video, just meant to
+    // autoplay/loop/mute instead of showing controls.
+    if (m.type === "video" || m.type === "gifv") {
+      const width = typeof m.meta?.original?.width === "number" ? m.meta.original.width : null;
+      const height = typeof m.meta?.original?.height === "number" ? m.meta.original.height : null;
+      result.push({
+        kind: "video",
+        playlistUrl: m.url,
+        thumbnailUrl: isHttpUrl(m.preview_url) ? m.preview_url : null,
+        isGif: m.type === "gifv",
+        width,
+        height,
+      });
+    }
   }
   return result;
 }
