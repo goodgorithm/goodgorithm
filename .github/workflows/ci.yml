@@ -84,9 +84,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
         run: |
-          npx -y @railway/cli@latest up --service goodgorithm-ingestion --ci
-          npx -y @railway/cli@latest up --service goodgorithm-api --ci
-          npx -y @railway/cli@latest up --service goodgorithm-processing --ci
+          .github/scripts/railway-deploy.sh goodgorithm-ingestion goodgorithm-api goodgorithm-processing
 
   deploy-production:
     needs: [processing-tests, ingestion-build, api-tests]
@@ -98,9 +96,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PRODUCTION }}
         run: |
-          npx -y @railway/cli@latest up --service goodgorithm-ingestion --ci
-          npx -y @railway/cli@latest up --service goodgorithm-api --ci
-          npx -y @railway/cli@latest up --service goodgorithm-processing --ci
+          .github/scripts/railway-deploy.sh goodgorithm-ingestion goodgorithm-api goodgorithm-processing
 
   # Independent from deploy-staging/deploy-production (Railway) so a web-only
   # failure can't block the backend services deploying, or vice versa.
