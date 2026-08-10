@@ -16,6 +16,17 @@ logger = logging.getLogger("processing")
 
 _shutdown = False
 
+# Backlog-aware sleep: only take the full --interval as idle time when a
+# cycle genuinely had nothing to process. A full unconditional sleep after
+# every cycle regardless of backlog depth was measured 2026-08-10 costing
+# ~300s of pure idle time on top of every ~200-230s cycle (real
+# cycle-to-cycle gaps were ~510s against a 300s configured interval) -
+# fine for an occasional idle moment, not for the sustained deep backlog
+# confirmed the same day (ingestion outpacing processing ~39x). A short
+# fixed buffer instead of looping with zero delay avoids hammering
+# Postgres/Redis in a tight loop while there's real backlog.
+BACKLOG_LOOP_BUFFER_SECONDS = 3
+
 
 def _handle_sigterm(signum, frame) -> None:
     global _shutdown
@@ -47,7 +58,7 @@ def main() -> None:
         return
 
     while not _shutdown:
-        pipeline.run_cycle(args.batch_size)
+        processed_count = pipeline.run_cycle(args.batch_size)
         pipeline.refresh_rankings()
         pipeline.cleanup_old_data()
         # Only reached if the whole cycle completed without raising - an
@@ -57,7 +68,7 @@ def main() -> None:
         heartbeat.ping(config.HEARTBEAT_URL_PROCESSING)
         if _shutdown:
             break
-        time.sleep(args.interval)
+        time.sleep(args.interval if processed_count == 0 else BACKLOG_LOOP_BUFFER_SECONDS)
 
     db.close()
 

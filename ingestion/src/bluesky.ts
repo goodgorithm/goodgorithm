@@ -7,6 +7,15 @@ const JETSTREAM_URL =
 const RECONNECT_BASE_MS = 5_000;
 const RECONNECT_MAX_MS = 60_000;
 
+// Bluesky Jetstream volume (~86,670 posts/hour observed 2026-08-10) vastly
+// exceeds processing/'s throughput even after the backlog-aware-sleep fix
+// (~7,800-8,570/hour capacity) - keeping every post guarantees an
+// ever-deepening backlog where posts age past the 24h retention cutoff
+// before processing ever reaches them. Sampling down to a representative
+// subset keeps the backlog bounded by design. Default 1.0 (no throttling)
+// so nothing changes unless explicitly configured.
+const BLUESKY_SAMPLE_RATE = Number(process.env.BLUESKY_SAMPLE_RATE ?? "1.0");
+
 interface JetstreamEvent {
   did: string;
   time_us: number;
@@ -58,6 +67,8 @@ export function startBlueskyIngestion(): void {
       // only ingest English posts — pipeline models are English-only
       const langs = record.langs ?? [];
       if (langs.length > 0 && !langs.includes("en")) return;
+
+      if (Math.random() >= BLUESKY_SAMPLE_RATE) return;
 
       try {
         await insertPost({
