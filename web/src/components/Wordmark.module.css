@@ -1,0 +1,22 @@
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+}
+
+.mark {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.good {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.gorithm {
+  color: var(--color-text);
+  font-weight: 400;
+}

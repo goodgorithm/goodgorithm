@@ -40,7 +40,7 @@
   height: auto;
   max-height: 400px;
   object-fit: contain;
-  background: #f5f5f5;
+  background: var(--color-surface-muted);
   display: block;
 }
 
@@ -51,5 +51,5 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  background: #f5f5f5;
+  background: var(--color-surface-muted);
 }

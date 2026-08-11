@@ -1,0 +1,31 @@
+/* "Signal" palette + Manrope, settled 2026-08-10 (see CLAUDE.md's Visual
+   identity section). No manual light/dark toggle exists, so theming follows
+   the system preference via prefers-color-scheme, matching index.css's
+   existing `color-scheme: light dark`. */
+
+:root {
+  --font-sans:
+    "Manrope Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-accent: #1f9d55;
+  --color-bg: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f3f4f2;
+  --color-border: #dde1de;
+  --color-text: #16211b;
+  --color-text-secondary: #5b665f;
+  --color-text-tertiary: #8b958f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-accent: #3ecb79;
+    --color-bg: #121815;
+    --color-surface: #19221e;
+    --color-surface-muted: #1f2a24;
+    --color-border: #2a362f;
+    --color-text: #ecf3ef;
+    --color-text-secondary: #9fada6;
+    --color-text-tertiary: #77857f;
+  }
+}

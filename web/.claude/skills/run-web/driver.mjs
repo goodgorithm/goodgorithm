@@ -12,6 +12,7 @@
 //   console                           (dumps captured console errors/pageerrors)
 //   scroll-bottom
 //   reload
+//   emulate-color-scheme <light|dark|no-preference>
 //   quit
 //
 // Usage: node driver.mjs --out <screenshot-dir> < commands.txt
@@ -90,6 +91,10 @@ async function runCommand(line) {
     case "reload":
       await page.reload();
       console.log("ok reload");
+      break;
+    case "emulate-color-scheme":
+      await page.emulateMedia({ colorScheme: arg });
+      console.log(`ok emulate-color-scheme ${arg}`);
       break;
     case "console":
       console.log(`console: ${JSON.stringify(consoleLog)}`);

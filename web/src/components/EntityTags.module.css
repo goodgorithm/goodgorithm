@@ -11,6 +11,6 @@
   font-size: 0.75rem;
   padding: 0.1em 0.5em;
   border-radius: 4px;
-  background: #f0f0f0;
-  color: #555;
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
 }

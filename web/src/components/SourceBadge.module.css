@@ -6,6 +6,6 @@
   font-weight: 600;
   padding: 0.15em 0.6em;
   border-radius: 999px;
-  background: #eee;
-  color: #333;
+  background: var(--color-surface-muted);
+  color: var(--color-text);
 }

@@ -4,7 +4,7 @@
 
 .summary {
   cursor: pointer;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .grid {
@@ -16,5 +16,5 @@
 }
 
 .label {
-  color: #666;
+  color: var(--color-text-secondary);
 }

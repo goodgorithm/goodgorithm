@@ -1,7 +1,8 @@
 .card {
   display: block;
   margin-top: 0.5em;
-  border: 1px solid #ddd;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
   color: inherit;
@@ -13,7 +14,7 @@
   width: 100%;
   max-height: 240px;
   object-fit: cover;
-  background: #f5f5f5;
+  background: var(--color-surface-muted);
 }
 
 .body {
@@ -27,7 +28,7 @@
 
 .description {
   font-size: 0.8rem;
-  color: #666;
+  color: var(--color-text-secondary);
   margin-top: 0.2em;
   overflow: hidden;
   display: -webkit-box;
@@ -37,6 +38,6 @@
 
 .provider {
   font-size: 0.75rem;
-  color: #999;
+  color: var(--color-text-tertiary);
   margin-top: 0.3em;
 }

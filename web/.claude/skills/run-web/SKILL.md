@@ -74,6 +74,7 @@ above). Logs → `/tmp/vite-dev.log`, `/tmp/mock-api.log`.
 | `eval <js-expression>` | evaluate in-page, prints JSON result |
 | `scroll-bottom` | scroll to bottom (triggers infinite-scroll fetch) |
 | `reload` | reload the page |
+| `emulate-color-scheme <light\|dark\|no-preference>` | force the OS-level color scheme (for testing `prefers-color-scheme` theming) |
 | `console` | dump captured `console.error`/`pageerror` entries |
 | `quit` | close the browser and exit |
 

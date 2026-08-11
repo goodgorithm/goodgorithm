@@ -16,8 +16,8 @@ export default defineConfig({
         description: "An algorithmic feed of positive, uplifting public social posts.",
         start_url: "/",
         display: "standalone",
-        background_color: "#ffffff",
-        theme_color: "#111111",
+        background_color: "#121815",
+        theme_color: "#1f9d55",
         icons: [
           { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
           { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },

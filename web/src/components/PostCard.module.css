@@ -1,5 +1,6 @@
 .card {
-  border: 1px solid #ddd;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 1rem;
   margin-bottom: 1rem;
@@ -11,7 +12,7 @@
   gap: 0.6em;
   margin-bottom: 0.5em;
   font-size: 0.85rem;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .avatar {
@@ -35,4 +36,5 @@
 
 .permalink {
   font-size: 0.85rem;
+  color: var(--color-accent);
 }
