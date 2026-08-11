@@ -1,4 +1,5 @@
 import type { FeedPost } from "../api/types";
+import { CollapsiblePostText } from "./CollapsiblePostText";
 import { EntityTags } from "./EntityTags";
 import styles from "./PostCard.module.css";
 import { PostAttachments } from "./PostAttachments";
@@ -24,7 +25,7 @@ export function PostCard({ post }: { post: FeedPost }) {
         <RelativeTime date={post.created_at} />
       </div>
 
-      <p className={styles.text}>{post.text}</p>
+      <CollapsiblePostText text={post.text} />
       <EntityTags entities={post.entities} />
       <PostAttachments post={post} />
 

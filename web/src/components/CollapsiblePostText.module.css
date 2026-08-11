@@ -1,0 +1,23 @@
+.text {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  margin: 0;
+}
+
+.collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.toggle {
+  margin-top: 0.3em;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #1f9d55;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
