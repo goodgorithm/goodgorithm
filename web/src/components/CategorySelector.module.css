@@ -1,14 +1,53 @@
+.wrapper {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
 .row {
   display: flex;
   gap: 0.5em;
   overflow-x: auto;
   padding-bottom: 0.5em;
-  margin-bottom: 1rem;
   scrollbar-width: none;
 }
 
 .row::-webkit-scrollbar {
   display: none;
+}
+
+/* Hints that the row scrolls further - the scrollbar itself is hidden
+   above for a cleaner look, so without these "Full feed" and the last
+   few categories can be invisible with zero indication more exist. A
+   color gradient alone is too subtle against this palette's low contrast
+   (near-white chips on a white ground) to actually read as a scroll
+   hint - the chevron carries the signal regardless of theme contrast. */
+.fade {
+  position: absolute;
+  top: 0;
+  bottom: 0.5em;
+  width: 36px;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.fadeLeft {
+  left: 0;
+  justify-content: flex-start;
+  background: linear-gradient(to right, var(--color-bg) 40%, transparent);
+}
+
+.fadeRight {
+  right: 0;
+  justify-content: flex-end;
+  background: linear-gradient(to left, var(--color-bg) 40%, transparent);
+}
+
+.chevron {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-text-tertiary);
+  line-height: 1;
 }
 
 .chip {
