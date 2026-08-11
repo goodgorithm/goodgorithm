@@ -35,6 +35,23 @@ def test_extract_entities_empty_for_no_entities():
     assert topicality.extract_entities("Local bakery wins a small business award this year.") == []
 
 
+def test_extract_entities_typed_includes_the_label():
+    typed = topicality.extract_entities_typed(
+        "NASA announced the discovery on March 3rd, with $500 million in funding."
+    )
+    assert typed == [("nasa", "ORG")]
+
+
+def test_extract_entities_typed_dedupes_by_text_keeping_first_label():
+    typed = topicality.extract_entities_typed("NASA and NASA again announced the mission.")
+    assert typed == [("nasa", "ORG")]
+
+
+def test_extract_entities_is_consistent_with_extract_entities_typed():
+    text = "Scientists at NASA confirmed the new mission timeline today"
+    assert topicality.extract_entities(text) == [e for e, _label in topicality.extract_entities_typed(text)]
+
+
 def test_compute_tfidf_scores_ranks_distinctive_text_higher():
     texts = [
         "the the the and and and the a a a",
@@ -51,6 +68,34 @@ def test_compute_tfidf_scores_handles_empty_vocabulary_batch():
     # should fall back to zeros, not raise.
     texts = ["the the the", "a a a", "and and and"]
     assert topicality.compute_tfidf_scores(texts) == [0.0, 0.0, 0.0]
+
+
+def test_compute_tfidf_top_terms_are_real_terms_from_the_batch():
+    # taxonomy.categorize() matches against these -- they must be actual
+    # vocabulary strings, not indices or weights.
+    texts = [
+        "quantum entanglement breakthrough announced by researchers today",
+        "solar power panels installed on the community center roof",
+    ]
+    _, top_terms = topicality._compute_tfidf(texts)
+    assert len(top_terms) == 2
+    assert all(isinstance(term, str) for term in top_terms[0])
+    assert set(top_terms[0]).issubset(set(texts[0].split()))
+    assert set(top_terms[1]).issubset(set(texts[1].split()))
+
+
+def test_compute_tfidf_top_terms_empty_for_empty_vocabulary_batch():
+    texts = ["the the the", "a a a"]
+    _, top_terms = topicality._compute_tfidf(texts)
+    assert top_terms == [[], []]
+
+
+def test_score_topicality_result_includes_top_terms():
+    index = InMemoryBurstIndex()
+    posts = [FakePost(id=uuid4(), text="quantum entanglement breakthrough announced by researchers today")]
+    results = topicality.score_topicality(posts, index)
+    assert results[posts[0].id].top_terms
+    assert all(isinstance(term, str) for term in results[posts[0].id].top_terms)
 
 
 def test_score_topicality_burst_upweights_matching_entity():

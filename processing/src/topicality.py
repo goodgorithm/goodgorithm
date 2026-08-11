@@ -28,16 +28,26 @@ def _get_nlp() -> spacy.language.Language:
     return _nlp
 
 
-def extract_entities(text: str) -> list[str]:
+def extract_entities_typed(text: str) -> list[tuple[str, str]]:
+    """(entity text, spaCy label) pairs, deduped by text (first-seen label
+    wins). The typed form everything else is built on -- extract_entities()
+    below just strips the label for callers that only need text, and
+    taxonomy.categorize() uses RELEVANT_ENTITY_LABELS-filtered entity text
+    the same way (see pipeline.py) rather than re-checking type at that
+    layer -- the filtering already happened here."""
     doc = _get_nlp()(text)
-    seen: dict[str, None] = {}
+    seen: dict[str, str] = {}
     for ent in doc.ents:
         if ent.label_ not in RELEVANT_ENTITY_LABELS:
             continue
         normalized = ent.text.strip().lower()
-        if normalized:
-            seen[normalized] = None
-    return list(seen)
+        if normalized and normalized not in seen:
+            seen[normalized] = ent.label_
+    return list(seen.items())
+
+
+def extract_entities(text: str) -> list[str]:
+    return [entity_text for entity_text, _label in extract_entities_typed(text)]
 
 
 def _top_k_mean(values: np.ndarray, k: int) -> float:
@@ -47,10 +57,19 @@ def _top_k_mean(values: np.ndarray, k: int) -> float:
     return float(np.mean(top))
 
 
-def compute_tfidf_scores(texts: list[str]) -> list[float]:
-    """Per-document salience: the mean of each doc's top-K TF-IDF weights,
-    so a post is scored by its most distinctive terms rather than diluted
-    by its length."""
+def _top_k_terms(indices: np.ndarray, values: np.ndarray, feature_names: np.ndarray, k: int) -> list[str]:
+    if values.size == 0:
+        return []
+    order = np.argsort(values)[::-1][:k]
+    return [str(feature_names[indices[i]]) for i in order]
+
+
+def _compute_tfidf(texts: list[str]) -> tuple[list[float], list[list[str]]]:
+    """Single fit shared by compute_tfidf_scores (score only) and
+    score_topicality (score + the actual top-K term strings, which
+    taxonomy.categorize() matches against for rule-based categorization) --
+    fitting TfidfVectorizer twice per cycle for the same batch would be
+    pure waste."""
     normalized = [normalize_text(t) for t in texts]
     try:
         # norm=None: sklearn's default L2 row-normalization concentrates a
@@ -68,8 +87,23 @@ def compute_tfidf_scores(texts: list[str]) -> list[float]:
         matrix = vectorizer.fit_transform(normalized)
     except ValueError:
         # empty vocabulary — e.g. a tiny batch that's all stopwords/URLs
-        return [0.0] * len(texts)
-    return [_top_k_mean(matrix.getrow(i).data, TFIDF_TOP_K) for i in range(matrix.shape[0])]
+        return [0.0] * len(texts), [[] for _ in texts]
+
+    feature_names = vectorizer.get_feature_names_out()
+    scores: list[float] = []
+    top_terms: list[list[str]] = []
+    for i in range(matrix.shape[0]):
+        row = matrix.getrow(i)
+        scores.append(_top_k_mean(row.data, TFIDF_TOP_K))
+        top_terms.append(_top_k_terms(row.indices, row.data, feature_names, TFIDF_TOP_K))
+    return scores, top_terms
+
+
+def compute_tfidf_scores(texts: list[str]) -> list[float]:
+    """Per-document salience: the mean of each doc's top-K TF-IDF weights,
+    so a post is scored by its most distinctive terms rather than diluted
+    by its length."""
+    return _compute_tfidf(texts)[0]
 
 
 class BurstIndex(Protocol):
@@ -102,6 +136,7 @@ class TopicalityResult:
     entities: list[str] = field(default_factory=list)
     tfidf_component: float = 0.0
     burst_component: float = 0.0
+    top_terms: list[str] = field(default_factory=list)
 
 
 def score_topicality(posts: list, index: BurstIndex) -> dict[UUID, TopicalityResult]:
@@ -110,10 +145,10 @@ def score_topicality(posts: list, index: BurstIndex) -> dict[UUID, TopicalityRes
     get their TF-IDF score upweighted, since burst is what actually captures
     "trending now" — TF-IDF alone only measures rarity within a single
     batch, which isn't the same thing."""
-    tfidf_scores = compute_tfidf_scores([post.text for post in posts])
+    tfidf_scores, tfidf_top_terms = _compute_tfidf([post.text for post in posts])
 
     results: dict[UUID, TopicalityResult] = {}
-    for post, tfidf_component in zip(posts, tfidf_scores):
+    for post, tfidf_component, top_terms in zip(posts, tfidf_scores, tfidf_top_terms):
         entities = extract_entities(post.text)
         entity_counts = index.bump_entities(entities)
         max_count = max(entity_counts.values(), default=0)
@@ -126,6 +161,7 @@ def score_topicality(posts: list, index: BurstIndex) -> dict[UUID, TopicalityRes
             entities=entities,
             tfidf_component=tfidf_component,
             burst_component=burst_component,
+            top_terms=top_terms,
         )
 
     return results

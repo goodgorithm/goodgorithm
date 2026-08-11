@@ -73,6 +73,7 @@ def upsert_processed_post(
     base_score: float | None = None,
     rank_score: float | None = None,
     quote_content: dict | None = None,
+    category: str | None = None,
 ) -> None:
     with pool.connection() as conn:
         conn.execute(
@@ -80,9 +81,9 @@ def upsert_processed_post(
             INSERT INTO processed_posts (
                 raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score,
                 sentiment_score, sentiment_method, topicality_score, entities,
-                base_score, rank_score, quote_content
+                base_score, rank_score, quote_content, category
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (raw_post_id) DO UPDATE SET
                 dedup_cluster_id   = EXCLUDED.dedup_cluster_id,
                 is_dedup_canonical = EXCLUDED.is_dedup_canonical,
@@ -95,6 +96,7 @@ def upsert_processed_post(
                 base_score         = EXCLUDED.base_score,
                 rank_score         = EXCLUDED.rank_score,
                 quote_content      = EXCLUDED.quote_content,
+                category           = EXCLUDED.category,
                 processed_at       = NOW()
             """,
             (
@@ -110,6 +112,7 @@ def upsert_processed_post(
                 base_score,
                 rank_score,
                 Jsonb(quote_content) if quote_content is not None else None,
+                category,
             ),
         )
 

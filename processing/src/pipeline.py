@@ -8,7 +8,9 @@ import dedup
 import quote_resolver
 import ranking
 import sentiment
+import taxonomy
 import topicality
+from dedup import normalize_text
 
 logger = logging.getLogger("processing")
 
@@ -80,6 +82,11 @@ def run_cycle(batch_size: int) -> int:
         )
         base_score = ranking.compute_base_score(rankable, now)
 
+        # Deliberately not threaded into RankablePost/ranking.py -- category
+        # is a post-hoc filter on the existing rank_score, not a ranking
+        # input. See taxonomy.py for the matching rules.
+        category = taxonomy.categorize(topic.entities, topic.top_terms, normalize_text(post.text))
+
         quote_uri = quote_uris_by_post.get(post.id)
         quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None
 
@@ -96,6 +103,7 @@ def run_cycle(batch_size: int) -> int:
             base_score=base_score,
             rank_score=None,
             quote_content=quote_content,
+            category=category,
         )
 
     filtered_count = len(posts) - len(kept_posts)
