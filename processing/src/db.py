@@ -31,13 +31,27 @@ def fetch_unprocessed_posts(batch_size: int) -> list[RawPost]:
     # content always gets processed first; a post that never gets reached
     # before it ages out was never going to make a useful feed entry
     # anyway (MMR's recency_decay would have suppressed it too).
+    #
+    # NOT EXISTS, not LEFT JOIN ... WHERE p.id IS NULL: confirmed 2026-08-11
+    # that at real production scale (250k+ raw_posts) the LEFT JOIN form
+    # crash-looped processing for ~22h straight (QueryCanceled: statement
+    # timeout). The planner badly misestimates that anti-join's selectivity
+    # (EXPLAIN showed `rows=1` at every level) and picks a full Parallel
+    # Seq Scan + Hash Join + Sort over both tables instead of walking
+    # raw_posts_created_at_idx newest-first and stopping at LIMIT. NOT
+    # EXISTS gives the planner a much clearer anti-join signal - confirmed
+    # via EXPLAIN against production that it correctly picks a Nested Loop
+    # Anti Join over raw_posts_created_at_idx +
+    # processed_posts_raw_post_id_key (index-only), ~27x cheaper by the
+    # planner's own cost estimate. Same result set, same ORDER BY/LIMIT.
     with pool.connection() as conn:
         rows = conn.execute(
             """
             SELECT r.id, r.source, r.source_id, r.author_id, r.text, r.lang, r.created_at, r.raw_json
             FROM raw_posts r
-            LEFT JOIN processed_posts p ON p.raw_post_id = r.id
-            WHERE p.id IS NULL
+            WHERE NOT EXISTS (
+                SELECT 1 FROM processed_posts p WHERE p.raw_post_id = r.id
+            )
             ORDER BY r.created_at DESC
             LIMIT %s
             """,
