@@ -1,4 +1,8 @@
-const STORAGE_KEY = "goodgorithm:feedCursor";
+import type { Category } from "../api/types";
+
+function storageKey(category: Category | null): string {
+  return `goodgorithm:feedCursor:${category ?? "all"}`;
+}
 
 // Real inflow is a few thousand posts/hour, so a resumed cursor goes stale
 // fast - past this window we'd rather show fresh top-of-feed content than
@@ -10,14 +14,15 @@ interface StoredCursor {
   savedAt: number;
 }
 
-export function loadCursor(): string | null {
+export function loadCursor(category: Category | null): string | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const key = storageKey(category);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as StoredCursor;
     if (Date.now() - parsed.savedAt > EXPIRY_MS) {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(key);
       return null;
     }
     return parsed.cursor;
@@ -26,22 +31,23 @@ export function loadCursor(): string | null {
   }
 }
 
-export function saveCursor(cursor: string | null): void {
+export function saveCursor(category: Category | null, cursor: string | null): void {
   try {
+    const key = storageKey(category);
     if (!cursor) {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(key);
       return;
     }
     const value: StoredCursor = { cursor, savedAt: Date.now() };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // localStorage unavailable (private mode, quota) - resuming is best-effort
   }
 }
 
-export function clearCursor(): void {
+export function clearCursor(category: Category | null): void {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey(category));
   } catch {
     // ignore
   }

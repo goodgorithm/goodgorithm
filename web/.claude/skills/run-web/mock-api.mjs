@@ -10,6 +10,18 @@ import http from "node:http";
 const PORT = Number(process.argv[2]) || 4100;
 const PAGE_SIZE = 20;
 
+// Mirrors web/src/api/types.ts's CATEGORIES - keep in sync if that changes.
+const CATEGORIES = [
+  "technology",
+  "arts_culture",
+  "animals",
+  "science_discovery",
+  "kindness_community",
+  "environment_nature",
+  "health_recovery",
+  "sports_achievement",
+];
+
 const LONG_TEXT =
   "Neighbors on Elm Street spent the whole weekend rebuilding the community garden after the storm knocked over half the raised beds. " +
   "Someone brought a truckload of compost, someone else donated seedlings, and by Sunday evening there were fresh rows of tomatoes, peppers, and squash going in the ground. " +
@@ -21,11 +33,14 @@ function makePosts(count) {
   const posts = [];
   for (let i = 0; i < count; i++) {
     const isLong = i === 3; // one long post, to exercise auto-collapse
+    // every 5th post uncategorized (category: null), matching real data
+    // where a lot of content doesn't match any taxonomy term.
+    const category = i % 5 === 0 ? null : CATEGORIES[i % CATEGORIES.length];
     posts.push({
       id: String(i),
       source: i % 2 === 0 ? "bluesky" : "mastodon",
       author_id: `user-${i}`,
-      text: isLong ? LONG_TEXT : `Short uplifting post number ${i}.`,
+      text: isLong ? LONG_TEXT : `Short uplifting post number ${i} (${category ?? "uncategorized"}).`,
       created_at: new Date(Date.now() - i * 60_000).toISOString(),
       entities: [],
       permalink: `https://example.com/post/${i}`,
@@ -33,6 +48,7 @@ function makePosts(count) {
       scores: { sentiment: 0.8, topicality: 1, base: 0.9, rank: 1 - i * 0.001 },
       attachments: [],
       sensitive: false,
+      category,
     });
   }
   return posts;
@@ -51,11 +67,13 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === "/feed") {
+    const category = url.searchParams.get("category");
+    const filtered = category ? ALL_POSTS.filter((p) => p.category === category) : ALL_POSTS;
     const cursor = url.searchParams.get("cursor");
     const start = cursor ? Number(cursor) : 0;
-    const page = ALL_POSTS.slice(start, start + PAGE_SIZE);
+    const page = filtered.slice(start, start + PAGE_SIZE);
     const nextIndex = start + PAGE_SIZE;
-    const next_cursor = nextIndex < ALL_POSTS.length ? String(nextIndex) : null;
+    const next_cursor = nextIndex < filtered.length ? String(nextIndex) : null;
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ posts: page, next_cursor }));
     return;

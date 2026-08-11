@@ -35,6 +35,28 @@ describe("api client", () => {
     expect(calledUrl).toContain("limit=10");
   });
 
+  it("passes the category through to /feed when present", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ posts: [], next_cursor: null }), { status: 200 }),
+    );
+
+    await fetchFeed(null, 10, "technology");
+
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toContain("category=technology");
+  });
+
+  it("omits the category param when not provided", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ posts: [], next_cursor: null }), { status: 200 }),
+    );
+
+    await fetchFeed(null, 10);
+
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).not.toContain("category=");
+  });
+
   it("throws on a non-OK response", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response("nope", { status: 500 }));
 

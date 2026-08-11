@@ -1,5 +1,32 @@
 export type Source = "bluesky" | "mastodon";
 
+// The fixed 8-category taxonomy assigned by processing/'s taxonomy.py.
+// Hand-duplicated in api/src/categories.ts -- no shared package across the
+// API/web boundary in this repo (same pattern as the Attachment union).
+export const CATEGORIES = [
+  "technology",
+  "arts_culture",
+  "animals",
+  "science_discovery",
+  "kindness_community",
+  "environment_nature",
+  "health_recovery",
+  "sports_achievement",
+] as const;
+
+export type Category = (typeof CATEGORIES)[number];
+
+export const CATEGORY_LABELS: Record<Category, string> = {
+  technology: "Technology",
+  arts_culture: "Arts & Culture",
+  animals: "Animals",
+  science_discovery: "Science & Discovery",
+  kindness_community: "Kindness & Community",
+  environment_nature: "Environment & Nature",
+  health_recovery: "Health & Recovery",
+  sports_achievement: "Sports & Achievement",
+};
+
 export interface FeedPostScores {
   sentiment: number;
   topicality: number;
@@ -62,6 +89,7 @@ export interface FeedPost {
   scores: FeedPostScores;
   attachments: Attachment[];
   sensitive: boolean;
+  category: Category | null;
 }
 
 export interface FeedResponse {
