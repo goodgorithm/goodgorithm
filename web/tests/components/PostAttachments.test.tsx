@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { Attachment, FeedPost } from "../../src/api/types";
@@ -160,32 +160,43 @@ describe("PostAttachments", () => {
     expect(screen.getByRole("button", { name: /show image/i })).toBeInTheDocument();
   });
 
-  it("renders a gifv/gif-presentation video as autoplay/loop/muted with no controls", () => {
+  // VideoPlayer (and hls.js) is React.lazy-loaded (2026-08-11 perf pass, see
+  // PostAttachments.tsx) so it no longer renders synchronously - these wait
+  // for the dynamic import to resolve via findBy/waitFor instead of
+  // asserting immediately after render().
+
+  it("renders a gifv/gif-presentation video as autoplay/loop/muted with no controls", async () => {
     const { container } = render(<PostAttachments post={makePost([gifVideo])} />);
-    const video = container.querySelector("video");
-    expect(video).not.toBeNull();
+    const video = await waitFor(() => {
+      const el = container.querySelector("video");
+      expect(el).not.toBeNull();
+      return el as HTMLVideoElement;
+    });
     expect(video).toHaveAttribute("autoplay");
     expect(video).toHaveAttribute("loop");
     // React sets `muted` as a DOM property, not a reflected HTML attribute
     // (a deliberate React quirk to avoid an autoplay-policy timing bug) -
     // check the property, not toHaveAttribute.
-    expect((video as HTMLVideoElement).muted).toBe(true);
+    expect(video.muted).toBe(true);
     expect(video).not.toHaveAttribute("controls");
     expect(video).toHaveAttribute("src", gifVideo.playlistUrl);
   });
 
-  it("renders a regular video with controls, not autoplaying", () => {
+  it("renders a regular video with controls, not autoplaying", async () => {
     const { container } = render(<PostAttachments post={makePost([regularVideo])} />);
-    const video = container.querySelector("video");
-    expect(video).not.toBeNull();
+    const video = await waitFor(() => {
+      const el = container.querySelector("video");
+      expect(el).not.toBeNull();
+      return el as HTMLVideoElement;
+    });
     expect(video).toHaveAttribute("controls");
     expect(video).not.toHaveAttribute("autoplay");
     expect(video).not.toHaveAttribute("loop");
   });
 
-  it("blurs a sensitive video behind a real, accessible 'Show video' button", () => {
+  it("blurs a sensitive video behind a real, accessible 'Show video' button", async () => {
     render(<PostAttachments post={makePost([gifVideo], true)} />);
-    const revealButton = screen.getByRole("button", { name: /show video/i });
+    const revealButton = await screen.findByRole("button", { name: /show video/i });
     expect(revealButton).toHaveAttribute("aria-pressed", "false");
   });
 });

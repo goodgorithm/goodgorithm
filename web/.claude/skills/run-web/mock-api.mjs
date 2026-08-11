@@ -33,6 +33,7 @@ function makePosts(count) {
   const posts = [];
   for (let i = 0; i < count; i++) {
     const isLong = i === 3; // one long post, to exercise auto-collapse
+    const hasVideo = i === 5; // one video post, to exercise the lazy-loaded VideoPlayer/hls.js chunk
     // every 5th post uncategorized (category: null), matching real data
     // where a lot of content doesn't match any taxonomy term.
     const category = i % 5 === 0 ? null : CATEGORIES[i % CATEGORIES.length];
@@ -46,7 +47,20 @@ function makePosts(count) {
       permalink: `https://example.com/post/${i}`,
       author: { display_name: `Person ${i}`, avatar_url: null },
       scores: { sentiment: 0.8, topicality: 1, base: 0.9, rank: 1 - i * 0.001 },
-      attachments: [],
+      attachments: hasVideo
+        ? [
+            {
+              kind: "video",
+              // A plain MP4 (Mastodon-shaped) so this exercises VideoPlayer's
+              // native <video src> path without needing a real HLS manifest.
+              playlistUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+              thumbnailUrl: null,
+              isGif: false,
+              width: 1280,
+              height: 720,
+            },
+          ]
+        : [],
       sensitive: false,
       category,
     });
