@@ -25,9 +25,14 @@ export interface FeedPost {
   mastodon_sensitive: boolean | null;
   bluesky_labels: unknown;
   quote_content: unknown;
+  category: string | null;
 }
 
-export async function fetchFeed(limit: number, cursor: Cursor | null): Promise<FeedPost[]> {
+export async function fetchFeed(
+  limit: number,
+  cursor: Cursor | null,
+  category: string | null,
+): Promise<FeedPost[]> {
   const rows = await sql<FeedPost[]>`
     SELECT r.id, r.source, r.source_id, r.author_id, r.text, r.created_at, p.entities,
            p.sentiment_score, p.topicality_score, p.base_score, p.rank_score,
@@ -39,11 +44,13 @@ export async function fetchFeed(limit: number, cursor: Cursor | null): Promise<F
            r.raw_json->'card' AS mastodon_card,
            (r.raw_json->>'sensitive')::boolean AS mastodon_sensitive,
            r.raw_json->'commit'->'record'->'labels' AS bluesky_labels,
-           p.quote_content
+           p.quote_content,
+           p.category
     FROM processed_posts p
     JOIN raw_posts r ON r.id = p.raw_post_id
     WHERE p.rank_score IS NOT NULL
       ${cursor ? sql`AND (p.rank_score, r.id) < (${cursor.rank_score}, ${cursor.id})` : sql``}
+      ${category ? sql`AND p.category = ${category}` : sql``}
     ORDER BY p.rank_score DESC, r.id DESC
     LIMIT ${limit}
   `;

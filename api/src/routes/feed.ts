@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { buildAttachments } from "../attachments";
+import { CATEGORIES } from "../categories";
 import { fetchFeed } from "../db";
 import { decodeCursor, encodeCursor, type Cursor } from "../pagination";
 import { buildPermalink } from "../permalink";
@@ -11,6 +12,7 @@ const feedQuerySchema = {
     properties: {
       limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
       cursor: { type: "string" },
+      category: { type: "string", enum: CATEGORIES },
     },
   },
 } as const;
@@ -18,6 +20,7 @@ const feedQuerySchema = {
 interface FeedQuery {
   limit?: number;
   cursor?: string;
+  category?: string;
 }
 
 export async function feedRoute(app: FastifyInstance): Promise<void> {
@@ -36,8 +39,10 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
         }
       }
 
+      const category = request.query.category ?? null;
+
       // fetch one extra row to know if a next page exists, without a second query
-      const rows = await fetchFeed(limit + 1, cursor);
+      const rows = await fetchFeed(limit + 1, cursor, category);
       const hasNext = rows.length > limit;
       const page = hasNext ? rows.slice(0, limit) : rows;
       const last = page[page.length - 1];
@@ -68,6 +73,7 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
             },
             attachments,
             sensitive,
+            category: row.category,
           };
         }),
         next_cursor,
