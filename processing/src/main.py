@@ -16,17 +16,6 @@ logger = logging.getLogger("processing")
 
 _shutdown = False
 
-# Backlog-aware sleep: only take the full --interval as idle time when a
-# cycle genuinely had nothing to process. A full unconditional sleep after
-# every cycle regardless of backlog depth was measured 2026-08-10 costing
-# ~300s of pure idle time on top of every ~200-230s cycle (real
-# cycle-to-cycle gaps were ~510s against a 300s configured interval) -
-# fine for an occasional idle moment, not for the sustained deep backlog
-# confirmed the same day (ingestion outpacing processing ~39x). A short
-# fixed buffer instead of looping with zero delay avoids hammering
-# Postgres/Redis in a tight loop while there's real backlog.
-BACKLOG_LOOP_BUFFER_SECONDS = 3
-
 
 def _handle_sigterm(signum, frame) -> None:
     global _shutdown
@@ -43,6 +32,37 @@ def main() -> None:
     parser.add_argument(
         "--interval", type=int, default=int(os.environ.get("PROCESSING_INTERVAL_SECONDS", 300))
     )
+    # Backlog-aware sleep: only take the full --interval as idle time when a
+    # cycle genuinely had nothing to process. A full unconditional sleep after
+    # every cycle regardless of backlog depth was measured 2026-08-10 costing
+    # ~300s of pure idle time on top of every ~200-230s cycle (real
+    # cycle-to-cycle gaps were ~510s against a 300s configured interval) -
+    # fine for an occasional idle moment, not for the sustained deep backlog
+    # confirmed the same day (ingestion outpacing processing ~39x). A short
+    # fixed buffer instead of looping with zero delay avoids hammering
+    # Postgres/Redis in a tight loop while there's real backlog. Configurable
+    # (2026-08-11) so a low-traffic environment can use a larger buffer
+    # without hardcoding a second code path.
+    parser.add_argument(
+        "--backlog-buffer",
+        type=int,
+        default=int(os.environ.get("PROCESSING_BACKLOG_BUFFER_SECONDS", 3)),
+    )
+    # refresh_rankings() rebuilds the full MMR similarity matrices from
+    # scratch (ranking.py's _similarity_matrix) over the whole candidate
+    # pool - real O(n^2) compute, ~96MB of dense arrays at the current
+    # MMR_CANDIDATE_POOL_SIZE cap. Running it on literally every loop
+    # iteration (as often as every --backlog-buffer seconds under any
+    # backlog) redoes that work almost entirely from scratch for a pool
+    # that's barely changed since the last run. rank_score being up to
+    # this many seconds stale is imperceptible - feed freshness is
+    # dominated by run_cycle inserting new posts continuously, not by how
+    # fast the diversity re-ranking catches up.
+    parser.add_argument(
+        "--refresh-interval",
+        type=int,
+        default=int(os.environ.get("REFRESH_RANKINGS_INTERVAL_SECONDS", 30)),
+    )
     args = parser.parse_args()
 
     config.validate()
@@ -57,9 +77,15 @@ def main() -> None:
         db.close()
         return
 
+    last_refresh_time = 0.0
     while not _shutdown:
         processed_count = pipeline.run_cycle(args.batch_size)
-        pipeline.refresh_rankings()
+
+        now = time.monotonic()
+        if now - last_refresh_time >= args.refresh_interval:
+            pipeline.refresh_rankings()
+            last_refresh_time = now
+
         pipeline.cleanup_old_data()
         # Only reached if the whole cycle completed without raising - an
         # unhandled exception anywhere above crashes the process before
@@ -68,7 +94,7 @@ def main() -> None:
         heartbeat.ping(config.HEARTBEAT_URL_PROCESSING)
         if _shutdown:
             break
-        time.sleep(args.interval if processed_count == 0 else BACKLOG_LOOP_BUFFER_SECONDS)
+        time.sleep(args.interval if processed_count == 0 else args.backlog_buffer)
 
     db.close()
 

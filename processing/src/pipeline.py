@@ -64,6 +64,7 @@ def run_cycle(batch_size: int) -> int:
 
     now = datetime.now(timezone.utc)
 
+    upserts: list[db.ProcessedPostUpsert] = []
     for post in kept_posts:
         cluster = dedup_results[post.id]
         bot_score = bot_filter.score_bot(post.author_id, post.text, cluster.cluster_id, bot_index)
@@ -90,21 +91,25 @@ def run_cycle(batch_size: int) -> int:
         quote_uri = quote_uris_by_post.get(post.id)
         quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None
 
-        db.upsert_processed_post(
-            raw_post_id=post.id,
-            dedup_cluster_id=cluster.cluster_id,
-            sentiment_score=sentiment_score,
-            sentiment_method=sentiment.SENTIMENT_METHOD,
-            topicality_score=topic.score,
-            is_dedup_canonical=cluster.is_canonical,
-            is_bot=bot_score.is_bot,
-            bot_score=bot_score.bot_score,
-            entities=topic.entities,
-            base_score=base_score,
-            rank_score=None,
-            quote_content=quote_content,
-            category=category,
+        upserts.append(
+            db.ProcessedPostUpsert(
+                raw_post_id=post.id,
+                dedup_cluster_id=cluster.cluster_id,
+                sentiment_score=sentiment_score,
+                sentiment_method=sentiment.SENTIMENT_METHOD,
+                topicality_score=topic.score,
+                is_dedup_canonical=cluster.is_canonical,
+                is_bot=bot_score.is_bot,
+                bot_score=bot_score.bot_score,
+                entities=topic.entities,
+                base_score=base_score,
+                rank_score=None,
+                quote_content=quote_content,
+                category=category,
+            )
         )
+
+    db.upsert_processed_posts(upserts)
 
     filtered_count = len(posts) - len(kept_posts)
     if filtered_count:

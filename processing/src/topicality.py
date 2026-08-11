@@ -24,7 +24,12 @@ _nlp: spacy.language.Language | None = None
 def _get_nlp() -> spacy.language.Language:
     global _nlp
     if _nlp is None:
-        _nlp = spacy.load("en_core_web_sm", disable=["lemmatizer"])
+        # Only doc.ents is ever read (see extract_entities_typed below) - the
+        # parser/tagger/attribute_ruler are independent pipeline components
+        # that don't feed NER (they share tok2vec's embeddings, not each
+        # other's output), so they run unconditionally on every post's text
+        # for zero benefit unless disabled too.
+        _nlp = spacy.load("en_core_web_sm", disable=["lemmatizer", "parser", "tagger", "attribute_ruler"])
     return _nlp
 
 

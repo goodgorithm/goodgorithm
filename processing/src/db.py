@@ -60,61 +60,82 @@ def fetch_unprocessed_posts(batch_size: int) -> list[RawPost]:
     return [RawPost(*row) for row in rows]
 
 
-def upsert_processed_post(
-    raw_post_id: UUID,
-    dedup_cluster_id: UUID,
-    sentiment_score: float,
-    sentiment_method: str,
-    topicality_score: float,
-    is_dedup_canonical: bool = True,
-    is_bot: bool = False,
-    bot_score: float | None = None,
-    entities: list | None = None,
-    base_score: float | None = None,
-    rank_score: float | None = None,
-    quote_content: dict | None = None,
-    category: str | None = None,
-) -> None:
+@dataclass
+class ProcessedPostUpsert:
+    raw_post_id: UUID
+    dedup_cluster_id: UUID
+    sentiment_score: float
+    sentiment_method: str
+    topicality_score: float
+    is_dedup_canonical: bool = True
+    is_bot: bool = False
+    bot_score: float | None = None
+    entities: list | None = None
+    base_score: float | None = None
+    rank_score: float | None = None
+    quote_content: dict | None = None
+    category: str | None = None
+
+
+UPSERT_PROCESSED_POSTS_CHUNK_SIZE = 500
+
+
+def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
+    """Batched sibling of the old per-post upsert -- run_cycle used to call
+    that once per post (up to batch_size separate round trips every cycle,
+    2026-08-11 perf pass). Mirrors update_rank_scores' existing chunked-
+    multi-row-VALUES pattern below rather than one giant statement, so
+    param count stays bounded as batch_size grows."""
+    if not rows:
+        return
     with pool.connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO processed_posts (
-                raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score,
-                sentiment_score, sentiment_method, topicality_score, entities,
-                base_score, rank_score, quote_content, category
+        for i in range(0, len(rows), UPSERT_PROCESSED_POSTS_CHUNK_SIZE):
+            chunk = rows[i : i + UPSERT_PROCESSED_POSTS_CHUNK_SIZE]
+            values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk))
+            params = [
+                value
+                for row in chunk
+                for value in (
+                    row.raw_post_id,
+                    row.dedup_cluster_id,
+                    row.is_dedup_canonical,
+                    row.is_bot,
+                    row.bot_score,
+                    row.sentiment_score,
+                    row.sentiment_method,
+                    row.topicality_score,
+                    Jsonb(row.entities) if row.entities is not None else None,
+                    row.base_score,
+                    row.rank_score,
+                    Jsonb(row.quote_content) if row.quote_content is not None else None,
+                    row.category,
+                )
+            ]
+            conn.execute(
+                f"""
+                INSERT INTO processed_posts (
+                    raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score,
+                    sentiment_score, sentiment_method, topicality_score, entities,
+                    base_score, rank_score, quote_content, category
+                )
+                VALUES {values_sql}
+                ON CONFLICT (raw_post_id) DO UPDATE SET
+                    dedup_cluster_id   = EXCLUDED.dedup_cluster_id,
+                    is_dedup_canonical = EXCLUDED.is_dedup_canonical,
+                    is_bot             = EXCLUDED.is_bot,
+                    bot_score          = EXCLUDED.bot_score,
+                    sentiment_score    = EXCLUDED.sentiment_score,
+                    sentiment_method   = EXCLUDED.sentiment_method,
+                    topicality_score   = EXCLUDED.topicality_score,
+                    entities           = EXCLUDED.entities,
+                    base_score         = EXCLUDED.base_score,
+                    rank_score         = EXCLUDED.rank_score,
+                    quote_content      = EXCLUDED.quote_content,
+                    category           = EXCLUDED.category,
+                    processed_at       = NOW()
+                """,
+                params,
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (raw_post_id) DO UPDATE SET
-                dedup_cluster_id   = EXCLUDED.dedup_cluster_id,
-                is_dedup_canonical = EXCLUDED.is_dedup_canonical,
-                is_bot             = EXCLUDED.is_bot,
-                bot_score          = EXCLUDED.bot_score,
-                sentiment_score    = EXCLUDED.sentiment_score,
-                sentiment_method   = EXCLUDED.sentiment_method,
-                topicality_score   = EXCLUDED.topicality_score,
-                entities           = EXCLUDED.entities,
-                base_score         = EXCLUDED.base_score,
-                rank_score         = EXCLUDED.rank_score,
-                quote_content      = EXCLUDED.quote_content,
-                category           = EXCLUDED.category,
-                processed_at       = NOW()
-            """,
-            (
-                raw_post_id,
-                dedup_cluster_id,
-                is_dedup_canonical,
-                is_bot,
-                bot_score,
-                sentiment_score,
-                sentiment_method,
-                topicality_score,
-                Jsonb(entities) if entities is not None else None,
-                base_score,
-                rank_score,
-                Jsonb(quote_content) if quote_content is not None else None,
-                category,
-            ),
-        )
 
 
 @dataclass
