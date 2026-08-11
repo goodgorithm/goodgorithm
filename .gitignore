@@ -38,4 +38,8 @@ coverage/
 /data/
 /models/
 
+# Supabase CLI local state (linked project ref, service version caches) -
+# machine/session-specific, not shared across checkouts
+supabase/.temp/
+
 .claude/settings.local.json
