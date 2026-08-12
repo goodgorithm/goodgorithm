@@ -14,7 +14,12 @@ test("/health reports unhealthy (503) when the database is unreachable", async (
   try {
     const res = await app.inject({ method: "GET", url: "/health" });
     assert.equal(res.statusCode, 503);
-    assert.deepEqual(JSON.parse(res.body), { status: "error", database: "unreachable" });
+    const body = JSON.parse(res.body);
+    assert.equal(body.status, "error");
+    assert.equal(body.database, "unreachable");
+    // "unknown" outside Railway (RAILWAY_GIT_COMMIT_SHA unset in this test
+    // environment) - just confirming the field exists, not a specific value.
+    assert.equal(typeof body.version, "string");
   } finally {
     await app.close();
   }

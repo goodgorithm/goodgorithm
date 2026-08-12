@@ -1,47 +1,7 @@
 import { buildBlueskyPostUrl } from "./permalink";
+import type { Attachment, QuoteContent } from "./types";
 
-// Pre-shaped by processing/'s quote_resolver.py at scoring time (batched
-// AppView calls, content-filtered before storage) and passed straight
-// through here - api/ does no further shaping or network calls of its
-// own. "not_found" covers deleted/blocked/detached alike (getPosts, the
-// batch endpoint used to resolve these, doesn't distinguish which - only
-// per-thread embed views do, and resolving each quote's own thread just
-// to get that distinction wasn't worth the extra AppView calls).
-export type QuoteContent =
-  | {
-      status: "available";
-      author: { displayName: string | null; handle: string | null; avatarUrl: string | null };
-      text: string;
-      createdAt: string | null;
-    }
-  | { status: "unavailable"; reason: "not_found" | "filtered" };
-
-export type Attachment =
-  | {
-      kind: "image";
-      thumbnailUrl: string;
-      fullUrl: string;
-      alt: string | null;
-      width: number | null;
-      height: number | null;
-    }
-  | {
-      kind: "link";
-      url: string;
-      title: string | null;
-      description: string | null;
-      thumbnailUrl: string | null;
-      providerName: string | null;
-    }
-  | {
-      kind: "video";
-      playlistUrl: string;
-      thumbnailUrl: string | null;
-      isGif: boolean;
-      width: number | null;
-      height: number | null;
-    }
-  | { kind: "quote"; url: string; content: QuoteContent | null };
+export type { Attachment, QuoteContent } from "./types";
 
 export interface AttachmentSource {
   source: "bluesky" | "mastodon";

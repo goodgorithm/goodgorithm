@@ -16,8 +16,10 @@ const bskyPost: FeedPost = {
   permalink: "https://bsky.app/profile/did:plc:abc123/post/xyz",
   author: { display_name: null, avatar_url: null },
   scores: { sentiment: 0.9, topicality: 1.2, base: 1.1, rank: 0.8 },
+  pipeline_version: "v1",
   attachments: [],
   sensitive: false,
+  category: null,
 };
 
 const mastodonPost: FeedPost = {

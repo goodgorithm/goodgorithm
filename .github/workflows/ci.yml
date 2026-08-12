@@ -70,6 +70,16 @@ jobs:
           node-version: lts/*
           cache: npm
           cache-dependency-path: web/package-lock.json
+      # Fails if api/src/types.ts changed without regenerating web/src/api/
+      # types.generated.ts (scripts/sync-api-types.mjs) - see CLAUDE.md's
+      # Versioning & migration section for why this exists instead of a
+      # live shared package between the two services. Paths relative to
+      # this job's default working-directory (web/), not overridden, to
+      # avoid relying on how a step-level override would interact with it.
+      - name: Check api/web type sync
+        run: |
+          node ../scripts/sync-api-types.mjs
+          git diff --exit-code src/api/types.generated.ts
       - run: npm ci
       - run: npm run build
       - run: npm test

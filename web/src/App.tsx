@@ -5,6 +5,7 @@ import missionSource from "./content/mission.md?raw";
 import styles from "./App.module.css";
 import { ContentPage } from "./components/ContentPage";
 import { Feed } from "./components/Feed";
+import { UpdatePrompt } from "./components/UpdatePrompt";
 import { Wordmark } from "./components/Wordmark";
 import { useLocation } from "./lib/useLocation";
 
@@ -25,6 +26,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <main className={styles.main}>
+        <UpdatePrompt />
         <header className={styles.header}>
           <Wordmark />
           <nav className={styles.nav}>

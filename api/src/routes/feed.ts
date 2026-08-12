@@ -71,6 +71,7 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
               base: row.base_score,
               rank: row.rank_score,
             },
+            pipeline_version: row.pipeline_version,
             attachments,
             sensitive,
             category: row.category,

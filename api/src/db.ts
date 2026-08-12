@@ -4,7 +4,11 @@ import type { Cursor } from "./pagination";
 
 const sql = postgres(process.env.DATABASE_URL!, { max: 5 });
 
-export interface FeedPost {
+// The raw DB row shape this query returns - distinct from types.ts's
+// FeedPost (the public /feed response shape), which is assembled from this
+// plus buildAttachments()'s output in routes/feed.ts. Named differently on
+// purpose to avoid the two colliding.
+export interface FeedRow {
   id: string;
   source: "bluesky" | "mastodon";
   source_id: string;
@@ -16,6 +20,7 @@ export interface FeedPost {
   topicality_score: number;
   base_score: number;
   rank_score: number;
+  pipeline_version: string;
   mastodon_permalink: string | null;
   mastodon_display_name: string | null;
   mastodon_avatar_url: string | null;
@@ -32,10 +37,11 @@ export async function fetchFeed(
   limit: number,
   cursor: Cursor | null,
   category: string | null,
-): Promise<FeedPost[]> {
-  const rows = await sql<FeedPost[]>`
+): Promise<FeedRow[]> {
+  const rows = await sql<FeedRow[]>`
     SELECT r.id, r.source, r.source_id, r.author_id, r.text, r.created_at, p.entities,
            p.sentiment_score, p.topicality_score, p.base_score, p.rank_score,
+           p.pipeline_version,
            r.raw_json->>'url' AS mastodon_permalink,
            r.raw_json->'account'->>'display_name' AS mastodon_display_name,
            r.raw_json->'account'->>'avatar' AS mastodon_avatar_url,

@@ -67,6 +67,7 @@ class ProcessedPostUpsert:
     sentiment_score: float
     sentiment_method: str
     topicality_score: float
+    pipeline_version: str
     is_dedup_canonical: bool = True
     is_bot: bool = False
     bot_score: float | None = None
@@ -91,7 +92,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
     with pool.connection() as conn:
         for i in range(0, len(rows), UPSERT_PROCESSED_POSTS_CHUNK_SIZE):
             chunk = rows[i : i + UPSERT_PROCESSED_POSTS_CHUNK_SIZE]
-            values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk))
+            values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk))
             params = [
                 value
                 for row in chunk
@@ -109,6 +110,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.rank_score,
                     Jsonb(row.quote_content) if row.quote_content is not None else None,
                     row.category,
+                    row.pipeline_version,
                 )
             ]
             conn.execute(
@@ -116,7 +118,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                 INSERT INTO processed_posts (
                     raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score,
                     sentiment_score, sentiment_method, topicality_score, entities,
-                    base_score, rank_score, quote_content, category
+                    base_score, rank_score, quote_content, category, pipeline_version
                 )
                 VALUES {values_sql}
                 ON CONFLICT (raw_post_id) DO UPDATE SET
@@ -132,6 +134,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     rank_score         = EXCLUDED.rank_score,
                     quote_content      = EXCLUDED.quote_content,
                     category           = EXCLUDED.category,
+                    pipeline_version   = EXCLUDED.pipeline_version,
                     processed_at       = NOW()
                 """,
                 params,

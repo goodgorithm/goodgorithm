@@ -59,6 +59,7 @@ function makePosts(count) {
         base: 0.2 + ((i * 0.29) % 1.1),
         rank: 1 - ((i * 0.17) % 1),
       },
+      pipeline_version: "v1",
       attachments: hasVideo
         ? [
             {

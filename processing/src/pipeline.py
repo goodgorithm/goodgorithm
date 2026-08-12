@@ -22,6 +22,17 @@ logger = logging.getLogger("processing")
 # RETENTION_HOURS is deleted before it could ever be 72h old.
 RETENTION_HOURS = 24
 
+# Which version of this pipeline's scoring logic (dedup/bot/topicality/
+# sentiment/ranking, taken together) produced a post's scores -- mirrors how
+# sentiment_method already records which sentiment scorer (CNN vs VADER)
+# produced a score, at the whole-pipeline level rather than one stage.
+# processed_posts.pipeline_version existed as a schema column (DEFAULT 'v1')
+# since the table was created, 2026-08-08, but was never actually written by
+# this module until now -- see CLAUDE.md's Versioning & migration section.
+# Bump this when a change to any scoring stage would make two posts'
+# base_score/rank_score not directly comparable to each other.
+PIPELINE_VERSION = "v1"
+
 
 def enforce_redis_capacity() -> None:
     """Proactive Redis size guard -- call before run_cycle so this cycle's
@@ -108,6 +119,7 @@ def run_cycle(batch_size: int) -> int:
                 sentiment_score=sentiment_score,
                 sentiment_method=sentiment.SENTIMENT_METHOD,
                 topicality_score=topic.score,
+                pipeline_version=PIPELINE_VERSION,
                 is_dedup_canonical=cluster.is_canonical,
                 is_bot=bot_score.is_bot,
                 bot_score=bot_score.bot_score,
