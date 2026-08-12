@@ -38,8 +38,25 @@ function decodeHtmlEntities(text: string): string {
   });
 }
 
+// Block-level tags whose boundaries genuinely separate distinct chunks of
+// text (paragraphs, line breaks, list items) - these need to leave a space
+// behind so adjacent chunks don't run together into one word.
+const BLOCK_TAGS = /<\/?(p|br|div|li|ul|ol|blockquote)\b[^>]*>/gi;
+
 export function stripHtml(html: string): string {
-  return decodeHtmlEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+  // Mastodon splits a single token (a URL, a hashtag) across multiple
+  // adjacent inline <span>/<a> elements purely for its own client-side
+  // truncation UI - e.g. a URL's visible text arrives as
+  // <span class="invisible">https://www.</span><span class="ellipsis">example.com/a</span><span class="invisible">/b</span>,
+  // which must be concatenated with NO separator to reconstruct the real
+  // URL. Stripping every tag to a space (as this used to do) corrupted
+  // exactly that: "https://www. example.com/a /b" (confirmed on production
+  // - issue #22). So this strips in two passes: block tags first (with a
+  // separating space), then everything else - now purely inline markup -
+  // with no separator at all.
+  const withBlockBreaks = html.replace(BLOCK_TAGS, " ");
+  const withoutTags = withBlockBreaks.replace(/<[^>]+>/g, "");
+  return decodeHtmlEntities(withoutTags).replace(/\s+/g, " ").trim();
 }
 
 async function pollInstance(
