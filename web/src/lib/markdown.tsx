@@ -1,13 +1,17 @@
 import type { ReactNode } from "react";
 
 // A hand-rolled subset renderer, not a general CommonMark parser - covers
-// exactly what the project's static content pages (mission, and the
-// upcoming content policy - see issue #4) use: #/## headings, paragraphs,
-// "- " lists, and inline **bold**/*italic*/[text](url). Not worth a
-// markdown dependency for two static pages (no markdown lib exists
-// anywhere in this repo today).
+// exactly what the project's static content pages (mission, content
+// policy, algorithm) use: #/## headings, paragraphs, "- " lists, ``` code
+// fences (verbatim, no inline parsing inside), and inline
+// `code`/**bold**/*italic*/[text](url). Not worth a markdown dependency
+// for a handful of static pages (no markdown lib exists anywhere in this
+// repo today).
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
-  const pattern = /\*\*(.+?)\*\*|\*(.+?)\*|\[(.+?)\]\((.+?)\)/g;
+  // `code` first: content between single backticks (e.g. `raw_posts`)
+  // must never fall through to the bold/italic/link alternatives, even
+  // if it happens to contain * or [ characters.
+  const pattern = /`(.+?)`|\*\*(.+?)\*\*|\*(.+?)\*|\[(.+?)\]\((.+?)\)/g;
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
   let key = 0;
@@ -18,13 +22,15 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       nodes.push(text.slice(lastIndex, match.index));
     }
     if (match[1] !== undefined) {
-      nodes.push(<strong key={`${keyPrefix}-${key++}`}>{match[1]}</strong>);
+      nodes.push(<code key={`${keyPrefix}-${key++}`}>{match[1]}</code>);
     } else if (match[2] !== undefined) {
-      nodes.push(<em key={`${keyPrefix}-${key++}`}>{match[2]}</em>);
+      nodes.push(<strong key={`${keyPrefix}-${key++}`}>{match[2]}</strong>);
+    } else if (match[3] !== undefined) {
+      nodes.push(<em key={`${keyPrefix}-${key++}`}>{match[3]}</em>);
     } else {
       nodes.push(
-        <a key={`${keyPrefix}-${key++}`} href={match[4]} target="_blank" rel="noreferrer">
-          {match[3]}
+        <a key={`${keyPrefix}-${key++}`} href={match[5]} target="_blank" rel="noreferrer">
+          {match[4]}
         </a>,
       );
     }
@@ -41,6 +47,7 @@ export function Markdown({ source }: { source: string }): ReactNode {
   const blocks: ReactNode[] = [];
   let paragraph: string[] = [];
   let list: string[] = [];
+  let codeBlock: string[] | null = null;
   let blockKey = 0;
   const nextKey = () => blockKey++;
 
@@ -66,9 +73,28 @@ export function Markdown({ source }: { source: string }): ReactNode {
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
+
+    if (codeBlock !== null) {
+      if (line.startsWith("```")) {
+        blocks.push(
+          <pre key={nextKey()}>
+            <code>{codeBlock.join("\n")}</code>
+          </pre>,
+        );
+        codeBlock = null;
+      } else {
+        codeBlock.push(rawLine);
+      }
+      continue;
+    }
+
     if (line === "") {
       flushParagraph();
       flushList();
+    } else if (line.startsWith("```")) {
+      flushParagraph();
+      flushList();
+      codeBlock = [];
     } else if (line.startsWith("## ")) {
       flushParagraph();
       flushList();
@@ -89,6 +115,14 @@ export function Markdown({ source }: { source: string }): ReactNode {
   }
   flushParagraph();
   flushList();
+  if (codeBlock !== null) {
+    // unterminated fence -- render what we have rather than silently drop it
+    blocks.push(
+      <pre key={nextKey()}>
+        <code>{codeBlock.join("\n")}</code>
+      </pre>,
+    );
+  }
 
   return <>{blocks}</>;
 }

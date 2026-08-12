@@ -12,7 +12,13 @@
   gap: 1rem;
 }
 
-.missionLink {
+.nav {
+  display: flex;
+  gap: 0.5em;
+  flex-shrink: 0;
+}
+
+.navLink {
   flex-shrink: 0;
   font: inherit;
   font-size: 0.85rem;
@@ -23,9 +29,10 @@
   background: none;
   color: var(--color-text-secondary);
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.missionLink:hover {
+.navLink:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
 }

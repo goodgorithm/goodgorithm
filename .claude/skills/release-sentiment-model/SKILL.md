@@ -13,6 +13,8 @@ Read `CLAUDE.md` in the repo root first if you haven't — this skill assumes th
 
 Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the `goodgorithm-models` R2 bucket (`model.onnx`, `vocab.json`, `config.json`) — that always happens, and it's cheap and reversible since nothing reads an unreferenced version. Separately, `sentiment-cnn/latest.json` points at whichever version `processing/` actually loads at startup. **Publishing a version and promoting it to latest are two different, deliberately separate actions.** Never conflate them — a training run finishing successfully is not the same thing as it being safe to go live.
 
+`goodgorithm-models` itself is a **private** R2 bucket (no public URL, confirmed 2026-08-12) — so on its own, uploading there does not fulfill the "we open-source model weights" commitment (`MISSION.md`, the Algorithm page). `training/r2_release.py`'s `publish` step closes that gap: promoting a version to live also mirrors its three artifacts to a public GitHub Release (`sentiment-cnn-<version>`, via the `gh` CLI). This only happens through `r2_release.py` — see step 6 below.
+
 ## Steps
 
 1. **Decide the tokenizer/vocab state you're training against.** `processing/src/sentiment_model.py` defines tokenization, and the notebook fetches it from a *pinned commit*, not `main` — so a later edit to that file can never silently invalidate an already-published model. If you haven't changed `sentiment_model.py`, the existing pin is fine. If you have, get the new commit's SHA (`git rev-parse HEAD` on `main` after merging) before continuing.
@@ -33,11 +35,12 @@ Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the 
 
 5. **The notebook always uploads the versioned artifacts** (`sentiment-cnn/<version>/model.onnx`, `vocab.json`, `config.json`) regardless of the decision in step 4 — that part is safe and reversible on its own.
 
-6. **Promote to live only if step 4 looks good.** Two ways, pick one:
-   - In the notebook: set `PUBLISH_AS_LATEST = True` in the last cell and re-run it.
-   - Later, without re-running the notebook: `cd training && uv run python r2_release.py publish <version>` (needs the same R2 env vars, e.g. from a local `.env` or exported in your shell). This is the better option if you're promoting a version that was uploaded earlier, or promoting from a machine that isn't the training notebook.
+6. **Promote to live only if step 4 looks good, via `r2_release.py`** — the only path that also makes the version public:
+   - `cd training && uv run python r2_release.py publish <version>` (needs the R2 env vars, e.g. from a local `.env` or exported in your shell, *and* an authenticated `gh` CLI with access to `goodgorithm/goodgorithm`).
+   - This flips `sentiment-cnn/latest.json` **and** creates a public GitHub Release (`sentiment-cnn-<version>`) mirroring the three artifacts from R2, since `goodgorithm-models` itself is a private bucket — see "The release model" above.
+   - The notebook's `PUBLISH_AS_LATEST = True` cell still exists and flips `latest.json`, but Colab has no `gh`/repo access, so it **cannot** create the public release. If you use that cell, you still need to run `r2_release.py publish <version>` afterward (it's idempotent on the `latest.json` flip and will just create the missing release). Prefer `r2_release.py` as the single step going forward.
 
-7. **Verify:** `uv run python r2_release.py current` should print the new version. `processing/` picks it up the next time a process starts — it resolves the live version once per process, on the first sentiment score, not continuously — so a running deployment needs a restart (a normal Railway redeploy) to pick up a newly-promoted version.
+7. **Verify:** `uv run python r2_release.py current` should print the new version, and `gh release view sentiment-cnn-<version> --repo goodgorithm/goodgorithm` should show the public release. `processing/` picks the model up the next time a process starts — it resolves the live version once per process, on the first sentiment score, not continuously — so a running deployment needs a restart (a normal Railway redeploy) to pick up a newly-promoted version.
 
 8. **Record the release.** Add a line to the Decisions Log in Notion (internal workspace) with the version, the commit it was trained against, and the key eval numbers from step 4 — this is part of the project's transparency commitment (publishing training data and model weights is only meaningful if there's also a record of *when* and *why* a version went live).
 
@@ -50,4 +53,5 @@ If a live version turns out to be worse in production than its eval numbers sugg
 - Don't hand-write a `boto3` upload/promote script inline when asked to do this — use `training/r2_release.py`, which already matches `processing/src/model_store.py`'s exact registry layout (`current`/`list`/`publish` check the same paths `sentiment.py` reads at inference time).
 - Don't skip the tokenizer commit pin — training against unpinned `main` risks a silent train/inference mismatch that's very hard to debug after the fact (the model would still load and run, just score worse than its eval numbers imply).
 - Don't promote a version without checking eval output first, even under time pressure — that's the entire reason publish and promote are separate steps.
+- Don't promote via the notebook's `PUBLISH_AS_LATEST` cell alone and call it done — it flips `latest.json` but can't create the public GitHub Release, so the version would be live in production without actually being open-sourced. Always follow up with (or just use) `r2_release.py publish`.
 - This process trains a small CNN on public datasets — it doesn't touch the "no LLM in the algorithm" boundary. If a future request asks to replace this model with an LLM-based scorer, that's a project-level decision (see `CLAUDE.md`), not something to do inside this skill.

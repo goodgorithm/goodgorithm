@@ -11,6 +11,15 @@ reads) without needing to re-run the training notebook. Useful for:
     to be worse in production than eval numbers suggested
   - checking what's currently live, and what versions exist at all
 
+`publish` also mirrors the version's three artifacts to a public GitHub
+Release (sentiment-cnn-<version>) -- goodgorithm-models is a private R2
+bucket (no r2.dev/custom domain configured, confirmed 2026-08-12), so
+without this the "we open-source model weights" claim in MISSION.md/the
+Algorithm page wasn't actually true: the weights existed, but nobody
+outside the project could download them. Making the live version public
+is now a required part of promoting it, not a separate/optional step.
+Requires the `gh` CLI, authenticated, with access to goodgorithm/goodgorithm.
+
 Usage:
     uv run python r2_release.py current
     uv run python r2_release.py list
@@ -25,9 +34,14 @@ mutable sentiment-cnn/latest.json pointer.
 
 import json
 import os
+import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 import boto3
+
+GITHUB_REPO = "goodgorithm/goodgorithm"
 
 PREFIX = "sentiment-cnn"
 REQUIRED_ARTIFACTS = ["model.onnx", "vocab.json", "config.json"]
@@ -71,11 +85,79 @@ def list_versions(client) -> list[str]:
     return sorted(versions)
 
 
+def _release_tag(version: str) -> str:
+    return f"sentiment-cnn-{version}"
+
+
+def _release_exists(tag: str) -> bool:
+    result = subprocess.run(
+        ["gh", "release", "view", tag, "--repo", GITHUB_REPO],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def create_github_release(client, version: str) -> None:
+    """Mirrors this version's three R2 artifacts to a public GitHub Release,
+    so the weights actually become downloadable by anyone -- goodgorithm-
+    models itself stays private/authenticated-only. Idempotent: a version
+    can get re-promoted (e.g. a rollback republishing an older version),
+    and re-releasing identical artifacts under the same tag would just be
+    noise, so an existing release for this version is left alone."""
+    tag = _release_tag(version)
+    if _release_exists(tag):
+        print(f"GitHub release {tag} already exists, skipping")
+        return
+
+    prefix = f"{PREFIX}/{version}"
+    model_config = json.loads(client.get_object(Bucket=_bucket(), Key=f"{prefix}/config.json")["Body"].read())
+
+    notes = (
+        f"Sentiment CNN `{version}`, promoted to production.\n\n"
+        f"- Trained against `processing/src/sentiment_model.py` @ "
+        f"`{model_config.get('architecture_source_commit', '?')}`\n"
+        f"- Dataset composition: {json.dumps(model_config.get('dataset_composition', {}))}\n"
+        f"- Held-out validation macro-F1: {model_config.get('best_val_macro_f1', '?')}\n\n"
+        "See `CLAUDE.md`'s Sentiment model loading section and the "
+        "`release-sentiment-model` skill for how this was trained and published."
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpdir = Path(tmp)
+        paths = []
+        for artifact in REQUIRED_ARTIFACTS:
+            data = client.get_object(Bucket=_bucket(), Key=f"{prefix}/{artifact}")["Body"].read()
+            path = tmpdir / artifact
+            path.write_bytes(data)
+            paths.append(str(path))
+
+        subprocess.run(
+            [
+                "gh",
+                "release",
+                "create",
+                tag,
+                *paths,
+                "--repo",
+                GITHUB_REPO,
+                "--title",
+                f"Sentiment CNN {version}",
+                "--notes",
+                notes,
+            ],
+            check=True,
+        )
+    print(f"created public GitHub release {tag}")
+
+
 def publish(client, version: str) -> None:
     """Points sentiment-cnn/latest.json at `version`. Checks all three
     artifacts actually exist first -- publishing a version that's missing
     e.g. vocab.json would otherwise fail silently until the next time
-    processing/ tries to load it, in production."""
+    processing/ tries to load it, in production. Also makes the version
+    publicly downloadable (see create_github_release) -- promoting a
+    version to production and making it public happen together now, not
+    as separate optional steps, so the two can't drift out of sync."""
     for artifact in REQUIRED_ARTIFACTS:
         key = f"{PREFIX}/{version}/{artifact}"
         try:
@@ -85,6 +167,8 @@ def publish(client, version: str) -> None:
                 f"{key} not found in R2 -- has version {version!r} actually "
                 f"been uploaded? (run the training notebook first)"
             )
+
+    create_github_release(client, version)
 
     client.put_object(
         Bucket=_bucket(),
