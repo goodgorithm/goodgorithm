@@ -1,0 +1,4 @@
+# Forces a type choice between the two templates above, matching
+# CONTRIBUTING.md's Issue types policy: every issue gets exactly one type
+# (bug or enhancement), no untyped issues.
+blank_issues_enabled: false

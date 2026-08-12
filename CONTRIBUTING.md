@@ -57,3 +57,5 @@ Pushes to `staging`/`production` additionally deploy (Railway for `ingestion`/`a
 - Open the PR against `main`, not `staging`/`production` — those are promotion targets, not integration branches (see Git conventions).
 - CI has to pass before merge.
 - Reference the issue number in the PR description (e.g. `Closes #12`) so it closes automatically on merge.
+
+GitHub surfaces the policies above automatically: opening an issue picks between `.github/ISSUE_TEMPLATE/bug_report.md` and `feature_request.md` (blank issues are disabled, so the type choice is structural, not just a written rule), and `.github/PULL_REQUEST_TEMPLATE.md` pre-fills the checklist above on every PR.
