@@ -17,7 +17,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   // absorb normal feed-scrolling traffic while blocking spam/scraping bursts.
   await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
+  // /health stays unversioned - it's an infra-level check (Railway's
+  // healthcheckPath, Better Stack's external monitor), not part of the
+  // data contract this versioning is actually protecting.
   await app.register(healthRoute);
+
+  // /v1/feed is the real path going forward. /feed (unprefixed) stays
+  // registered too, temporarily, pointing at the exact same handler -
+  // api/ and web/ deploy via separate, non-atomic CI pipelines (see
+  // CLAUDE.md's Versioning & migration section), so a clean rename in
+  // both at once risks a real 404 window depending on which deploys
+  // first. Drop this line once web/'s deploy is confirmed live on
+  // /v1/feed and nothing else is known to call the old path.
+  await app.register(feedRoute, { prefix: "/v1" });
   await app.register(feedRoute);
 
   return app;

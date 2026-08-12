@@ -93,7 +93,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (url.pathname === "/feed") {
+  if (url.pathname === "/v1/feed") {
     const category = url.searchParams.get("category");
     const filtered = category ? ALL_POSTS.filter((p) => p.category === category) : ALL_POSTS;
     const cursor = url.searchParams.get("cursor");

@@ -22,7 +22,7 @@ describe("api client", () => {
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/health"));
   });
 
-  it("passes the cursor through to /feed when present", async () => {
+  it("fetches from /v1/feed, passing the cursor through when present", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify({ posts: [], next_cursor: null }), { status: 200 }),
     );
@@ -30,12 +30,12 @@ describe("api client", () => {
     await fetchFeed("abc123", 10);
 
     const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
-    expect(calledUrl).toContain("/feed?");
+    expect(calledUrl).toContain("/v1/feed?");
     expect(calledUrl).toContain("cursor=abc123");
     expect(calledUrl).toContain("limit=10");
   });
 
-  it("passes the category through to /feed when present", async () => {
+  it("passes the category through to /v1/feed when present", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify({ posts: [], next_cursor: null }), { status: 200 }),
     );

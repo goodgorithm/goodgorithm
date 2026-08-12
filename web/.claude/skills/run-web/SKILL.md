@@ -4,7 +4,7 @@ description: Build, run, and drive Goodgorithm's web/ PWA (React + Vite) in a he
 ---
 
 `web/` is a static PWA with no server component of its own - it's driven
-by starting Vite's dev server plus a mock `/health`+`/feed` backend, then
+by starting Vite's dev server plus a mock `/health`+`/v1/feed` backend, then
 scripting a headless Chromium against it via this skill's `driver.mjs`
 (`chromium-cli` isn't installed on this machine, so this REPL stands in
 for it - same command vocabulary, piped the same way).

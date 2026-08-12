@@ -26,5 +26,5 @@ export function fetchFeed(
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   if (category) params.set("category", category);
-  return getJson<FeedResponse>(`/feed?${params.toString()}`);
+  return getJson<FeedResponse>(`/v1/feed?${params.toString()}`);
 }
