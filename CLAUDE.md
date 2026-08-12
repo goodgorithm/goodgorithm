@@ -124,7 +124,7 @@ Bluesky Jetstream (public WebSocket firehose, filtered to `app.bsky.feed.post` c
 
 ## Infra (provisioned and live)
 
-- **Cloudflare** — DNS, R2 for object storage (bucket `goodgorithm-models`: model checkpoints, datasets, transparency samples), Workers static assets for the PWA (`goodgorithm-web` — deliberately Workers over Pages, so deploys stay CI-driven like every other service rather than Pages' dashboard git-integration; live as of 2026-08-12, see Status above).
+- **Cloudflare** — DNS, R2 for object storage (bucket `goodgorithm-models`: model checkpoints, datasets, transparency samples), Workers static assets for the PWA (`goodgorithm-web` — deliberately Workers over Pages, so deploys stay CI-driven like every other service rather than Pages' dashboard git-integration; live as of 2026-08-12, see Status above). Also handles Email Routing (2026-08-12) for three @goodgorithm.com addresses — `contact@`, `security@`, `conduct@` — each forwarding to a real inbox. Set up manually in the Cloudflare dashboard, like Healthchecks.io/Better Stack below; the forwarding target isn't recorded here deliberately (not needed to understand the system, and this file is public).
 - **Railway** — project `goodgorithm`, three services (`goodgorithm-ingestion`, `goodgorithm-processing`, `goodgorithm-api`), each with `staging` and `production` environments.
 - **Supabase** — Postgres. Production project + a `staging` branch off it. Migrations applied via `supabase/migrations/`.
 - **Upstash** — serverless Redis, REST API (not raw `redis://`). Ephemeral, TTL'd state only: LSH bands + MinHash signatures (dedup), author velocity + self-dup tracking (bot filter), entity burst counters (topicality). Postgres holds every durable result; Redis is disposable.
