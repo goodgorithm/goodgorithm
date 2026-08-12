@@ -17,8 +17,24 @@ export function SensitiveMedia({
 }) {
   const [revealed, setRevealed] = useState(false);
 
-  if (!sensitive || revealed) {
+  if (!sensitive) {
     return <>{children}</>;
+  }
+
+  if (revealed) {
+    return (
+      <div className={styles.wrapper}>
+        {children}
+        <button
+          type="button"
+          className={styles.hideButton}
+          aria-pressed={revealed}
+          onClick={() => setRevealed(false)}
+        >
+          {revealLabel.replace("Show", "Hide")}
+        </button>
+      </div>
+    );
   }
 
   return (

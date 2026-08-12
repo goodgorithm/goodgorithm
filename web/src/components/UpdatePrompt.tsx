@@ -17,6 +17,7 @@ import styles from "./UpdatePrompt.module.css";
 // plain reload is what actually picks up the new JS bundle.
 export function UpdatePrompt() {
   const [needsReload, setNeedsReload] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   useRegisterSW({
     onNeedReload() {
@@ -24,14 +25,19 @@ export function UpdatePrompt() {
     },
   });
 
-  if (!needsReload) return null;
+  if (!needsReload || dismissed) return null;
 
   return (
     <div className={styles.banner} role="status">
       <span>A new version is available.</span>
-      <button type="button" className={styles.reload} onClick={() => window.location.reload()}>
-        Reload
-      </button>
+      <span className={styles.actions}>
+        <button type="button" className={styles.dismiss} onClick={() => setDismissed(true)}>
+          Dismiss
+        </button>
+        <button type="button" className={styles.reload} onClick={() => window.location.reload()}>
+          Reload
+        </button>
+      </span>
     </div>
   );
 }

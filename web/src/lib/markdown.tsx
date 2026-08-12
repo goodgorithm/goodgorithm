@@ -29,7 +29,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       nodes.push(<em key={`${keyPrefix}-${key++}`}>{match[3]}</em>);
     } else {
       nodes.push(
-        <a key={`${keyPrefix}-${key++}`} href={match[5]} target="_blank" rel="noreferrer">
+        <a key={`${keyPrefix}-${key++}`} href={match[5]} target="_blank" rel="noreferrer noopener">
           {match[4]}
         </a>,
       );

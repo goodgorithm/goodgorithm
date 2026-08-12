@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect } from "react";
 
 import algorithmSource from "./content/algorithm.md?raw";
 import missionSource from "./content/mission.md?raw";
@@ -23,12 +24,18 @@ export default function App() {
   const [path, navigate] = useLocation();
   const activePage = CONTENT_PAGES.find((p) => p.path === path);
 
+  useEffect(() => {
+    document.title = activePage ? `${activePage.label} — Goodgorithm` : "Goodgorithm";
+  }, [activePage]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <main className={styles.main}>
         <UpdatePrompt />
         <header className={styles.header}>
-          <Wordmark />
+          <button type="button" className={styles.logoButton} onClick={() => navigate("/")}>
+            <Wordmark />
+          </button>
           <nav className={styles.nav}>
             {CONTENT_PAGES.filter((p) => p.path !== path).map((p) => (
               <button
@@ -40,12 +47,20 @@ export default function App() {
                 {p.label}
               </button>
             ))}
+            <a
+              className={styles.navLink}
+              href="https://github.com/goodgorithm/goodgorithm"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              GitHub
+            </a>
           </nav>
         </header>
         {activePage ? (
           <ContentPage source={activePage.source} onBack={() => navigate("/")} />
         ) : (
-          <Feed />
+          <Feed navigate={navigate} />
         )}
       </main>
     </QueryClientProvider>

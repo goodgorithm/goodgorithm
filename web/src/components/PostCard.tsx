@@ -8,7 +8,15 @@ import { RelativeTime } from "./RelativeTime";
 import { ScoreDetails } from "./ScoreDetails";
 import { SourceBadge } from "./SourceBadge";
 
-export function PostCard({ post, relative }: { post: FeedPost; relative: RelativeFractions }) {
+export function PostCard({
+  post,
+  relative,
+  navigate,
+}: {
+  post: FeedPost;
+  relative: RelativeFractions;
+  navigate: (path: string) => void;
+}) {
   return (
     <article className={styles.card}>
       <div className={styles.header}>
@@ -26,7 +34,7 @@ export function PostCard({ post, relative }: { post: FeedPost; relative: Relativ
         <RelativeTime date={post.created_at} />
       </div>
 
-      <CollapsiblePostText text={post.text} />
+      <CollapsiblePostText text={post.text} source={post.source} permalink={post.permalink} />
       <EntityTags entities={post.entities} />
       <PostAttachments post={post} />
 
@@ -41,7 +49,7 @@ export function PostCard({ post, relative }: { post: FeedPost; relative: Relativ
             View original ↗
           </a>
         )}
-        <ScoreDetails scores={post.scores} relative={relative} />
+        <ScoreDetails scores={post.scores} relative={relative} navigate={navigate} />
       </div>
     </article>
   );

@@ -41,4 +41,13 @@ describe("UpdatePrompt", () => {
     expect(reloadSpy).toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
+
+  it("dismisses the banner without reloading when Dismiss is clicked", () => {
+    render(<UpdatePrompt />);
+    act(() => capturedOnNeedReload?.());
+
+    act(() => screen.getByRole("button", { name: /dismiss/i }).click());
+
+    expect(screen.queryByText(/new version is available/i)).not.toBeInTheDocument();
+  });
 });

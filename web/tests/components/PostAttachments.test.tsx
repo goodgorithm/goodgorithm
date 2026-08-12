@@ -57,10 +57,16 @@ const resolvedQuote: Attachment = {
   },
 };
 
-const unavailableQuote: Attachment = {
+const filteredQuote: Attachment = {
   kind: "quote",
   url: "https://bsky.app/profile/did:plc:other/post/xyz",
   content: { status: "unavailable", reason: "filtered" },
+};
+
+const notFoundQuote: Attachment = {
+  kind: "quote",
+  url: "https://bsky.app/profile/did:plc:other/post/xyz",
+  content: { status: "unavailable", reason: "not_found" },
 };
 
 const gifVideo: Attachment = {
@@ -117,9 +123,15 @@ describe("PostAttachments", () => {
     expect(screen.getByRole("link", { name: /someone nice/i })).toHaveAttribute("href", resolvedQuote.url);
   });
 
-  it("renders an unavailable/filtered quote as a muted, non-clickable notice", () => {
-    render(<PostAttachments post={makePost([unavailableQuote])} />);
-    expect(screen.getByText(/quoted post unavailable/i)).toBeInTheDocument();
+  it("renders a filtered quote with copy that doesn't imply the post was deleted", () => {
+    render(<PostAttachments post={makePost([filteredQuote])} />);
+    expect(screen.getByText(/quoted post hidden/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("renders a not_found quote with distinct copy from a filtered one", () => {
+    render(<PostAttachments post={makePost([notFoundQuote])} />);
+    expect(screen.getByText(/quoted post unavailable \(deleted or no longer accessible\)/i)).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
@@ -200,5 +212,34 @@ describe("PostAttachments", () => {
     render(<PostAttachments post={makePost([gifVideo], true)} />);
     const revealButton = await screen.findByRole("button", { name: /show video/i });
     expect(revealButton).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("shows a pause/play toggle on a gif-style video and reflects real play/pause events", async () => {
+    const { container } = render(<PostAttachments post={makePost([gifVideo])} />);
+    const video = await waitFor(() => {
+      const el = container.querySelector("video");
+      expect(el).not.toBeNull();
+      return el as HTMLVideoElement;
+    });
+
+    expect(screen.getByRole("button", { name: /pause/i })).toBeInTheDocument();
+
+    fireEvent.pause(video);
+    expect(await screen.findByRole("button", { name: /^play$/i })).toBeInTheDocument();
+
+    fireEvent.play(video);
+    expect(await screen.findByRole("button", { name: /pause/i })).toBeInTheDocument();
+  });
+
+  it("lets a sensitive image be re-hidden after being revealed", () => {
+    render(<PostAttachments post={makePost([image], true)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /show image/i }));
+    expect(screen.queryByRole("button", { name: /show image/i })).not.toBeInTheDocument();
+
+    const hideButton = screen.getByRole("button", { name: /hide image/i });
+    fireEvent.click(hideButton);
+
+    expect(screen.getByRole("button", { name: /show image/i })).toBeInTheDocument();
   });
 });

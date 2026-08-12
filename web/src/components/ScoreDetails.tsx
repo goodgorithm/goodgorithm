@@ -19,7 +19,15 @@ function ScoreBar({ fraction }: { fraction: number }) {
 // the real numbers," not "generate a plausible-sounding reason." Every
 // number gets its own bar so it's anchored to a visual scale instead of
 // floating alone - that's the part a lone number never communicated.
-export function ScoreDetails({ scores, relative }: { scores: FeedPostScores; relative: RelativeFractions }) {
+export function ScoreDetails({
+  scores,
+  relative,
+  navigate,
+}: {
+  scores: FeedPostScores;
+  relative: RelativeFractions;
+  navigate: (path: string) => void;
+}) {
   const sentiment = sentimentFraction(scores.sentiment);
 
   return (
@@ -64,7 +72,15 @@ export function ScoreDetails({ scores, relative }: { scores: FeedPostScores; rel
           <span className={styles.rowValue}>{scores.rank.toFixed(2)}</span>
         </div>
       </div>
-      <a className={styles.algorithmLink} href="/algorithm">
+      <a
+        className={styles.algorithmLink}
+        href="/algorithm"
+        onClick={(e) => {
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          e.preventDefault();
+          navigate("/algorithm");
+        }}
+      >
         How these are calculated →
       </a>
     </details>

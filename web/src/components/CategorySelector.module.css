@@ -92,5 +92,6 @@
 .fullFeedSelected {
   border-style: solid;
   border-color: var(--color-text-tertiary);
+  background: var(--color-border);
   color: var(--color-text-secondary);
 }

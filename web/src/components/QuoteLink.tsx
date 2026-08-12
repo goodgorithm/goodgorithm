@@ -22,7 +22,11 @@ export function QuoteLink({ quote }: { quote: QuoteAttachment }) {
     // has nothing useful to click through to, and a filtered one
     // shouldn't be surfaced as clickable at all, consistent with the
     // content filter's precision-over-recall stance.
-    return <div className={styles.unavailable}>Quoted post unavailable</div>;
+    const message =
+      content.reason === "filtered"
+        ? "Quoted post hidden (doesn't meet our content guidelines)"
+        : "Quoted post unavailable (deleted or no longer accessible)";
+    return <div className={styles.unavailable}>{message}</div>;
   }
 
   const name = content.author.displayName ?? content.author.handle ?? "Someone";

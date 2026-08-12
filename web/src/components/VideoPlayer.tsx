@@ -1,5 +1,5 @@
 import Hls from "hls.js";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Attachment } from "../api/types";
 import styles from "./VideoPlayer.module.css";
@@ -40,20 +40,39 @@ function useHlsSource(playlistUrl: string) {
 
 export function VideoPlayer({ video, sensitive }: { video: VideoAttachment; sensitive: boolean }) {
   const videoRef = useHlsSource(video.playlistUrl);
+  // WCAG 2.2.2: a looping autoplay video needs a way to be paused - the
+  // native <video controls> attribute deliberately isn't used for the
+  // gif-style case (autoplay/loop/muted with a visible scrubber reads as a
+  // real video player, not a gif), so this is a small dedicated toggle
+  // instead. Synced to real play/pause events, not just the click that
+  // caused them, in case autoplay itself gets blocked by browser policy.
+  const [playing, setPlaying] = useState(true);
 
   return (
     <SensitiveMedia sensitive={sensitive} revealLabel="Show video">
       {video.isGif ? (
-        <video
-          ref={videoRef}
-          className={styles.video}
-          poster={video.thumbnailUrl ?? undefined}
-          style={video.width && video.height ? { aspectRatio: `${video.width} / ${video.height}` } : undefined}
-          autoPlay
-          loop
-          muted
-          playsInline
-        />
+        <div className={styles.gifWrapper}>
+          <video
+            ref={videoRef}
+            className={styles.video}
+            poster={video.thumbnailUrl ?? undefined}
+            style={video.width && video.height ? { aspectRatio: `${video.width} / ${video.height}` } : undefined}
+            autoPlay
+            loop
+            muted
+            playsInline
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+          />
+          <button
+            type="button"
+            className={styles.gifToggle}
+            aria-label={playing ? "Pause" : "Play"}
+            onClick={() => (playing ? videoRef.current?.pause() : videoRef.current?.play())}
+          >
+            {playing ? "⏸" : "▶"}
+          </button>
+        </div>
       ) : (
         <video
           ref={videoRef}

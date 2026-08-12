@@ -12,8 +12,25 @@
   font-size: 0.9rem;
 }
 
-.reload {
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
   flex-shrink: 0;
+}
+
+.dismiss {
+  padding: 0.4em 0.9em;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reload {
   padding: 0.4em 0.9em;
   border: none;
   border-radius: 999px;

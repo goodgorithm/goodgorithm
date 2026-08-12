@@ -1,19 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { useFeed } from "../api/useFeed";
-import type { Category } from "../api/types";
 import { CategorySelector } from "./CategorySelector";
 import styles from "./Feed.module.css";
 import { FeedEmpty, FeedError, FeedLoading } from "./FeedStatus";
+import { useCategoryParam } from "../lib/useCategoryParam";
 import { relativeFractions, type RelativeFractions } from "../lib/scoreScale";
 import { PostCard } from "./PostCard";
 
 const NO_RELATIVE: RelativeFractions = { topicality: 0, base: 0, rank: 0 };
 
-export function Feed() {
-  const [category, setCategory] = useState<Category | null>(null);
-  const { data, error, isPending, isFetchingNextPage, fetchNextPage, hasNextPage, resumed, resetToTop } =
-    useFeed(category);
+export function Feed({ navigate }: { navigate: (path: string) => void }) {
+  const [category, setCategory] = useCategoryParam();
+  const {
+    data,
+    error,
+    isPending,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+    resumed,
+    resetToTop,
+    refetch,
+  } = useFeed(category);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,15 +55,22 @@ export function Feed() {
     <div>
       <CategorySelector selected={category} onSelect={setCategory} />
       {isPending && <FeedLoading />}
-      {error && <FeedError message={error.message} />}
-      {!isPending && !error && posts.length === 0 && <FeedEmpty />}
+      {error && <FeedError message={error.message} onRetry={refetch} />}
+      {!isPending && !error && posts.length === 0 && (
+        <FeedEmpty category={category} onShowFullFeed={() => setCategory(null)} />
+      )}
       {!isPending && !error && resumed && (
         <button type="button" className={styles.backToTop} onClick={resetToTop}>
           ↑ Back to top
         </button>
       )}
       {posts.map((post) => (
-        <PostCard key={post.id} post={post} relative={relativeByPostId.get(post.id) ?? NO_RELATIVE} />
+        <PostCard
+          key={post.id}
+          post={post}
+          relative={relativeByPostId.get(post.id) ?? NO_RELATIVE}
+          navigate={navigate}
+        />
       ))}
       <div ref={sentinelRef} />
       {isFetchingNextPage && <FeedLoading />}

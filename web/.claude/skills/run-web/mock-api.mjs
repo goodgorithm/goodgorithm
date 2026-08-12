@@ -33,18 +33,26 @@ function makePosts(count) {
   const posts = [];
   for (let i = 0; i < count; i++) {
     const isLong = i === 3; // one long post, to exercise auto-collapse
-    const hasVideo = i === 5; // one video post, to exercise the lazy-loaded VideoPlayer/hls.js chunk
+    const hasVideo = i === 5 || i === 7; // one video post, to exercise the lazy-loaded VideoPlayer/hls.js chunk
+    const hasGifVideo = i === 6; // one gif-style video, to exercise the pause/play toggle
+    const isSensitive = i === 7; // one sensitive video, to exercise the reveal/re-hide toggle
+    const hasLink = i === 8; // one post with a URL + hashtag, to exercise linkify
     // every 5th post uncategorized (category: null), matching real data
     // where a lot of content doesn't match any taxonomy term.
     const category = i % 5 === 0 ? null : CATEGORIES[i % CATEGORIES.length];
+    const source = i % 2 === 0 ? "bluesky" : "mastodon";
     posts.push({
       id: String(i),
-      source: i % 2 === 0 ? "bluesky" : "mastodon",
+      source,
       author_id: `user-${i}`,
-      text: isLong ? LONG_TEXT : `Short uplifting post number ${i} (${category ?? "uncategorized"}).`,
+      text: isLong
+        ? LONG_TEXT
+        : hasLink
+          ? `Loving this #goodnews today - check it out at https://example.com/story.`
+          : `Short uplifting post number ${i} (${category ?? "uncategorized"}).`,
       created_at: new Date(Date.now() - i * 60_000).toISOString(),
       entities: [],
-      permalink: `https://example.com/post/${i}`,
+      permalink: source === "mastodon" ? `https://fosstodon.org/@user${i}/${i}` : `https://example.com/post/${i}`,
       author: { display_name: `Person ${i}`, avatar_url: null },
       // Varies across posts so the score bars' fill levels actually differ
       // instead of every card looking identical. Sentiment stays within the
@@ -60,7 +68,7 @@ function makePosts(count) {
         rank: 1 - ((i * 0.17) % 1),
       },
       pipeline_version: "v1",
-      attachments: hasVideo
+      attachments: hasVideo || hasGifVideo
         ? [
             {
               kind: "video",
@@ -68,13 +76,13 @@ function makePosts(count) {
               // native <video src> path without needing a real HLS manifest.
               playlistUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
               thumbnailUrl: null,
-              isGif: false,
+              isGif: hasGifVideo,
               width: 1280,
               height: 720,
             },
           ]
         : [],
-      sensitive: false,
+      sensitive: isSensitive,
       category,
     });
   }
@@ -94,6 +102,13 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === "/v1/feed") {
+    // ?fail=1 - agent tooling hook to exercise FeedError's retry button
+    // without needing a real backend failure.
+    if (url.searchParams.get("fail") === "1") {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "simulated failure" }));
+      return;
+    }
     const category = url.searchParams.get("category");
     const filtered = category ? ALL_POSTS.filter((p) => p.category === category) : ALL_POSTS;
     const cursor = url.searchParams.get("cursor");
