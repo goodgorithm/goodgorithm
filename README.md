@@ -2,7 +2,7 @@
 
 An open-source algorithmic feed of positive/uplifting public social posts, curated by classic, tried-and-tested ML — built to counter the negativity bias of mainstream platform algorithms.
 
-**Status:** early development. Ingestion, the scoring/ranking pipeline, and a read-only feed API are built, tested, and deployed to staging and production. A PWA frontend (`web/`) is built and passing CI, but not deployed yet — pending one-time Cloudflare Workers account setup.
+**Status:** early development. Ingestion, the scoring/ranking pipeline, a read-only feed API, and the PWA frontend are all built, tested, and deployed to staging and production. Live at [goodgorithm.com](https://goodgorithm.com).
 
 ## What this is
 

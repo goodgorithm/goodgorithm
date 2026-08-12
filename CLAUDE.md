@@ -6,7 +6,7 @@ Read this before starting work. It's the condensed version of decisions made in 
 
 An open-source, free-forever, ad-free algorithmic feed of positive/uplifting public social posts. The pitch: counter the negativity bias of mainstream platform algorithms, and reclaim "algorithm" from its usual "platform manipulating you" connotation.
 
-**Status:** early development. `ingestion/`, `processing/`, and `api/` are built, tested, and deployed to `staging` and `production` on Railway. `web/` (PWA frontend) is built and passing CI, but not deployed yet — needs a one-time Cloudflare Workers account setup (create the `goodgorithm-web` Worker, add a `CLOUDFLARE_API_TOKEN` repo secret) before `deploy-web-staging`/`deploy-web-production` in `ci.yml` can actually ship it.
+**Status:** early development. `ingestion/`, `processing/`, and `api/` are built, tested, and deployed to `staging` and `production` on Railway. `web/` (PWA frontend) is now deployed too (as of 2026-08-12) — Cloudflare Workers account setup done, `deploy-web-staging`/`deploy-web-production` in `ci.yml` are live. Production: [goodgorithm.com](https://goodgorithm.com). Staging: [goodgorithm-web-staging.bandza88.workers.dev](https://goodgorithm-web-staging.bandza88.workers.dev/).
 
 ## Three constraints that are load-bearing, not aspirational
 
@@ -25,7 +25,7 @@ Five services, each independently deployable:
 | `ingestion/` | TypeScript | Railway service `goodgorithm-ingestion` | Long-lived process: Bluesky Jetstream WebSocket + Mastodon polling → `raw_posts` in Postgres. |
 | `processing/` | Python | Railway service `goodgorithm-processing` | Long-lived loop: content filter → dedup → bot filter → topicality → quote resolution → sentiment → base score → MMR ranking → `processed_posts`. |
 | `api/` | TypeScript (Fastify) | Railway service `goodgorithm-api` | Stateless, read-only, unauthenticated HTTP — no outbound calls of its own (see Post attachments & embeds below). `/feed` (cursor-paginated, ordered by `rank_score`), `/health`. |
-| `web/` | TypeScript (React + Vite) | Cloudflare Workers static assets (`goodgorithm-web`, staging/production named environments) — not yet deployed, see Status above | PWA: infinite-scroll feed consuming `api/`'s `/feed`, no accounts/personalization. `VITE_API_BASE_URL` baked in at build time (static site, no server component). |
+| `web/` | TypeScript (React + Vite) | Cloudflare Workers static assets (`goodgorithm-web`, staging/production named environments) | PWA: infinite-scroll feed consuming `api/`'s `/feed`, no accounts/personalization. `VITE_API_BASE_URL` baked in at build time (static site, no server component). |
 | `training/` | Python (notebook) | Run manually on Colab/Kaggle, not deployed | Trains the sentiment CNN, exports to ONNX, publishes versioned artifacts to R2. |
 
 Schema lives in `supabase/migrations/` (`raw_posts`, `processed_posts`, applied via Supabase's migration tooling — don't hand-edit the schema elsewhere).
@@ -124,7 +124,7 @@ Bluesky Jetstream (public WebSocket firehose, filtered to `app.bsky.feed.post` c
 
 ## Infra (provisioned and live)
 
-- **Cloudflare** — DNS, R2 for object storage (bucket `goodgorithm-models`: model checkpoints, datasets, transparency samples), Workers static assets for the PWA (`goodgorithm-web` — deliberately Workers over Pages, so deploys stay CI-driven like every other service rather than Pages' dashboard git-integration; account/token setup still pending, see Status above).
+- **Cloudflare** — DNS, R2 for object storage (bucket `goodgorithm-models`: model checkpoints, datasets, transparency samples), Workers static assets for the PWA (`goodgorithm-web` — deliberately Workers over Pages, so deploys stay CI-driven like every other service rather than Pages' dashboard git-integration; live as of 2026-08-12, see Status above).
 - **Railway** — project `goodgorithm`, three services (`goodgorithm-ingestion`, `goodgorithm-processing`, `goodgorithm-api`), each with `staging` and `production` environments.
 - **Supabase** — Postgres. Production project + a `staging` branch off it. Migrations applied via `supabase/migrations/`.
 - **Upstash** — serverless Redis, REST API (not raw `redis://`). Ephemeral, TTL'd state only: LSH bands + MinHash signatures (dedup), author velocity + self-dup tracking (bot filter), entity burst counters (topicality). Postgres holds every durable result; Redis is disposable.
