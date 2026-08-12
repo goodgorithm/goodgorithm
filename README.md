@@ -49,4 +49,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Contributing
 
-Not yet open for outside contributions — still early and moving fast. Issues/discussions welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how issues are typed and branches are named.
+Not yet open for outside contributions — still early and moving fast. Issues/discussions welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how issues are typed and branches are named, and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community standards. Coding agents working in this repo should also see [`AGENTS.md`](AGENTS.md) (a pointer to `CLAUDE.md`, this repo's actual source of agent context).
