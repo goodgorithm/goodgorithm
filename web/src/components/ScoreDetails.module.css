@@ -5,7 +5,7 @@
 .summary {
   display: inline-flex;
   align-items: center;
-  gap: 0.4em;
+  gap: 0.5em;
   cursor: pointer;
   color: var(--color-text-secondary);
   list-style: none;
@@ -15,41 +15,60 @@
   display: none;
 }
 
-.ring {
-  width: 18px;
-  height: 18px;
+.miniBar {
+  width: 44px;
   flex-shrink: 0;
 }
 
-.ringTrack {
-  fill: none;
-  stroke: var(--color-border);
-  stroke-width: 4;
+.barTrack {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
 }
 
-.ringFill {
-  fill: none;
-  stroke: var(--color-accent);
-  stroke-width: 4;
-  stroke-linecap: round;
-  transition: stroke-dasharray 0.3s ease;
+.barFill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-accent);
 }
 
-.grid {
+.rows {
+  margin-top: 0.85em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55em;
+}
+
+.row {
   display: grid;
-  grid-template-columns: auto auto;
-  gap: 0.2em 0.8em;
-  margin-top: 0.4em;
-  font-variant-numeric: tabular-nums;
+  grid-template-columns: 72px 1fr 42px;
+  align-items: center;
+  gap: 0.7em;
 }
 
-.label {
+.rowLabel {
   color: var(--color-text-secondary);
+}
+
+.rowLabel small {
+  display: block;
+  color: var(--color-text-tertiary);
+  font-size: 0.85em;
+  font-weight: 400;
+}
+
+.rowValue {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--color-text);
 }
 
 .algorithmLink {
   display: inline-block;
-  margin-top: 0.5em;
+  margin-top: 0.7em;
   color: var(--color-accent);
   font-size: 0.78rem;
 }

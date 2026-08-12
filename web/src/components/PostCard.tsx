@@ -1,4 +1,5 @@
 import type { FeedPost } from "../api/types";
+import type { RelativeFractions } from "../lib/scoreScale";
 import { CollapsiblePostText } from "./CollapsiblePostText";
 import { EntityTags } from "./EntityTags";
 import styles from "./PostCard.module.css";
@@ -7,7 +8,7 @@ import { RelativeTime } from "./RelativeTime";
 import { ScoreDetails } from "./ScoreDetails";
 import { SourceBadge } from "./SourceBadge";
 
-export function PostCard({ post }: { post: FeedPost }) {
+export function PostCard({ post, relative }: { post: FeedPost; relative: RelativeFractions }) {
   return (
     <article className={styles.card}>
       <div className={styles.header}>
@@ -40,7 +41,7 @@ export function PostCard({ post }: { post: FeedPost }) {
             View original ↗
           </a>
         )}
-        <ScoreDetails scores={post.scores} />
+        <ScoreDetails scores={post.scores} relative={relative} />
       </div>
     </article>
   );

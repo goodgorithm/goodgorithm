@@ -46,11 +46,19 @@ function makePosts(count) {
       entities: [],
       permalink: `https://example.com/post/${i}`,
       author: { display_name: `Person ${i}`, avatar_url: null },
-      // Varies across the realistic post-eligibility range (0.3-1.0, see
-      // ranking.py's POSITIVITY_THRESHOLD) so the score ring's fill level
-      // actually differs between mock posts, instead of every card looking
-      // identical.
-      scores: { sentiment: 0.3 + ((i * 0.13) % 0.7), topicality: 1, base: 0.9, rank: 1 - i * 0.001 },
+      // Varies across posts so the score bars' fill levels actually differ
+      // instead of every card looking identical. Sentiment stays within the
+      // realistic post-eligibility range (0.3-1.0, see ranking.py's
+      // POSITIVITY_THRESHOLD); topicality/base/rank are unbounded in the
+      // real pipeline, so these are just varied enough to exercise the
+      // per-batch percentile bars (web/src/lib/scoreScale.ts) with real
+      // spread within each 20-post page.
+      scores: {
+        sentiment: 0.3 + ((i * 0.13) % 0.7),
+        topicality: 0.4 + ((i * 0.37) % 1.6),
+        base: 0.2 + ((i * 0.29) % 1.1),
+        rank: 1 - ((i * 0.17) % 1),
+      },
       attachments: hasVideo
         ? [
             {

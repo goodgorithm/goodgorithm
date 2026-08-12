@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useFeed } from "../api/useFeed";
 import type { Category } from "../api/types";
 import { CategorySelector } from "./CategorySelector";
 import styles from "./Feed.module.css";
 import { FeedEmpty, FeedError, FeedLoading } from "./FeedStatus";
+import { relativeFractions, type RelativeFractions } from "../lib/scoreScale";
 import { PostCard } from "./PostCard";
+
+const NO_RELATIVE: RelativeFractions = { topicality: 0, base: 0, rank: 0 };
 
 export function Feed() {
   const [category, setCategory] = useState<Category | null>(null);
@@ -26,6 +29,19 @@ export function Feed() {
 
   const posts = data?.pages.flatMap((page) => page.posts) ?? [];
 
+  // One percentile basis per fetched page (see scoreScale.ts) - computed
+  // per page, then merged, so a page already on screen never has its
+  // posts' bars recalculated (and silently shift) as later pages load.
+  const relativeByPostId = useMemo(() => {
+    const merged = new Map<string, RelativeFractions>();
+    for (const page of data?.pages ?? []) {
+      for (const [id, fractions] of relativeFractions(page.posts)) {
+        merged.set(id, fractions);
+      }
+    }
+    return merged;
+  }, [data?.pages]);
+
   return (
     <div>
       <CategorySelector selected={category} onSelect={setCategory} />
@@ -38,7 +54,7 @@ export function Feed() {
         </button>
       )}
       {posts.map((post) => (
-        <PostCard key={post.id} post={post} />
+        <PostCard key={post.id} post={post} relative={relativeByPostId.get(post.id) ?? NO_RELATIVE} />
       ))}
       <div ref={sentinelRef} />
       {isFetchingNextPage && <FeedLoading />}

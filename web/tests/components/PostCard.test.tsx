@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import type { FeedPost } from "../../src/api/types";
 import { PostCard } from "../../src/components/PostCard";
 
+const noRelative = { topicality: 0, base: 0, rank: 0 };
+
 const bskyPost: FeedPost = {
   id: "1",
   source: "bluesky",
@@ -28,7 +30,7 @@ const mastodonPost: FeedPost = {
 
 describe("PostCard", () => {
   it("renders post text, source badge, and permalink", () => {
-    render(<PostCard post={bskyPost} />);
+    render(<PostCard post={bskyPost} relative={noRelative} />);
 
     expect(screen.getByText(bskyPost.text)).toBeInTheDocument();
     expect(screen.getByText("Bluesky")).toBeInTheDocument();
@@ -39,19 +41,19 @@ describe("PostCard", () => {
   });
 
   it("omits author name/avatar for Bluesky (no identity data available)", () => {
-    render(<PostCard post={bskyPost} />);
+    render(<PostCard post={bskyPost} relative={noRelative} />);
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
   it("shows author name and avatar for Mastodon when available", () => {
-    render(<PostCard post={mastodonPost} />);
+    render(<PostCard post={mastodonPost} relative={noRelative} />);
     expect(screen.getByText("Someone Nice")).toBeInTheDocument();
     expect(screen.getByRole("img")).toBeInTheDocument();
   });
 
   it("exposes raw scores behind a details toggle", () => {
-    render(<PostCard post={bskyPost} />);
+    render(<PostCard post={bskyPost} relative={noRelative} />);
     expect(screen.getByText("Scores")).toBeInTheDocument();
-    expect(screen.getByText("0.900")).toBeInTheDocument();
+    expect(screen.getByText("0.90")).toBeInTheDocument();
   });
 });
