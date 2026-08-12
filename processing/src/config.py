@@ -9,6 +9,11 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 UPSTASH_REDIS_REST_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
 UPSTASH_REDIS_REST_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 
+# The Upstash plan's byte cap for this environment (default matches the 1GB
+# free/rate-limited plan both staging and production are on as of
+# 2026-08-12) -- see redis_guard.py. Optional; the default applies if unset.
+REDIS_MAX_BYTES = int(os.environ.get("REDIS_MAX_BYTES", 1024 * 1024 * 1024))
+
 # R2 / sentiment model — all optional. Absence means the sentiment CNN
 # can't load and score_sentiment() falls back to VADER; it should never
 # block the rest of the service from starting.

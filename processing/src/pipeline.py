@@ -2,11 +2,13 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import bot_filter
+import config
 import content_filter
 import db
 import dedup
 import quote_resolver
 import ranking
+import redis_guard
 import sentiment
 import taxonomy
 import topicality
@@ -19,6 +21,14 @@ logger = logging.getLogger("processing")
 # effectively capped at this value too, since a post older than
 # RETENTION_HOURS is deleted before it could ever be 72h old.
 RETENTION_HOURS = 24
+
+
+def enforce_redis_capacity() -> None:
+    """Proactive Redis size guard -- call before run_cycle so this cycle's
+    dedup/bot-filter/topicality writes (the ones that actually crashed
+    production on 2026-08-12) happen with headroom already reclaimed if
+    needed, rather than discovering the cap mid-write."""
+    redis_guard.enforce(config.REDIS_MAX_BYTES)
 
 
 def run_cycle(batch_size: int) -> int:

@@ -13,6 +13,12 @@ TFIDF_TOP_K = 3
 BURST_THRESHOLD = 5  # mentions within the window to reach a "fully bursting" entity
 BURST_BOOST_WEIGHT = 1.0  # a fully-bursting entity can double a post's topicality score
 BURST_TTL_SECONDS = 3 * 60 * 60  # 3 hours — "spiking now", not a durable count
+# Caps the burst:entity:* Redis key name length. Entity text comes straight
+# from spaCy NER (WORK_OF_ART/ORG/EVENT labels can be long multi-word
+# phrases) with no upper bound otherwise -- an unbounded-cardinality,
+# unbounded-length key pattern (2026-08-12 Redis capacity review). Doesn't
+# affect the `entities` field persisted per post, only the burst-count key.
+ENTITY_KEY_MAX_LEN = 100
 
 # Entity types that plausibly signal a topic/newsworthy subject, not just
 # calendar/quantity noise (DATE, CARDINAL, MONEY, PERCENT, etc. excluded).
@@ -127,7 +133,7 @@ class RedisBurstIndex:
             return {}
         pipe = self.client.pipeline()
         for entity in entities:
-            key = f"burst:entity:{entity}"
+            key = f"burst:entity:{entity[:ENTITY_KEY_MAX_LEN]}"
             pipe.incr(key)
             pipe.expire(key, BURST_TTL_SECONDS)
         results = pipe.exec()

@@ -71,6 +71,7 @@ def main() -> None:
     logger.info("starting")
 
     if args.once:
+        pipeline.enforce_redis_capacity()
         pipeline.run_cycle(args.batch_size)
         pipeline.refresh_rankings()
         pipeline.cleanup_old_data()
@@ -79,6 +80,7 @@ def main() -> None:
 
     last_refresh_time = 0.0
     while not _shutdown:
+        pipeline.enforce_redis_capacity()
         processed_count = pipeline.run_cycle(args.batch_size)
 
         now = time.monotonic()

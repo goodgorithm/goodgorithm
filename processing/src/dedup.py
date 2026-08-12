@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import re
 from dataclasses import dataclass
@@ -65,21 +66,31 @@ def band_hashes(mh: MinHash) -> list[str]:
 
 
 def serialize_minhash(mh: MinHash) -> str:
-    return ",".join(str(v) for v in mh.hashvalues)
+    # Base64 of the raw uint32 bytes rather than a comma-separated decimal
+    # string -- ~1.3KB down to ~700 bytes per signature (2026-08-12: this is
+    # the single largest per-key Redis payload in the pipeline, written on
+    # every processed post). Native byte order is fine since the same
+    # container image both writes and reads it.
+    return base64.b64encode(mh.hashvalues.astype(np.uint32).tobytes()).decode("ascii")
 
 
 def deserialize_minhash(data: str) -> MinHash | None:
     """Returns None (treated by callers the same as no signature at all) for
-    a signature serialized under a since-changed NUM_PERM -- e.g. still-live
-    Redis data from before a NUM_PERM change deploys. Without this check,
-    comparing it against a freshly computed MinHash raises inside
-    datasketch's jaccard(), crashing the whole cycle rather than just
-    skipping one stale candidate."""
-    values = np.array([int(v) for v in data.split(",")], dtype=np.uint32)
-    if len(values) != NUM_PERM:
+    a signature that isn't decodable as a current-format MinHash -- e.g.
+    still-live Redis data written under a since-changed NUM_PERM, or (as of
+    2026-08-12) the older comma-separated-decimal encoding, both of which
+    naturally age out within BAND_TTL_SECONDS of a format change deploying.
+    Without this check, comparing it against a freshly computed MinHash
+    raises inside datasketch's jaccard(), crashing the whole cycle rather
+    than just skipping one stale candidate."""
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except (ValueError, TypeError):
+        return None
+    if len(raw) != NUM_PERM * 4:
         return None
     mh = MinHash(num_perm=NUM_PERM)
-    mh.hashvalues = values
+    mh.hashvalues = np.frombuffer(raw, dtype=np.uint32).copy()
     return mh
 
 
@@ -128,7 +139,12 @@ class RedisDedupIndex:
         for h in hashes:
             key = f"lsh:band:{h}"
             pipe.sadd(key, post_id)
-            pipe.expire(key, BAND_TTL_SECONDS)
+            # nx=True: only the band's first member sets the TTL. Without
+            # this, a "hot" band (a widely-copied post/meme/spam wave that
+            # keeps landing in the same band bucket) had its 24h TTL pushed
+            # forward on every single hit, letting it live indefinitely
+            # instead of on a fixed 24h window (2026-08-12 incident).
+            pipe.expire(key, BAND_TTL_SECONDS, nx=True)
         pipe.set(f"mh:{post_id}", serialize_minhash(mh), ex=BAND_TTL_SECONDS)
         pipe.set(f"dedup:cluster:{post_id}", cluster_id, ex=BAND_TTL_SECONDS)
         pipe.exec()

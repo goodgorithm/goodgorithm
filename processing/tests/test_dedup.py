@@ -1,5 +1,8 @@
+import base64
 from dataclasses import dataclass
 from uuid import UUID, uuid4
+
+import numpy as np
 
 import dedup
 
@@ -71,8 +74,18 @@ def test_deserialize_minhash_rejects_stale_num_perm():
     # (e.g. still-live data from before a deploy) -- must be treated as no
     # usable signature, not raise, or a single stale candidate crashes the
     # whole dedup_posts cycle.
-    stale_data = ",".join(str(v) for v in range(dedup.NUM_PERM // 2))
+    short = np.arange(dedup.NUM_PERM // 2, dtype=np.uint32)
+    stale_data = base64.b64encode(short.tobytes()).decode("ascii")
     assert dedup.deserialize_minhash(stale_data) is None
+
+
+def test_deserialize_minhash_rejects_old_csv_format():
+    # simulates a signature still live in Redis under the pre-2026-08-12
+    # comma-separated-decimal encoding, during the up-to-24h window after a
+    # deploy switches to base64 -- must be treated as no usable signature,
+    # not raise.
+    old_format_data = ",".join(str(v) for v in range(dedup.NUM_PERM))
+    assert dedup.deserialize_minhash(old_format_data) is None
 
 
 def test_dedup_posts_skips_candidate_with_unusable_signature():

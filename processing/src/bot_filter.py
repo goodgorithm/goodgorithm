@@ -91,11 +91,16 @@ class RedisBotFilterIndex:
         key = f"cluster:{cluster_id}:authors"
         added = self.client.sadd(key, author_id)
         if added:
-            # only refresh TTL when a genuinely new author joins the cluster --
+            # only call expire when a genuinely new author joins the cluster --
             # repeat-duplicate confirmations (added == 0) don't need it, and
             # that's exactly the call pattern that fires most during a real
-            # spam burst, so this is where the savings concentrate.
-            self.client.expire(key, SELF_DUP_TTL_SECONDS)
+            # spam burst, so this is where the savings concentrate. nx=True:
+            # only the *first* new author actually sets the TTL -- without
+            # it, a sustained bot wave (many distinct authors reposting into
+            # one cluster, exactly what this filter exists to catch) pushed
+            # the 24h TTL forward on every new author and could keep this set
+            # growing unbounded, indefinitely (2026-08-12 incident).
+            self.client.expire(key, SELF_DUP_TTL_SECONDS, nx=True)
         return added == 0  # already a member => this author already posted into this cluster
 
 
