@@ -47,4 +47,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Contributing
 
-Not yet open for outside contributions — still early and moving fast. Issues/discussions welcome.
+Not yet open for outside contributions — still early and moving fast. Issues/discussions welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how issues are typed and branches are named.
