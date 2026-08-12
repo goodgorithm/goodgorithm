@@ -1,6 +1,6 @@
 # Contributing
 
-If you're reading this because you're thinking about contributing: welcome, and thank you. This project only works if the algorithm is something people can actually trust, which means the code behind it has to hold up to scrutiny — see [`MISSION.md`](MISSION.md) for the values and principles that review bar comes from. Read that first if you haven't; it's not decoration, it's the actual standard your contribution gets checked against.
+If you're reading this because you're thinking about contributing: welcome, and thank you. This project only works if the algorithm is something people can actually trust, which means the code behind it has to hold up to scrutiny — see [`web/src/content/mission.md`](web/src/content/mission.md) for the values and principles that review bar comes from. Read that first if you haven't; it's not decoration, it's the actual standard your contribution gets checked against.
 
 One thing worth knowing going in, in the same spirit of transparency: a meaningful share of this codebase has been built with AI pair-programming (Claude Code), openly and on purpose. That's expected to continue, including for reviewing contributions — don't be surprised if Claude is part of the process on the other side of a PR too.
 

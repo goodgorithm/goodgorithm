@@ -1,6 +1,6 @@
 # Content policy
 
-*Draft content for the app's public content policy (Pre-v1 Roadmap Stage 4, [issue #4](https://github.com/goodgorithm/goodgorithm/issues/4)) — what gets excluded from the feed, and why. Distinct from [`MISSION.md`](MISSION.md) (the values behind the project) and from the filter code itself (`processing/src/content_filter.py`, `processing/src/bot_filter.py`, `ingestion/src/blueskyLabels.ts`) — this is the policy a reader should be able to check the code against, not a restatement of the code. Treat as a strong draft, not locked copy.*
+*Draft content for the app's public content policy (Pre-v1 Roadmap Stage 4, [issue #4](https://github.com/goodgorithm/goodgorithm/issues/4)) — what gets excluded from the feed, and why. Distinct from [`web/src/content/mission.md`](web/src/content/mission.md) (the values behind the project) and from the filter code itself (`processing/src/content_filter.py`, `processing/src/bot_filter.py`, `ingestion/src/blueskyLabels.ts`) — this is the policy a reader should be able to check the code against, not a restatement of the code. Treat as a strong draft, not locked copy.*
 
 ## What we exclude, and why
 
@@ -29,7 +29,7 @@ This is honestly the least complete part of what we exclude today. Real sampling
 
 ### What we never use to make these calls
 
-Consistent with the values in `MISSION.md`: none of the above ever reads likes, reposts, replies, or follower counts, and none of it runs through an LLM. The bot/spam filter is purely behavioral — how often an account posts, whether it's reposting near-duplicate content, and patterns in the text itself — not account metadata like follower or following counts. Every check here can only exclude a post, never boost it. If any of this ever looked like it was being used as a backdoor engagement signal, that would be a bug, not a feature.
+Consistent with the values in `web/src/content/mission.md`: none of the above ever reads likes, reposts, replies, or follower counts, and none of it runs through an LLM. The bot/spam filter is purely behavioral — how often an account posts, whether it's reposting near-duplicate content, and patterns in the text itself — not account metadata like follower or following counts. Every check here can only exclude a post, never boost it. If any of this ever looked like it was being used as a backdoor engagement signal, that would be a bug, not a feature.
 
 ## How this evolves
 

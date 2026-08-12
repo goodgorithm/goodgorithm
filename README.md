@@ -33,7 +33,7 @@ Full project context for anyone (human or Claude) picking this up lives in [`CLA
 - **Published, public docs:** [Goodgorithm — Public Docs](https://app.notion.com/p/3b69243701a7813bbf0feabdcec0a7b0) — start with **Algorithm** (step-by-step pipeline walkthrough) and **Infrastructure** (hosting/tooling and why).
 - **Internal docs** (decisions log, research, infra planning with pricing, setup checklist): team Notion workspace, not public.
 
-The values and policy behind what the app actually shows: [`MISSION.md`](MISSION.md) (goals, decision-making principles, commitments — also live in the app itself, at `/mission`) and [`CONTENT_POLICY.md`](CONTENT_POLICY.md) (what's excluded from the feed, and why).
+The values and policy behind what the app actually shows: [`mission.md`](web/src/content/mission.md) (goals, decision-making principles, commitments — live in the app at `/mission`), [`algorithm.md`](web/src/content/algorithm.md) (step-by-step pipeline mechanics, live at `/algorithm`), and [`CONTENT_POLICY.md`](CONTENT_POLICY.md) (what's excluded from the feed, and why). The first two live under `web/` since that's what the app actually serves — not duplicated at repo root.
 
 ## A note on LLMs
 
