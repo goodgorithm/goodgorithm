@@ -1,0 +1,59 @@
+.page {
+  padding-block: 0.5rem 2rem;
+}
+
+.back {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+  margin-bottom: 1.5rem;
+}
+
+.back:hover {
+  text-decoration: underline;
+}
+
+/* Markdown renders plain semantic tags (h1/h2/p/ul/li/a) with no classes
+   of their own, so this content wrapper styles them contextually via
+   :global() rather than threading className props through a renderer
+   that's meant to stay generic (also used by the content-policy page,
+   issue #4). */
+.content :global(h1) {
+  font-size: 1.75rem;
+  margin: 0 0 1rem;
+  color: var(--color-text);
+}
+
+.content :global(h2) {
+  font-size: 1.15rem;
+  margin: 2rem 0 0.75rem;
+  color: var(--color-accent);
+}
+
+.content :global(p) {
+  margin: 0 0 1rem;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.content :global(ul) {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.content :global(li) {
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.content :global(a) {
+  color: var(--color-accent);
+}

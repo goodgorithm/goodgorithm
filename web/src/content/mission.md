@@ -1,9 +1,5 @@
 # Our mission
 
-*Draft content for the app's public mission/positioning page (Pre-v1 Roadmap Stage 4, [issue #2](https://github.com/goodgorithm/goodgorithm/issues/2)). Treat this as a strong draft, not locked copy; the roadmap deliberately finalizes this content last, once the rest of the app is done, so it accurately describes what actually shipped.*
-
-*Now shipped as the live page ([issue #3](https://github.com/goodgorithm/goodgorithm/issues/3)) — the copy the app actually serves lives at [`web/src/content/mission.md`](web/src/content/mission.md) (identical content, minus this file's editorial notes). Edit wording there; this file stays as the issue #2 reference draft.*
-
 ## It's not the humans. It's the algorithm.
 
 Good news isn't rare. Kindness, discovery, recovery, craft, community — it's being posted right now, on the same platforms as everything else. It doesn't reach you because the algorithms deciding what you see aren't optimizing for it. They're optimizing for what keeps you scrolling, and outrage keeps you scrolling better than a story about a stranger returning a lost wallet.
