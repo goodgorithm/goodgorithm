@@ -33,6 +33,8 @@ Full project context for anyone (human or Claude) picking this up lives in [`CLA
 - **Published, public docs:** [Goodgorithm — Public Docs](https://app.notion.com/p/3b69243701a7813bbf0feabdcec0a7b0) — start with **Algorithm** (step-by-step pipeline walkthrough) and **Infrastructure** (hosting/tooling and why).
 - **Internal docs** (decisions log, research, infra planning with pricing, setup checklist): team Notion workspace, not public.
 
+The values and policy behind what the app actually shows: [`MISSION.md`](MISSION.md) (goals, decision-making principles, commitments — also live in the app itself, at `/mission`) and [`CONTENT_POLICY.md`](CONTENT_POLICY.md) (what's excluded from the feed, and why).
+
 ## A note on LLMs
 
 The content-selection pipeline itself — sentiment scoring, topic/newsworthiness detection, ranking — runs on classic, well-understood ML: TF-IDF, named entity recognition, small CNNs over word embeddings. Not a large language model.
