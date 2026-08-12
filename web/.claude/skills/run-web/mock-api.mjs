@@ -46,7 +46,11 @@ function makePosts(count) {
       entities: [],
       permalink: `https://example.com/post/${i}`,
       author: { display_name: `Person ${i}`, avatar_url: null },
-      scores: { sentiment: 0.8, topicality: 1, base: 0.9, rank: 1 - i * 0.001 },
+      // Varies across the realistic post-eligibility range (0.3-1.0, see
+      // ranking.py's POSITIVITY_THRESHOLD) so the score ring's fill level
+      // actually differs between mock posts, instead of every card looking
+      // identical.
+      scores: { sentiment: 0.3 + ((i * 0.13) % 0.7), topicality: 1, base: 0.9, rank: 1 - i * 0.001 },
       attachments: hasVideo
         ? [
             {

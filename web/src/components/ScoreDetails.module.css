@@ -3,8 +3,36 @@
 }
 
 .summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
   cursor: pointer;
   color: var(--color-text-secondary);
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.ring {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.ringTrack {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 4;
+}
+
+.ringFill {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.3s ease;
 }
 
 .grid {
@@ -17,4 +45,11 @@
 
 .label {
   color: var(--color-text-secondary);
+}
+
+.algorithmLink {
+  display: inline-block;
+  margin-top: 0.5em;
+  color: var(--color-accent);
+  font-size: 0.78rem;
 }
