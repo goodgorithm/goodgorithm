@@ -8,11 +8,13 @@ An open-source, free-forever, ad-free algorithmic feed of positive/uplifting pub
 
 **Status:** early development. `ingestion/`, `processing/`, and `api/` are built, tested, and deployed to `staging` and `production` on Railway. `web/` (PWA frontend) is built and passing CI, but not deployed yet — needs a one-time Cloudflare Workers account setup (create the `goodgorithm-web` Worker, add a `CLOUDFLARE_API_TOKEN` repo secret) before `deploy-web-staging`/`deploy-web-production` in `ci.yml` can actually ship it.
 
-## Two constraints that are load-bearing, not aspirational
+## Three constraints that are load-bearing, not aspirational
 
 **1. No LLM in the algorithm itself.** Content selection (sentiment scoring, topic/newsworthiness detection, ranking) runs on classic ML: TF-IDF, spaCy NER, MinHash/LSH, a small CNN over word embeddings for sentiment. Not an LLM. The reasoning: the whole pitch is "trust why a post got selected," and classical ML is small, auditable, and doesn't drift or hallucinate the way an LLM can. This is specifically about what powers the algorithm — it does not extend to how the project is built. LLM tools (including Claude) are used openly for development, research, and docs. Don't blur this distinction in code comments, docs, or commit messages: "no LLMs in the filter," not "no LLMs anywhere."
 
 **2. No engagement signals in ranking.** The ranking/dedup pipeline must never read likes, reposts, replies, or follower counts from the source platform. An earlier draft violated this (used an HN-style upvote-decay formula) and got caught and rewritten — see the Decisions Log for what happened. `processing/src/ranking.py`'s `compute_base_score` is the literal enforcement of this: `positivity(sentiment) × topicality × recency_decay`, no other fields exist on `RankablePost` for this to accidentally read. Bot-filtering (`bot_filter.py`) is allowed but stays defensive-only — a hard eligibility filter, never a score boost, so it can't become a backdoor engagement signal.
+
+**3. No attention-optimization in the product.** No streaks, no "come back" push notifications, no autoplay-next, nothing engineered to maximize time-in-app. Surfaced 2026-08-10 alongside the mission/positioning content (Pre-v1 Roadmap Stage 4) as the natural extension of the other two: the product isn't just neutral about engagement, it's actively fine with not holding you, because the point is inspiring real-world action, not screen time. Unlike constraints 1 and 2, there's no single code path enforcing this today — it's a review criterion for future feature work (anti-repeat's cursor persistence, for example, was checked against it: purely a "don't lose your place" convenience, no re-engagement mechanic attached), not a retrofit of something already built.
 
 ## Architecture (as built)
 
