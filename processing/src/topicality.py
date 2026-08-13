@@ -10,6 +10,24 @@ import redis_client
 from dedup import normalize_text
 
 TFIDF_TOP_K = 3
+# Discounts _top_k_mean's raw score by nnz (a doc's distinct-term count) **
+# LENGTH_NORM_ALPHA. A longer post has more terms competing for "top-3", so
+# it has more chances one lands in the corpus's high-IDF tail regardless of
+# whether the post is actually more topical -- confirmed 2026-08-13 against
+# production: topicality_score rose near-monotonically with raw text length
+# across both sources combined, structurally disadvantaging Bluesky's
+# 300-char cap vs Mastodon's ~500-char posts in ranking (issue #23). nnz==1
+# is deliberately a no-op (1 ** ALPHA == 1) so this doesn't reopen the
+# emoji/single-word-spam bug norm=None was chosen to fix below -- a genuine
+# 1-term post's score still depends entirely on that term's real rarity.
+#
+# Value chosen by replaying a random 4,000-post production sample (Supabase,
+# read-only) through both formulas at the real PROCESSING_BATCH_SIZE default
+# (500, per-batch TF-IDF fit, matching how score_topicality is actually
+# called): the pre-fix formula gave Mastodon a 13.6% average topicality edge
+# over Bluesky (ratio 1.136); 0.3 lands just past parity (ratio 0.986) rather
+# than leaving a residual Mastodon-favoring gap. 0.2-0.25 undershot to 1.03-1.01.
+LENGTH_NORM_ALPHA = 0.3
 BURST_THRESHOLD = 5  # mentions within the window to reach a "fully bursting" entity
 BURST_BOOST_WEIGHT = 1.0  # a fully-bursting entity can double a post's topicality score
 BURST_TTL_SECONDS = 3 * 60 * 60  # 3 hours — "spiking now", not a durable count
@@ -65,7 +83,8 @@ def _top_k_mean(values: np.ndarray, k: int) -> float:
     if values.size == 0:
         return 0.0
     top = np.sort(values)[::-1][:k]
-    return float(np.mean(top))
+    raw_mean = float(np.mean(top))
+    return raw_mean / (values.size**LENGTH_NORM_ALPHA)
 
 
 def _top_k_terms(indices: np.ndarray, values: np.ndarray, feature_names: np.ndarray, k: int) -> list[str]:

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
+import numpy as np
+
 import topicality
 
 
@@ -116,6 +118,83 @@ def test_score_topicality_burst_upweights_matching_entity():
     # same order of magnitude of tfidf salience (both distinctive short
     # posts), but the bursting one should score higher due to the boost
     assert results[bursting_post.id].score > results[bursting_post.id].tfidf_component
+
+
+def test_top_k_mean_nnz_one_is_undiscounted():
+    # A genuine single-term post must not be discounted -- 1 ** ALPHA == 1
+    # for any ALPHA, so its score still depends entirely on that term's own
+    # weight, same as before issue #23's length-discount fix. This is what
+    # keeps the discount from reopening the L2-normalization regression
+    # (56ee036) that inflated single-word/emoji posts to a flat ceiling.
+    assert topicality._top_k_mean(np.array([1.0]), 3) == 1.0
+
+
+def test_top_k_mean_discount_grows_with_more_terms():
+    # Same top-3 values in both cases; only the extra below-top-k terms
+    # differ, isolating the discount's dependence on nnz (term count) alone.
+    few_terms = np.array([5.0, 4.0, 3.0])
+    many_terms = np.array([5.0, 4.0, 3.0, 1.0, 1.0, 1.0, 1.0])
+    score_few = topicality._top_k_mean(few_terms, 3)
+    score_many = topicality._top_k_mean(many_terms, 3)
+    assert score_few < 4.0  # discount already engages once nnz > 1
+    assert score_many < score_few  # more terms -> larger discount
+
+
+def test_score_topicality_emoji_spam_score_is_unchanged_by_length_discount():
+    # 56ee036 fixed a real production bug where single-word/emoji posts like
+    # this scored the theoretical max under L2 normalization. The length
+    # discount added for issue #23 must not disturb that fix: since nnz == 1
+    # for a genuine single-term post, its score must come out mathematically
+    # identical to the pre-discount (currently shipped) formula -- not just
+    # "still low" relative to some other post, which turns out not to be a
+    # stable property to assert (see below).
+    #
+    # An earlier version of this test asserted the spam post scores below a
+    # substantive one, using a small hand-built batch. That's not actually a
+    # guarantee the shipped (pre-discount) formula makes either: in a small
+    # corpus, singleton terms -- "cute" as much as any specific breakthrough
+    # term -- tend toward the same IDF ceiling (verified empirically), so
+    # that comparison is corpus-size-dependent, not a real invariant. The
+    # nnz==1 no-op property below is the actual guarantee this fix relies on.
+    spam_text = "cute... 😵‍💫"
+    batch = [spam_text, "quantum entanglement breakthrough confirmed today"]
+
+    new_score = topicality.compute_tfidf_scores(batch)[0]
+
+    normalized = [topicality.normalize_text(t) for t in batch]
+    vectorizer = topicality.TfidfVectorizer(stop_words="english", min_df=1, norm=None, sublinear_tf=True)
+    matrix = vectorizer.fit_transform(normalized)
+    old_score = float(np.mean(np.sort(matrix.getrow(0).data)[::-1][: topicality.TFIDF_TOP_K]))
+
+    assert new_score == old_score
+
+
+def test_score_topicality_length_parity_narrows_vs_undiscounted_formula():
+    # Issue #23: Bluesky's shorter posts were structurally disadvantaged
+    # because more terms give a post more chances to land a high-IDF term in
+    # its top-3, independent of actual content quality. Reimplements the old
+    # (pre-fix) undiscounted formula inline as a "before" comparator -- the
+    # new formula's short/long score ratio should sit closer to 1.
+    short_text = "quantum entanglement breakthrough confirmed today"
+    long_text = (
+        "quantum entanglement breakthrough confirmed today involving photons "
+        "researchers laboratories physicists observatory telescope discovery"
+    )
+    texts = [short_text, long_text]
+
+    new_scores = topicality.compute_tfidf_scores(texts)
+
+    normalized = [topicality.normalize_text(t) for t in texts]
+    vectorizer = topicality.TfidfVectorizer(stop_words="english", min_df=1, norm=None, sublinear_tf=True)
+    matrix = vectorizer.fit_transform(normalized)
+    old_scores = [
+        float(np.mean(np.sort(matrix.getrow(i).data)[::-1][: topicality.TFIDF_TOP_K]))
+        for i in range(matrix.shape[0])
+    ]
+
+    new_ratio = new_scores[0] / new_scores[1]
+    old_ratio = old_scores[0] / old_scores[1]
+    assert new_ratio > old_ratio
 
 
 def test_score_topicality_first_mention_has_minimal_burst_boost():

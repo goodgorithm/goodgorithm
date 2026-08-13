@@ -31,7 +31,7 @@ RETENTION_HOURS = 24
 # this module until now -- see CLAUDE.md's Versioning & migration section.
 # Bump this when a change to any scoring stage would make two posts'
 # base_score/rank_score not directly comparable to each other.
-PIPELINE_VERSION = "v1"
+PIPELINE_VERSION = "v2"
 
 
 def enforce_redis_capacity() -> None:
