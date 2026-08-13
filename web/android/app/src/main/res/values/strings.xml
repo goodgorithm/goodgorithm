@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Goodgorithm</string>
+    <string name="title_activity_main">Goodgorithm</string>
+    <string name="package_name">com.goodgorithm.app</string>
+    <string name="custom_url_scheme">com.goodgorithm.app</string>
+</resources>

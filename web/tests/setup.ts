@@ -27,3 +27,21 @@ if (typeof globalThis.localStorage === "undefined") {
   };
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: polyfill });
 }
+
+// jsdom doesn't implement matchMedia at all - anything under test that reads
+// prefers-color-scheme (e.g. useNativeStatusBar.ts, issue #9) throws without
+// this. Static (always non-matching, no-op listeners): nothing here needs
+// to simulate an actual media-feature change, just not crash.
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = (query: string): MediaQueryList =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+}

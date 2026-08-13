@@ -1,7 +1,15 @@
 .main {
   max-width: 640px;
   margin: 0 auto;
-  padding: 1rem;
+  /* max() with the existing 1rem: on web, safe-area-inset-* is always 0
+     (or the meta viewport-fit=cover meta tag isn't even present without
+     Capacitor), so this is identical to plain 1rem padding -- only grows
+     on a native build under a notch/status bar/home indicator (issue #9).
+     overlaysWebView defaults to true (useNativeStatusBar.ts), so this
+     padding, not a status bar background color, is what keeps the header
+     from drawing underneath it. */
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
 }
 
 .header {

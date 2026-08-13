@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: without it, env(safe-area-inset-*) (App.module.css)
+         always resolves to 0 -- needed for the notch/status-bar padding on
+         native builds (issue #9). No effect on the web PWA case. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1f9d55" />
     <title>Goodgorithm</title>
     <meta name="description" content="An algorithmic feed of positive, uplifting public social posts." />
