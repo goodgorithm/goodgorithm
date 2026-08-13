@@ -28,4 +28,21 @@ describe("CategorySelector", () => {
     fireEvent.click(screen.getByRole("button", { name: "Full feed" }));
     expect(onSelect).toHaveBeenCalledWith(null);
   });
+
+  it("renders categories alphabetically by label, with Full feed last (issue #24)", () => {
+    render(<CategorySelector selected={null} onSelect={() => {}} />);
+
+    const labels = screen.getAllByRole("button").map((button) => button.textContent);
+    expect(labels).toEqual([
+      "Animals",
+      "Arts & Culture",
+      "Environment & Nature",
+      "Health & Recovery",
+      "Kindness & Community",
+      "Science & Discovery",
+      "Sports & Achievement",
+      "Technology",
+      "Full feed",
+    ]);
+  });
 });

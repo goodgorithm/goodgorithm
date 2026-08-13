@@ -1,7 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-
 import { CATEGORIES, CATEGORY_LABELS, type Category } from "../api/types";
 import styles from "./CategorySelector.module.css";
+
+// Purely a display order - the canonical CATEGORIES array (api/src/types.ts)
+// keeps its research-driven declared order untouched everywhere else (AJV
+// validation, processing/'s taxonomy lookup); this is a local sorted copy
+// for this component only (issue #24). Computed once at module scope since
+// CATEGORIES/CATEGORY_LABELS are static.
+const DISPLAY_ORDER = [...CATEGORIES].sort((a, b) => CATEGORY_LABELS[a].localeCompare(CATEGORY_LABELS[b]));
 
 export function CategorySelector({
   selected,
@@ -10,66 +15,28 @@ export function CategorySelector({
   selected: Category | null;
   onSelect: (category: Category | null) => void;
 }) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  // The row silently overflows on narrow viewports with no visible
-  // scrollbar (deliberately hidden for a cleaner chip look) - without
-  // these, "Full feed" and the last few categories are invisible with no
-  // hint more content exists off-screen. Found live on staging.
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  useEffect(() => {
-    const el = rowRef.current;
-    if (!el) return;
-
-    const updateScrollState = () => {
-      setCanScrollLeft(el.scrollLeft > 4);
-      setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-    };
-
-    updateScrollState();
-    el.addEventListener("scroll", updateScrollState, { passive: true });
-    window.addEventListener("resize", updateScrollState);
-    return () => {
-      el.removeEventListener("scroll", updateScrollState);
-      window.removeEventListener("resize", updateScrollState);
-    };
-  }, []);
-
   return (
-    <div className={styles.wrapper}>
-      <div className={styles.row} ref={rowRef}>
-        {CATEGORIES.map((category) => (
-          <button
-            key={category}
-            type="button"
-            className={selected === category ? `${styles.chip} ${styles.selected}` : styles.chip}
-            onClick={() => onSelect(category)}
-          >
-            {CATEGORY_LABELS[category]}
-          </button>
-        ))}
-        {/* Deliberately last and visually de-emphasized (dashed border, muted
-            color, never accent-colored even when active) - a category should
-            feel like the default pick, not the unfiltered feed. */}
+    <div className={styles.grid}>
+      {DISPLAY_ORDER.map((category) => (
         <button
+          key={category}
           type="button"
-          className={selected === null ? `${styles.fullFeed} ${styles.fullFeedSelected}` : styles.fullFeed}
-          onClick={() => onSelect(null)}
+          className={selected === category ? `${styles.chip} ${styles.selected}` : styles.chip}
+          onClick={() => onSelect(category)}
         >
-          Full feed
+          {CATEGORY_LABELS[category]}
         </button>
-      </div>
-      {canScrollLeft && (
-        <div className={`${styles.fade} ${styles.fadeLeft}`} aria-hidden="true">
-          <span className={styles.chevron}>‹</span>
-        </div>
-      )}
-      {canScrollRight && (
-        <div className={`${styles.fade} ${styles.fadeRight}`} aria-hidden="true">
-          <span className={styles.chevron}>›</span>
-        </div>
-      )}
+      ))}
+      {/* Deliberately last and visually de-emphasized (dashed border, muted
+          color, never accent-colored even when active) - a category should
+          feel like the default pick, not the unfiltered feed. */}
+      <button
+        type="button"
+        className={selected === null ? `${styles.fullFeed} ${styles.fullFeedSelected}` : styles.fullFeed}
+        onClick={() => onSelect(null)}
+      >
+        Full feed
+      </button>
     </div>
   );
 }
