@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import algorithmSource from "./content/algorithm.md?raw";
 import missionSource from "./content/mission.md?raw";
@@ -22,11 +22,17 @@ const CONTENT_PAGES = [
 
 export default function App() {
   const [path, navigate] = useLocation();
+  const [navOpen, setNavOpen] = useState(false);
   const activePage = CONTENT_PAGES.find((p) => p.path === path);
 
   useEffect(() => {
     document.title = activePage ? `${activePage.label} — Goodgorithm` : "Goodgorithm";
   }, [activePage]);
+
+  // Don't leave the expanded menu open behind whatever page it navigated to.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [path]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -36,7 +42,21 @@ export default function App() {
           <button type="button" className={styles.logoButton} onClick={() => navigate("/")}>
             <Wordmark />
           </button>
-          <nav className={styles.nav}>
+          {/* Only shown below the narrow-viewport breakpoint (App.module.css)
+              -- the nav row itself always renders above it, so this has
+              nothing to toggle and stays hidden (issue #27: the header
+              previously just overflowed off-screen with no indication more
+              nav existed). */}
+          <button
+            type="button"
+            className={styles.navToggle}
+            aria-expanded={navOpen}
+            aria-label={navOpen ? "Close menu" : "Open menu"}
+            onClick={() => setNavOpen((open) => !open)}
+          >
+            {navOpen ? "✕" : "☰"}
+          </button>
+          <nav className={navOpen ? `${styles.nav} ${styles.navOpen}` : styles.nav}>
             {CONTENT_PAGES.filter((p) => p.path !== path).map((p) => (
               <button
                 key={p.path}
