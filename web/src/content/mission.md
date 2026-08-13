@@ -4,9 +4,9 @@
 
 Good news isn't rare. Kindness, discovery, recovery, craft, community — it's being posted right now, on the same platforms as everything else. It doesn't reach you because the algorithms deciding what you see aren't optimizing for it. They're optimizing for what keeps you scrolling, and outrage keeps you scrolling better than a story about a stranger returning a lost wallet.
 
-So we didn't go build a curated publication. We built an algorithm — the same basic kind of system that's usually working against you, pointed at a different goal. Goodgorithm reads the same open, public feeds everyone else does (Bluesky, Mastodon) and surfaces what's already there, scored for genuine positivity and topical substance instead of for what keeps you hooked.
+So we didn't go build a curated publication. We built an algorithm — the same basic kind of system that's usually working against you, pointed at a different goal. Goodgorithm reads the same open, public feeds everyone else does ([Bluesky](https://bsky.app), [Mastodon](https://joinmastodon.org)) and surfaces what's already there, scored for genuine positivity and topical substance instead of for what keeps you hooked.
 
-We see human-curated good-news outlets — Good News Network, Positive News, and others like them — as doing the same work from a different angle, not as competitors. Editorial judgment and algorithmic filtering both have something to offer here, and we'd rather this space have more of both than either one "winning."
+We see human-curated good-news outlets — [Good News Network](https://goodnewsnetwork.org), [Positive News](https://positive.news), and others like them — as doing the same work from a different angle, not as competitors. Editorial judgment and algorithmic filtering both have something to offer here, and we'd rather this space have more of both than either one "winning."
 
 And we're explicit about what we're *not* trying to do: hold your attention. We're not neutral about engagement — we're actively fine with this app not being sticky. The point was never screen time. It's whatever you do after you put your phone down.
 

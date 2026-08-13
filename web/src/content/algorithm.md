@@ -38,13 +38,13 @@ Combines two signals:
 
 **TF-IDF salience** — within each processing batch, a post is scored by the mean weight of its top 3 TF-IDF terms, so it's judged by its most distinctive words, not diluted by length.
 
-**Entity burst** — spaCy's named-entity recognizer extracts people, organizations, places, events, and similar entities. Each mention bumps a short-lived (3-hour) Redis counter per entity across the whole incoming stream. A post mentioning an entity currently spiking (up to 5 mentions in that window) gets its topicality score boosted, up to double.
+**Entity burst** — [spaCy](https://spacy.io)'s named-entity recognizer extracts people, organizations, places, events, and similar entities. Each mention bumps a short-lived (3-hour) Redis counter per entity across the whole incoming stream. A post mentioning an entity currently spiking (up to 5 mentions in that window) gets its topicality score boosted, up to double.
 
 ## 5. Sentiment
 
-A small convolutional neural network (Kim 2014-style: parallel convolutions over word embeddings, global max-pooling, dropout, a linear 3-way classifier), trained on three public sentiment datasets — Sentiment140, TweetEval/SemEval-2017, and GoEmotions, harmonized into one negative/neutral/positive scheme — and exported to ONNX for lightweight, GPU-free inference.
+A small convolutional neural network ([Kim 2014](https://arxiv.org/abs/1408.5882)-style: parallel convolutions over word embeddings, global max-pooling, dropout, a linear 3-way classifier), trained on three public sentiment datasets — [Sentiment140](https://help.sentiment140.com/for-students), [TweetEval](https://github.com/cardiffnlp/tweeteval)/[SemEval-2017](https://aclanthology.org/S17-2088/), and [GoEmotions](https://arxiv.org/abs/2005.00547) — harmonized into one negative/neutral/positive scheme — and exported to ONNX for lightweight, GPU-free inference.
 
-Output is a single score from -1 to 1. If no trained model can be loaded, the pipeline falls back automatically to VADER, a rule-based sentiment lexicon — which scorer produced a given score is recorded alongside it, never hidden after the fact.
+Output is a single score from -1 to 1. If no trained model can be loaded, the pipeline falls back automatically to [VADER](https://ojs.aaai.org/index.php/ICWSM/article/view/14550), a rule-based sentiment lexicon — which scorer produced a given score is recorded alongside it, never hidden after the fact.
 
 ## 6. Base score
 
@@ -60,7 +60,7 @@ base_score = positivity(sentiment) × topicality × recency_decay
 
 Every processing cycle, the eligible pool is re-ranked from scratch. Eligible means: not bot-flagged, dedup-canonical, and sentiment score at or above 0.3. The pool is windowed to the last 72 hours — bounded tighter in practice by the current 24-hour data retention — and capped at the top 2,000 posts by base score if it's larger than that, so ranking stays computationally bounded.
 
-Ranking uses Maximal Marginal Relevance (MMR): it greedily builds the ranked list one post at a time, picking whichever remaining post maximizes `0.7 × base_score − 0.3 × (similarity to posts already selected)`. Similarity blends TF-IDF cosine similarity and shared-entity overlap, weighted equally. This is what stops one big story from filling the feed with near-identical posts.
+Ranking uses [Maximal Marginal Relevance (MMR)](https://doi.org/10.1145/290941.291025): it greedily builds the ranked list one post at a time, picking whichever remaining post maximizes `0.7 × base_score − 0.3 × (similarity to posts already selected)`. Similarity blends TF-IDF cosine similarity and shared-entity overlap, weighted equally. This is what stops one big story from filling the feed with near-identical posts.
 
 ## 8. Serving
 
