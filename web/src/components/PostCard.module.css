@@ -34,7 +34,20 @@
   margin-top: 0.6em;
 }
 
+.links {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+}
+
 .permalink {
   font-size: 0.85rem;
   color: var(--color-accent);
+}
+
+/* De-emphasized -- a reporting link should be discoverable, not compete
+   visually with "View original" for most users who'll never need it. */
+.report {
+  font-size: 0.78rem;
+  color: var(--color-text-tertiary);
 }

@@ -75,6 +75,7 @@ def main() -> None:
         pipeline.run_cycle(args.batch_size)
         pipeline.refresh_rankings()
         pipeline.cleanup_old_data()
+        pipeline.purge_blocked_authors()
         db.close()
         return
 
@@ -89,6 +90,7 @@ def main() -> None:
             last_refresh_time = now
 
         pipeline.cleanup_old_data()
+        pipeline.purge_blocked_authors()
         # Only reached if the whole cycle completed without raising - an
         # unhandled exception anywhere above crashes the process before
         # this line, which is exactly the "missed ping" a dead-man's-switch

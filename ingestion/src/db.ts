@@ -44,6 +44,24 @@ export async function deleteBySourceId(source: "bluesky" | "mastodon", sourceId:
   return result.count;
 }
 
+// Moderation blocklist (issue #7) -- written to by a human moderator
+// directly (SQL) for manual entries, and by blueskyLabels.ts when
+// Bluesky's own moderation service applies its official "bot" account
+// label. ON CONFLICT DO NOTHING: the label stream can redeliver the same
+// label on reconnect, and a moderator's manual entry should never be
+// silently overwritten by an automated one anyway.
+export async function blockAuthor(
+  source: "bluesky" | "mastodon",
+  authorId: string,
+  reason: string,
+): Promise<void> {
+  await sql`
+    INSERT INTO blocked_authors (source, author_id, reason)
+    VALUES (${source}, ${authorId}, ${reason})
+    ON CONFLICT (source, author_id) DO NOTHING
+  `;
+}
+
 export async function close(): Promise<void> {
   await sql.end();
 }

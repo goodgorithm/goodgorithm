@@ -218,5 +218,30 @@ def delete_raw_post(post_id: UUID) -> bool:
         return cur.rowcount > 0
 
 
+def fetch_blocked_authors() -> set[tuple[str, str]]:
+    """Whole table, loaded fresh once per cycle -- moderation blocklist
+    (issue #7) is small (manual entries + Bluesky bot-label auto-inserts),
+    cheaper than a per-post query."""
+    with pool.connection() as conn:
+        rows = conn.execute("SELECT source, author_id FROM blocked_authors").fetchall()
+    return {(row[0], row[1]) for row in rows}
+
+
+def purge_blocked_authors() -> int:
+    """Deletes any already-ingested raw_posts (processed_posts cascades)
+    for a blocklisted (source, author_id) -- run every cycle so a new
+    blocklist entry (manual or the bot-label auto-insert) takes effect on
+    posts already in the DB within one cycle, not just future ones."""
+    with pool.connection() as conn:
+        cur = conn.execute(
+            """
+            DELETE FROM raw_posts r
+            USING blocked_authors b
+            WHERE r.source = b.source AND r.author_id = b.author_id
+            """
+        )
+        return cur.rowcount
+
+
 def close() -> None:
     pool.close()

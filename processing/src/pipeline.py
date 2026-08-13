@@ -54,10 +54,19 @@ def run_cycle(batch_size: int) -> int:
 
     # Hard content-exclude runs before dedup/bot/topicality -- no point
     # spending Redis/CPU on content that's about to be deleted. Excluded
-    # posts never get a processed_posts row at all.
+    # posts never get a processed_posts row at all. Moderation blocklist
+    # (issue #7) is checked here too, same position/reasoning -- a known
+    # bad actor's posts are excluded before they're ever scored, whether
+    # the block came from a moderator's manual entry or the Bluesky
+    # bot-label auto-insert (ingestion/src/blueskyLabels.ts).
+    blocked = db.fetch_blocked_authors()
+
     kept_posts = []
     for post in posts:
-        if content_filter.is_content_excluded(post.text, post.raw_json):
+        if (post.source, post.author_id) in blocked:
+            db.delete_raw_post(post.id)
+            logger.info("moderation-blocked post %s (author %s/%s)", post.id, post.source, post.author_id)
+        elif content_filter.is_content_excluded(post.text, post.raw_json):
             db.delete_raw_post(post.id)
             logger.info("content-filtered post %s (hashtag/self-label)", post.id)
         else:
@@ -171,6 +180,20 @@ def refresh_rankings() -> int:
 
     logger.info("refreshed rankings for %d posts", len(results))
     return len(results)
+
+
+def purge_blocked_authors() -> int:
+    """Retroactive half of the moderation blocklist (issue #7) -- run_cycle's
+    check only stops *future* posts from a blocklisted author; this deletes
+    any of their posts already sitting in raw_posts (processed_posts
+    cascades), so a moderator's manual entry or the Bluesky bot-label
+    auto-insert takes effect on already-ingested/already-ranked posts too,
+    within one processing cycle rather than waiting for retention to age
+    them out."""
+    purged = db.purge_blocked_authors()
+    if purged:
+        logger.info("purged %d posts from newly/still-blocked authors", purged)
+    return purged
 
 
 def cleanup_old_data() -> int:

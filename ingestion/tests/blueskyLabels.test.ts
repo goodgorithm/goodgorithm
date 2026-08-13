@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isExcludedLabel, parsePostTarget } from "../src/blueskyLabels";
+import { isBotLabel, isExcludedLabel, parseAccountTarget, parsePostTarget } from "../src/blueskyLabels";
 
 test("parsePostTarget extracts did/rkey from a post-collection AT-URI", () => {
   assert.deepEqual(
@@ -51,6 +51,38 @@ test("isExcludedLabel ignores retractions (neg: true), even for a matching value
       neg: true,
       cts: "",
     }),
+    false,
+  );
+});
+
+test("parseAccountTarget extracts a bare DID from an account-level AT-URI (issue #7)", () => {
+  assert.equal(parseAccountTarget("at://did:plc:nkkjb4ihtvqsp3u5wudunb6x"), "did:plc:nkkjb4ihtvqsp3u5wudunb6x");
+});
+
+test("parseAccountTarget returns null for a post-collection AT-URI", () => {
+  // A post URI has a "/" after the authority -- distinct from the bare
+  // account-level shape.
+  assert.equal(parseAccountTarget("at://did:plc:x/app.bsky.feed.post/y"), null);
+});
+
+test("parseAccountTarget returns null for malformed URIs", () => {
+  assert.equal(parseAccountTarget("not-a-uri"), null);
+  assert.equal(parseAccountTarget("at://"), null);
+  assert.equal(parseAccountTarget(""), null);
+});
+
+test("isBotLabel matches the official Bluesky bot label (issue #7)", () => {
+  assert.equal(isBotLabel({ src: "did:plc:mod", uri: "at://did:plc:x", val: "bot", cts: "" }), true);
+});
+
+test("isBotLabel does not match unrelated label values", () => {
+  assert.equal(isBotLabel({ src: "did:plc:mod", uri: "at://did:plc:x", val: "spam", cts: "" }), false);
+  assert.equal(isBotLabel({ src: "did:plc:mod", uri: "at://did:plc:x", val: "porn", cts: "" }), false);
+});
+
+test("isBotLabel ignores retractions (neg: true)", () => {
+  assert.equal(
+    isBotLabel({ src: "did:plc:mod", uri: "at://did:plc:x", val: "bot", neg: true, cts: "" }),
     false,
   );
 });

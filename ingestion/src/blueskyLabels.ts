@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { deleteBySourceId } from "./db";
+import { blockAuthor, deleteBySourceId } from "./db";
 
 const MOD_BSKY_LABELS_URL = "wss://mod.bsky.app/xrpc/com.atproto.label.subscribeLabels";
 
@@ -12,6 +12,16 @@ const RECONNECT_MAX_MS = 60_000;
 // Duplicated by hand in processing/src/content_filter.py -- no shared
 // package exists across the TS/Python boundary in this repo.
 const ADULT_LABEL_VALUES = new Set(["porn", "sexual", "graphic-media", "nudity"]);
+
+// Bluesky's own official global label (com.atproto.label.defs, confirmed
+// against docs.bsky.app and the atproto lexicon source directly, 2026-08-13)
+// -- "marks the account as automated." Unlike the adult-content labels
+// above, this targets the *account*, not a specific post (issue #7) --
+// routed into blocked_authors (see parseAccountTarget/blockAuthor below)
+// rather than a one-off post deletion, so processing/'s purge-and-prevent
+// logic catches all of that account's posts, not just the one that
+// happened to trigger the label.
+const BOT_LABEL_VALUE = "bot";
 
 interface Label {
   src: string;
@@ -53,6 +63,23 @@ export function parsePostTarget(uri: string): { did: string; rkey: string } | nu
 // matching raw_posts row has already been deleted.
 export function isExcludedLabel(label: Label): boolean {
   return !label.neg && ADULT_LABEL_VALUES.has(label.val);
+}
+
+export function isBotLabel(label: Label): boolean {
+  return !label.neg && label.val === BOT_LABEL_VALUE;
+}
+
+// at://{did} -> did; null for anything else. An account-level label's uri
+// is just the bare repo authority (per the AT-URI spec's repo-level form
+// and com.atproto.label.defs's "record, repository (account), or other
+// resource" description) -- distinct from parsePostTarget's 3-segment
+// collection/rkey shape above. Verify against a real sample of the live
+// label stream if a "bot" label is ever observed NOT matching this shape.
+export function parseAccountTarget(uri: string): string | null {
+  if (!uri.startsWith("at://")) return null;
+  const rest = uri.slice("at://".length);
+  if (!rest || rest.includes("/")) return null;
+  return rest;
 }
 
 export function startBlueskyLabelIngestion(): void {
@@ -124,6 +151,14 @@ export function startBlueskyLabelIngestion(): void {
         lastSeq = payload.seq;
 
         for (const label of payload.labels) {
+          if (isBotLabel(label)) {
+            const did = parseAccountTarget(label.uri);
+            if (!did) continue;
+            await blockAuthor("bluesky", did, `mod.bsky.app "bot" label from ${label.src}`);
+            console.log(`[bluesky-labels] "bot" from ${label.src} on account ${did} -> blocked`);
+            continue;
+          }
+
           if (!isExcludedLabel(label)) continue;
           const target = parsePostTarget(label.uri);
           if (!target) continue;

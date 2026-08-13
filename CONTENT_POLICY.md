@@ -27,6 +27,13 @@ We run a defensive-only filter that looks at posting velocity (is this account p
 
 This is honestly the least complete part of what we exclude today. Real sampling has turned up spam and bot accounts that get through the current filter — flight-tracker bots, "now playing" radio bots, counterfeit-goods and affiliate-link spam, and at least one partisan campaign-donation post that happened to match on general goodwill keywords. We're not going to claim this is solved. It's an area we expect to keep improving, and we'd rather say that plainly than imply a false sense of completeness.
 
+Two things now sit on top of the automated filter above, closing some of that gap:
+
+- **A manual blocklist.** Once a bad-actor account is identified — by a moderator reviewing the feed by hand, or via a community report (below) — it's added to a blocklist keyed on the account, not any single post. Every future post from that account is excluded before it's ever scored, and any of its posts already in the system are removed too, not just left to age out. This is deliberately simple and human-driven for now, not an automated sweep — we're not comfortable claiming an automated classifier can make this call reliably yet, and manual review is a real, honest starting point rather than a placeholder we're quietly hoping to skip.
+- **Bluesky's own "bot" account label.** Bluesky's moderation service can mark an account as automated; when it does, we treat that exactly like a manual blocklist entry — same effect, same "excludes only, never a signal for anything else" rule as everything on this page. We don't subscribe to any other third-party labeler or blocklist for this — the ones we looked at are either unvetted or, for the fediverse's community blocklists, block entire instances rather than individual accounts, which doesn't fit our two curated Mastodon instances.
+
+If you spot spam, a bot, or off-topic promotional content that made it into the feed, [tell us](https://github.com/goodgorithm/goodgorithm/issues/new?template=moderation_report.md) — that's exactly the gap this section is honest about, and reports are what feed the manual blocklist above.
+
 ### What we never use to make these calls
 
 Consistent with the values in `web/src/content/mission.md`: none of the above ever reads likes, reposts, replies, or follower counts, and none of it runs through an LLM. The bot/spam filter is purely behavioral — how often an account posts, whether it's reposting near-duplicate content, and patterns in the text itself — not account metadata like follower or following counts. Every check here can only exclude a post, never boost it. If any of this ever looked like it was being used as a backdoor engagement signal, that would be a bug, not a feature.

@@ -8,6 +8,21 @@ import { RelativeTime } from "./RelativeTime";
 import { ScoreDetails } from "./ScoreDetails";
 import { SourceBadge } from "./SourceBadge";
 
+// Deep-links to the moderation-report issue template (issue #7), pre-filled
+// with this post's permalink under the template's own "Post or account"
+// heading -- GitHub's standard query-param pre-fill for .md-style issue
+// templates, no backend needed. The reporter still fills in "What's wrong"
+// themselves; a moderator reviews and acts by hand (see CONTENT_POLICY.md).
+function reportUrl(permalink: string): string {
+  const body = `## Post or account\n\n${permalink}\n\n## What's wrong\n\n`;
+  const params = new URLSearchParams({
+    template: "moderation_report.md",
+    title: "Moderation report",
+    body,
+  });
+  return `https://github.com/goodgorithm/goodgorithm/issues/new?${params.toString()}`;
+}
+
 export function PostCard({
   post,
   relative,
@@ -40,14 +55,24 @@ export function PostCard({
 
       <div className={styles.footer}>
         {post.permalink && (
-          <a
-            className={styles.permalink}
-            href={post.permalink}
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            View original ↗
-          </a>
+          <div className={styles.links}>
+            <a
+              className={styles.permalink}
+              href={post.permalink}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              View original ↗
+            </a>
+            <a
+              className={styles.report}
+              href={reportUrl(post.permalink)}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Report
+            </a>
+          </div>
         )}
         <ScoreDetails scores={post.scores} relative={relative} navigate={navigate} />
       </div>

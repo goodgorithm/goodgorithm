@@ -59,4 +59,18 @@ describe("PostCard", () => {
     expect(screen.getByText("Scores")).toBeInTheDocument();
     expect(screen.getByText("0.90")).toBeInTheDocument();
   });
+
+  it("links Report to the moderation issue template, pre-filled with the permalink (issue #7)", () => {
+    render(<PostCard post={bskyPost} relative={noRelative} navigate={noop} />);
+
+    const reportLink = screen.getByRole("link", { name: "Report" });
+    const href = reportLink.getAttribute("href")!;
+    expect(href).toMatch(
+      /^https:\/\/github\.com\/goodgorithm\/goodgorithm\/issues\/new\?/,
+    );
+
+    const params = new URL(href).searchParams;
+    expect(params.get("template")).toBe("moderation_report.md");
+    expect(params.get("body")).toContain(bskyPost.permalink);
+  });
 });
