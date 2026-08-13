@@ -153,7 +153,7 @@ Settled 2026-08-10 through 7 rounds of live iteration (Artifact-based mood board
 
 ## Data sources
 
-Bluesky Jetstream (public WebSocket firehose, filtered to `app.bsky.feed.post` creates) and Mastodon public timelines (polling `fosstodon.org` + `hachyderm.io`, 30s interval). Both are open, unauthenticated protocols — no paid APIs, no scraping behind logins. English-only on both paths; every downstream model is English-only. This is deliberate: keeps the pipeline reproducible without special access.
+Bluesky Jetstream (public WebSocket firehose, filtered to `app.bsky.feed.post` creates) and Mastodon public timelines (polling 8 instances — `fosstodon.org`, `hachyderm.io`, `sciences.social`, `journa.host`, `universeodon.com`, `mstdn.social`, `mas.to`, `mastodon.world` — 30s interval; expanded 2026-08-13 from the original two, chosen individually for actually having unauthenticated `/api/v1/timelines/public` access — several well-known instances, including `mastodon.social` itself, have that disabled — and for topical diversity beyond the original two's tech lean). Both are open, unauthenticated protocols — no paid APIs, no scraping behind logins. English-only on both paths; every downstream model is English-only. This is deliberate: keeps the pipeline reproducible without special access.
 
 ## Infra (provisioned and live)
 

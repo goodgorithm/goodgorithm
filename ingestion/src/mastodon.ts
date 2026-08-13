@@ -1,6 +1,30 @@
 import { insertPost } from "./db";
 
-const INSTANCES = ["fosstodon.org", "hachyderm.io"];
+// Deliberately verified individually before adding, not just picked from a
+// "popular instances" list: many well-known instances (mastodon.social
+// itself, infosec.exchange, scholar.social, mastodon.art) have disabled
+// unauthenticated access to /api/v1/timelines/public (a per-instance admin
+// toggle), so a candidate has to actually respond with real data before it
+// belongs here. fosstodon.org/hachyderm.io are both tech-leaning; the rest
+// were chosen to add topical diversity rather than more of the same --
+// sciences.social (Science & Discovery), journa.host (journalism), and
+// three general-purpose instances (mstdn.social, mas.to, mastodon.world,
+// universeodon.com). Explicitly NOT added despite showing up on general
+// "popular instances" lists: mstdn.party -- a random sample of its public
+// timeline surfaced genuinely concerning sexualized content involving
+// minors, so it fails this project's moderation bar outright regardless of
+// volume/topic fit (CONTENT_POLICY.md: "we'd rather exclude too much than
+// too little").
+const INSTANCES = [
+  "fosstodon.org",
+  "hachyderm.io",
+  "sciences.social",
+  "journa.host",
+  "universeodon.com",
+  "mstdn.social",
+  "mas.to",
+  "mastodon.world",
+];
 
 const POLL_INTERVAL_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 10_000;

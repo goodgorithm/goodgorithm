@@ -10,7 +10,7 @@ Two independent, always-on consumers write into a single `raw_posts` table, each
 
 **Bluesky** — a persistent WebSocket connection to the public Jetstream firehose, subscribed specifically to `app.bsky.feed.post` creation events. Reconnects with exponential backoff (5s → 60s cap) on any drop. Only posts with no language tag or an explicit `en` tag are kept.
 
-**Mastodon** — polls the public timelines of two instances (`fosstodon.org`, `hachyderm.io`) every 30 seconds. Only `public`-visibility, English posts are kept; HTML is stripped to plain text. Accounts that have opted out of discovery or search-engine indexing (the `discoverable`/`indexable` account fields) are skipped — public visibility isn't the same thing as consent for reuse.
+**Mastodon** — polls the public timelines of eight instances (`fosstodon.org`, `hachyderm.io`, `sciences.social`, `journa.host`, `universeodon.com`, `mstdn.social`, `mas.to`, `mastodon.world`) every 30 seconds — each individually confirmed to have a genuinely open, unauthenticated public timeline, not assumed from a "popular instances" list. Only `public`-visibility, English posts are kept; HTML is stripped to plain text. Accounts that have opted out of discovery or search-engine indexing (the `discoverable`/`indexable` account fields) are skipped — public visibility isn't the same thing as consent for reuse.
 
 Neither path touches an authenticated endpoint or a paid API.
 
