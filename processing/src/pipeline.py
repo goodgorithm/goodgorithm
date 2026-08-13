@@ -6,6 +6,7 @@ import config
 import content_filter
 import db
 import dedup
+import language_filter
 import quote_resolver
 import ranking
 import redis_guard
@@ -59,6 +60,15 @@ def run_cycle(batch_size: int) -> int:
     # bad actor's posts are excluded before they're ever scored, whether
     # the block came from a moderator's manual entry or the Bluesky
     # bot-label auto-insert (ingestion/src/blueskyLabels.ts).
+    #
+    # Language verification (issue #28) only runs when post.lang is None --
+    # ingestion/'s own language filters (bluesky.ts/mastodon.ts) already
+    # exclude anything self-/server-tagged as non-English; the confirmed
+    # gap was specifically posts with no language signal at all
+    # (~11-13% of ingested volume), which those filters let through
+    # unconditionally on the assumption "no tag = English". A tagged post
+    # has already been through that check, so re-verifying its content
+    # here wouldn't change anything.
     blocked = db.fetch_blocked_authors()
 
     kept_posts = []
@@ -69,6 +79,9 @@ def run_cycle(batch_size: int) -> int:
         elif content_filter.is_content_excluded(post.text, post.raw_json):
             db.delete_raw_post(post.id)
             logger.info("content-filtered post %s (hashtag/self-label)", post.id)
+        elif post.lang is None and language_filter.is_non_english(post.text):
+            db.delete_raw_post(post.id)
+            logger.info("language-filtered post %s (no tag, detected non-English)", post.id)
         else:
             kept_posts.append(post)
 

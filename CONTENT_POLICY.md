@@ -34,6 +34,12 @@ Two things now sit on top of the automated filter above, closing some of that ga
 
 If you spot spam, a bot, or off-topic promotional content that made it into the feed, [tell us](https://github.com/goodgorithm/goodgorithm/issues/new?template=moderation_report.md) — that's exactly the gap this section is honest about, and reports are what feed the manual blocklist above.
 
+### Non-English content
+
+Goodgorithm is meant to be English-only — every downstream model (topicality, sentiment, category taxonomy) is English-only, so anything else isn't just off-mission, it's actively mis-scored. We first ask each source whether it already knows the post's language (Bluesky's self-reported tag, Mastodon's own server-side detection); if a post is tagged as anything other than English, it's excluded before ingestion even completes.
+
+That tag isn't always present. When it's missing entirely, we check the text itself with a small, local language-identification model rather than assuming "no tag" means English — that assumption turned out to be wrong often enough in practice to matter, not just a rare edge case. Same rule as everything else on this page: this only ever excludes, and only when the model is genuinely confident; an inconclusive read on short or ambiguous text is treated as "not enough signal to exclude," not "assume non-English."
+
 ### What we never use to make these calls
 
 Consistent with the values in `web/src/content/mission.md`: none of the above ever reads likes, reposts, replies, or follower counts, and none of it runs through an LLM. The bot/spam filter is purely behavioral — how often an account posts, whether it's reposting near-duplicate content, and patterns in the text itself — not account metadata like follower or following counts. Every check here can only exclude a post, never boost it. If any of this ever looked like it was being used as a backdoor engagement signal, that would be a bug, not a feature.
