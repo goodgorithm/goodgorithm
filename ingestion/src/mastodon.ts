@@ -8,11 +8,37 @@ const USER_AGENT = "Goodgorithm/0.1 (https://github.com/goodgorithm)";
 
 interface MastodonStatus {
   id: string;
-  account: { acct: string };
+  account: { acct: string; discoverable: boolean | null; indexable: boolean | null };
   content: string;
   language: string | null;
   created_at: string;
   visibility: string;
+}
+
+// Mastodon's two related, distinct opt-out signals for a public account:
+// `discoverable` (opted into in-instance discovery -- profile directory,
+// "who to follow" recommendations, added 3.1.0) and `indexable` ("allows
+// indexing by search engines", added ~4.2/4.3 -- the more literal match for
+// "don't index/reuse my posts externally", which is exactly what a
+// timeline-polling aggregator like this one does). `public` visibility is
+// not consent for reuse (issue #25's research: the fediverse's documented
+// norm, and the recurring friction other aggregator tools -- Awakari,
+// Contentnation.net, Mnemo.social -- have hit is specifically about
+// consent, not about algorithmic ranking itself). Respect either opt-out.
+// Live-sampled both polled instances 2026-08-13: indexable=false is
+// actually the *more* common signal (58-60% of posts) and frequently
+// diverges from discoverable, so checking only one would miss a lot of
+// explicit opt-outs. `noindex` (the account-settings field this maps to
+// user-facing) is only exposed via the authenticated verify_credentials
+// endpoint, not reachable from this unauthenticated polling architecture.
+//
+// Both fields are nullable per Mastodon's docs (older accounts, or remote
+// accounts an instance hasn't fully cached federated data for, may not have
+// them set) -- treat null/undefined as opted-in, only an explicit `false`
+// excludes a post, so this can't silently start dropping posts if a field
+// is ever absent from a response.
+export function isDiscoverable(account: { discoverable: boolean | null; indexable: boolean | null }): boolean {
+  return account.discoverable !== false && account.indexable !== false;
 }
 
 // The common named entities Mastodon's HTML actually emits, plus numeric
@@ -95,6 +121,7 @@ async function pollInstance(
     if (status.visibility !== "public") continue;
     // only English posts
     if (status.language && status.language !== "en") continue;
+    if (!isDiscoverable(status.account)) continue;
 
     const text = stripHtml(status.content);
     if (!text) continue;

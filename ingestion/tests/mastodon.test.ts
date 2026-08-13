@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { stripHtml } from "../src/mastodon";
+import { isDiscoverable, stripHtml } from "../src/mastodon";
 
 test("stripHtml strips tags", () => {
   assert.equal(stripHtml("<p>Hello <strong>world</strong></p>"), "Hello world");
@@ -53,4 +53,29 @@ test("stripHtml reconstructs hashtags Mastodon wraps in a nested span (issue #22
     '<a href="https://masto.ai/tags/Trump" class="mention hashtag" rel="nofollow noopener" target="_blank">#<span>Trump</span></a></p>';
 
   assert.equal(stripHtml(html), "#Greenland #Trump");
+});
+
+test("isDiscoverable is true when both fields are opted in (issue #25)", () => {
+  assert.equal(isDiscoverable({ discoverable: true, indexable: true }), true);
+});
+
+test("isDiscoverable is false when discoverable is explicitly false", () => {
+  assert.equal(isDiscoverable({ discoverable: false, indexable: true }), false);
+});
+
+test("isDiscoverable is false when indexable is explicitly false, even if discoverable is true", () => {
+  // The more common real-world case (see mastodon.ts's comment): opted into
+  // the profile directory but explicitly opted out of search-engine/external
+  // indexing.
+  assert.equal(isDiscoverable({ discoverable: true, indexable: false }), false);
+});
+
+test("isDiscoverable is false when both fields are explicitly false", () => {
+  assert.equal(isDiscoverable({ discoverable: false, indexable: false }), false);
+});
+
+test("isDiscoverable treats null (unset) fields as opted-in by default", () => {
+  assert.equal(isDiscoverable({ discoverable: null, indexable: null }), true);
+  assert.equal(isDiscoverable({ discoverable: null, indexable: true }), true);
+  assert.equal(isDiscoverable({ discoverable: true, indexable: null }), true);
 });
