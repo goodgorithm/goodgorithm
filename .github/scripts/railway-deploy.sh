@@ -33,6 +33,22 @@ deploy_service() {
 	local service="$1"
 	echo "::group::Deploying ${service}"
 
+	# Railway only auto-populates RAILWAY_GIT_COMMIT_SHA for deploys it
+	# triggers itself via its native GitHub integration -- the `railway up`
+	# deploy below doesn't count, even though this service's source is
+	# configured with a repo/branch (confirmed via Railway's docs and a live
+	# variable check, 2026-08-13: api/'s /health was reporting
+	# version:"unknown" on both environments as a result). Set our own from
+	# $GITHUB_SHA (always present in a GitHub Actions job) before the deploy,
+	# --skip-deploys since `railway up` right after is the actual deploy --
+	# api/src/routes/health.ts reads this. Non-fatal if it fails: every
+	# service here is always attempted regardless of an earlier step's
+	# outcome (see header comment), and a missing version string shouldn't
+	# block a deploy.
+	if ! npx -y @railway/cli@latest variable set "GIT_COMMIT_SHA=${GITHUB_SHA}" --service "${service}" --skip-deploys >/dev/null; then
+		echo "::warning::${service}: failed to set GIT_COMMIT_SHA, continuing deploy anyway"
+	fi
+
 	local up_output
 	up_output=$(npx -y @railway/cli@latest up --service "${service}" --detach --json)
 	local up_exit=$?
