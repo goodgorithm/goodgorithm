@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:native": "npm run build && cap sync",
+    "build:native": "tsc -b && vite build --mode staging && cap sync",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run"
