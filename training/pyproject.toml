@@ -1,0 +1,18 @@
+[project]
+name = "goodgorithm-training"
+version = "0.1.0"
+requires-python = ">=3.12"
+# Only r2_release.py's own dependency - the training notebooks are run in
+# Colab/Kaggle, not here, and install their own deps via a `!pip install`
+# cell (see training/sentiment_cnn.ipynb, training/category_classifier.ipynb).
+# This file exists so `cd training && uv run python r2_release.py ...`
+# (the documented command in both release-*-model skills) actually works
+# without needing an ad-hoc `uv run --with boto3` every time.
+dependencies = [
+    "boto3>=1.43.67",
+]
+
+# Not an installable package - just scripts run in place. Skips the
+# build-backend/wheel machinery processing/'s src/-layout package needs.
+[tool.uv]
+package = false
