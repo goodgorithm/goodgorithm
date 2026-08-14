@@ -12,8 +12,11 @@ const FULL_FEED_PARAM = "all";
 // The landing default (issue #24, reversing #20's "no param = Full feed").
 // Also what an absent OR unrecognized/stale ?category= value falls back to
 // - CLAUDE.md's defensive-unknown-category handling, just pointed at the
-// new default instead of Full feed.
-const DEFAULT_CATEGORY: Category = "kindness_community";
+// new default instead of Full feed. "kindness_community" was the original
+// default but doesn't exist in the trained-classifier taxonomy (issue #34)
+// - arts_culture is the closest replacement in spirit (broadly appealing,
+// not niche) and happens to be the highest-volume category too.
+const DEFAULT_CATEGORY: Category = "arts_culture";
 
 function readCategory(): Category | null {
   const value = new URLSearchParams(window.location.search).get("category");

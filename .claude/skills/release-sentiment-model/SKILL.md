@@ -15,6 +15,8 @@ Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the 
 
 `goodgorithm-models` itself is a **private** R2 bucket (no public URL, confirmed 2026-08-12) — so on its own, uploading there does not fulfill the "we open-source model weights" commitment (the Mission/Algorithm pages on the GitHub Wiki). `training/r2_release.py`'s `publish` step closes that gap: promoting a version to live also mirrors its three artifacts to a public GitHub Release (`sentiment-cnn-<version>`, via the `gh` CLI). This only happens through `r2_release.py` — see step 6 below.
 
+`r2_release.py` is generalized across model types (issue #34 added a `category` type alongside `sentiment`) via a required `--model` flag — every command below needs `--model sentiment` explicitly now, not just `current`/`list`/`publish` on their own.
+
 ## Steps
 
 1. **Decide the tokenizer/vocab state you're training against.** `processing/src/sentiment_model.py` defines tokenization, and the notebook fetches it from a *pinned commit*, not `main` — so a later edit to that file can never silently invalidate an already-published model. If you haven't changed `sentiment_model.py`, the existing pin is fine. If you have, get the new commit's SHA (`git rev-parse HEAD` on `main` after merging) before continuing.
@@ -31,22 +33,22 @@ Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the 
    - The spot-check examples near the end (hand-written short posts with obvious expected sentiment). A model that aces the metrics above but gets these obviously wrong is a red flag worth investigating before publishing, not after.
    - GloVe coverage percentage from the embeddings cell — a sharp drop from prior runs suggests something upstream (tokenization, vocab building) changed unexpectedly.
 
-   There's no hard pass/fail bar defined here on purpose — judge against the *previous* live version's numbers (check `training/r2_release.py current`, then that version's `config.json` in R2 for its recorded `best_val_macro_f1`), not an absolute target.
+   There's no hard pass/fail bar defined here on purpose — judge against the *previous* live version's numbers (check `training/r2_release.py --model sentiment current`, then that version's `config.json` in R2 for its recorded `best_val_macro_f1`), not an absolute target.
 
 5. **The notebook always uploads the versioned artifacts** (`sentiment-cnn/<version>/model.onnx`, `vocab.json`, `config.json`) regardless of the decision in step 4 — that part is safe and reversible on its own.
 
 6. **Promote to live only if step 4 looks good, via `r2_release.py`** — the only path that also makes the version public:
-   - `cd training && uv run python r2_release.py publish <version>` (needs the R2 env vars, e.g. from a local `.env` or exported in your shell, *and* an authenticated `gh` CLI with access to `goodgorithm/goodgorithm`).
+   - `cd training && uv run python r2_release.py --model sentiment publish <version>` (needs the R2 env vars, e.g. from a local `.env` or exported in your shell, *and* an authenticated `gh` CLI with access to `goodgorithm/goodgorithm`).
    - This flips `sentiment-cnn/latest.json` **and** creates a public GitHub Release (`sentiment-cnn-<version>`) mirroring the three artifacts from R2, since `goodgorithm-models` itself is a private bucket — see "The release model" above.
-   - The notebook's `PUBLISH_AS_LATEST = True` cell still exists and flips `latest.json`, but Colab has no `gh`/repo access, so it **cannot** create the public release. If you use that cell, you still need to run `r2_release.py publish <version>` afterward (it's idempotent on the `latest.json` flip and will just create the missing release). Prefer `r2_release.py` as the single step going forward.
+   - The notebook's `PUBLISH_AS_LATEST = True` cell still exists and flips `latest.json`, but Colab has no `gh`/repo access, so it **cannot** create the public release. If you use that cell, you still need to run `r2_release.py --model sentiment publish <version>` afterward (it's idempotent on the `latest.json` flip and will just create the missing release). Prefer `r2_release.py` as the single step going forward.
 
-7. **Verify:** `uv run python r2_release.py current` should print the new version, and `gh release view sentiment-cnn-<version> --repo goodgorithm/goodgorithm` should show the public release. `processing/` picks the model up the next time a process starts — it resolves the live version once per process, on the first sentiment score, not continuously — so a running deployment needs a restart (a normal Railway redeploy) to pick up a newly-promoted version.
+7. **Verify:** `uv run python r2_release.py --model sentiment current` should print the new version, and `gh release view sentiment-cnn-<version> --repo goodgorithm/goodgorithm` should show the public release. `processing/` picks the model up the next time a process starts — it resolves the live version once per process, on the first sentiment score, not continuously — so a running deployment needs a restart (a normal Railway redeploy) to pick up a newly-promoted version.
 
 8. **Record the release.** Add a line to the Decisions Log in Notion (internal workspace) with the version, the commit it was trained against, and the key eval numbers from step 4 — this is part of the project's transparency commitment (publishing training data and model weights is only meaningful if there's also a record of *when* and *why* a version went live).
 
 ## Rolling back
 
-If a live version turns out to be worse in production than its eval numbers suggested: `uv run python r2_release.py list` to see what's available, then `uv run python r2_release.py publish <previous-version>`. No need to retrain — this just repoints `latest.json`. Record the rollback in the Decisions Log too, with the reason.
+If a live version turns out to be worse in production than its eval numbers suggested: `uv run python r2_release.py --model sentiment list` to see what's available, then `uv run python r2_release.py --model sentiment publish <previous-version>`. No need to retrain — this just repoints `latest.json`. Record the rollback in the Decisions Log too, with the reason.
 
 ## Guardrails this skill exists to protect
 

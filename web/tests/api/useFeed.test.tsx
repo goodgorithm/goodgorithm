@@ -77,24 +77,24 @@ describe("useFeed", () => {
   it("passes the selected category through to the /feed request", async () => {
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
-    renderHook(() => useFeed("technology"), { wrapper: createWrapper() });
+    renderHook(() => useFeed("science_technology"), { wrapper: createWrapper() });
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
-    expect(calledUrl).toContain("category=technology");
+    expect(calledUrl).toContain("category=science_technology");
   });
 
   it("resumes each category from its own persisted cursor, not another category's", async () => {
     // regression test: initialCursor used to be computed once at mount and
     // frozen, so switching category would silently resume using whatever
     // cursor was loaded for the category the hook happened to start on.
-    saveCursor("technology", "tech-cursor");
+    saveCursor("science_technology", "tech-cursor");
     saveCursor("animals", "animals-cursor");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
     const { rerender } = renderHook(({ category }) => useFeed(category), {
       wrapper: createWrapper(),
-      initialProps: { category: "technology" as const },
+      initialProps: { category: "science_technology" as const },
     });
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
@@ -113,13 +113,13 @@ describe("useFeed", () => {
     // regression test: resetToTop used to bump a single shared nonce, so
     // resetting one category's feed would also suppress resume for the
     // next category switched to, even if that category was never reset.
-    saveCursor("technology", "tech-cursor");
+    saveCursor("science_technology", "tech-cursor");
     saveCursor("animals", "animals-cursor");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
     const { result, rerender } = renderHook(({ category }) => useFeed(category), {
       wrapper: createWrapper(),
-      initialProps: { category: "technology" as const },
+      initialProps: { category: "science_technology" as const },
     });
     await waitFor(() => expect(result.current.resumed).toBe(true));
 

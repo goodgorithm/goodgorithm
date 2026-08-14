@@ -14,14 +14,15 @@ UPSTASH_REDIS_REST_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 # 2026-08-12) -- see redis_guard.py. Optional; the default applies if unset.
 REDIS_MAX_BYTES = int(os.environ.get("REDIS_MAX_BYTES", 1024 * 1024 * 1024))
 
-# R2 / sentiment model — all optional. Absence means the sentiment CNN
-# can't load and score_sentiment() falls back to VADER; it should never
-# block the rest of the service from starting.
+# R2 / trained models — all optional. Absence means score_sentiment() falls
+# back to VADER and category_model.categorize() falls back to taxonomy.py's
+# keyword matcher; it should never block the rest of the service starting.
 R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID")
 R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
 SENTIMENT_MODEL_VERSION = os.environ.get("SENTIMENT_MODEL_VERSION")
+CATEGORY_MODEL_VERSION = os.environ.get("CATEGORY_MODEL_VERSION")
 
 # Optional dead-man's-switch heartbeat (e.g. a Healthchecks.io check URL) -
 # pinged once per fully successful processing cycle. Absence just means no

@@ -53,22 +53,22 @@ describe("feedCursor", () => {
   });
 
   it("keeps separate categories' cursors independent", () => {
-    saveCursor("technology", "tech-cursor");
+    saveCursor("science_technology", "tech-cursor");
     saveCursor("animals", "animals-cursor");
     saveCursor(null, "all-cursor");
 
-    expect(loadCursor("technology")).toBe("tech-cursor");
+    expect(loadCursor("science_technology")).toBe("tech-cursor");
     expect(loadCursor("animals")).toBe("animals-cursor");
     expect(loadCursor(null)).toBe("all-cursor");
   });
 
   it("clearing one category's cursor doesn't touch another's", () => {
-    saveCursor("technology", "tech-cursor");
+    saveCursor("science_technology", "tech-cursor");
     saveCursor("animals", "animals-cursor");
 
-    clearCursor("technology");
+    clearCursor("science_technology");
 
-    expect(loadCursor("technology")).toBeNull();
+    expect(loadCursor("science_technology")).toBeNull();
     expect(loadCursor("animals")).toBe("animals-cursor");
   });
 });

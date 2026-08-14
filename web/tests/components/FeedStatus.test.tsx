@@ -28,9 +28,9 @@ describe("FeedEmpty", () => {
 
   it("offers a way back to the full feed when a category is empty", () => {
     const onShowFullFeed = vi.fn();
-    render(<FeedEmpty category="animals" onShowFullFeed={onShowFullFeed} />);
+    render(<FeedEmpty category="gaming" onShowFullFeed={onShowFullFeed} />);
 
-    expect(screen.getByText(/no posts in animals yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/no posts in gaming yet/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /show full feed/i }));
 
     expect(onShowFullFeed).toHaveBeenCalled();

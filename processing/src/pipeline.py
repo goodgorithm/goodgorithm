@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import bot_filter
+import category_model
 import config
 import content_filter
 import db
@@ -11,9 +12,7 @@ import quote_resolver
 import ranking
 import redis_guard
 import sentiment
-import taxonomy
 import topicality
-from dedup import normalize_text
 
 logger = logging.getLogger("processing")
 
@@ -128,8 +127,10 @@ def run_cycle(batch_size: int) -> int:
 
         # Deliberately not threaded into RankablePost/ranking.py -- category
         # is a post-hoc filter on the existing rank_score, not a ranking
-        # input. See taxonomy.py for the matching rules.
-        category = taxonomy.categorize(topic.entities, topic.top_terms, normalize_text(post.text))
+        # input. See category_model.py (trained classifier, primary path)
+        # and taxonomy.py (keyword-matching fallback for when the model
+        # can't load) for the matching rules.
+        category = category_model.categorize(post.text, topic.entities, topic.top_terms)
 
         quote_uri = quote_uris_by_post.get(post.id)
         quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None
@@ -150,6 +151,7 @@ def run_cycle(batch_size: int) -> int:
                 rank_score=None,
                 quote_content=quote_content,
                 category=category,
+                category_method=category_model.CATEGORY_METHOD,
             )
         )
 

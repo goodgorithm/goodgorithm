@@ -57,3 +57,43 @@ def fixture_onnx_bytes() -> bytes:
 @pytest.fixture
 def fixture_vocab() -> dict:
     return {"<pad>": 0, "<unk>": 0, "goodword": 1, "okword": 2}
+
+
+@pytest.fixture
+def fixture_category_onnx_bytes() -> bytes:
+    """A real, tiny TF-IDF + one-vs-rest LogisticRegression pipeline,
+    trained on trivial synthetic data and exported via skl2onnx exactly
+    like the real training notebook — not a hand-built ONNX graph like
+    fixture_onnx_bytes above, since string-keyed lookup has no simple
+    built-in ONNX primitive the way int64 token-id Gather does. This
+    exercises the real conversion path, not an approximation of it."""
+    import numpy as np
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.multiclass import OneVsRestClassifier
+    from sklearn.pipeline import Pipeline
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import StringTensorType
+
+    texts = [
+        "the team won the championship game",
+        "our team scored a goal in the match",
+        "new recipe for homemade pasta tonight",
+        "tried a new restaurant for dinner",
+    ] * 5
+    labels = np.array(
+        [[1, 0], [1, 0], [0, 1], [0, 1]] * 5,
+        dtype=int,
+    )
+
+    vectorizer = TfidfVectorizer()
+    clf = OneVsRestClassifier(LogisticRegression(max_iter=1000))
+    pipeline = Pipeline([("tfidf", vectorizer), ("clf", clf)])
+    pipeline.fit(texts, labels)
+
+    onnx_model = convert_sklearn(
+        pipeline,
+        initial_types=[("input", StringTensorType([None, 1]))],
+        options={id(clf): {"zipmap": False}},
+    )
+    return onnx_model.SerializeToString()

@@ -1,29 +1,34 @@
-"""Rule-based category assignment -- classical lookup-table matching, no LLM
-and no trained classifier, per CLAUDE.md's no-LLM-in-the-algorithm
-constraint. Term/phrase lists below are drafted from the 2026-08-11 taxonomy
-research pass (real production sample posts, hand-read for coherence) --
-see the Pre-v1 Roadmap's "Categories / topic filter view" item.
+"""Rule-based category assignment -- classical lookup-table matching, no LLM,
+per CLAUDE.md's no-LLM-in-the-algorithm constraint.
 
-Two matching modes, not one, because of a real limitation found during that
-research: the pipeline's TF-IDF terms are unigrams only (changing that would
-touch the live topicality/ranking signal, out of scope here), so a phrase
-like "solar power" can never appear whole in `top_terms` -- only "solar" and
-"power" separately, which is too broad on its own (matched an astronomy
-camera review, an EDM song title, and a watch review during research).
-CATEGORY_TERMS matches single words/entities via set intersection;
-CATEGORY_PHRASES matches multi-word phrases via substring against the
-post's normalized text directly.
+As of the trained category classifier (issue #34), this module is no longer
+the primary categorization mechanism -- it's the whole-process fallback for
+when the classifier can't load (R2 unconfigured, network failure, etc.),
+the direct parallel to VADER's role for the sentiment CNN. It covers the
+same 8-category set the classifier does, not a superset -- animals,
+kindness_community, and environment_nature were deliberately dropped from
+the taxonomy entirely rather than kept alive here at very low volume (see
+CLAUDE.md's Category filtering section).
 
-Known, accepted v1 limitation: this doesn't attempt span-level entity
-disambiguation (e.g. "Nottingham Forest" the football club vs. "forest" the
-habitat both contain "forest") -- bare terms prone to that kind of
-proper-noun collision are deliberately left out rather than solved with
-span-exclusion logic. Same "precision over recall, iterate later" spirit as
-content_filter.py.
+Two matching modes, not one, because of a real limitation found during the
+original research pass: the pipeline's TF-IDF terms are unigrams only
+(changing that would touch the live topicality/ranking signal, out of scope
+here), so a phrase like "farmers market" can never appear whole in
+`top_terms` -- only "farmers" and "market" separately, which is too broad on
+its own. CATEGORY_TERMS matches single words/entities via set intersection;
+CATEGORY_PHRASES matches multi-word phrases via substring against the post's
+normalized text directly.
+
+Known, accepted limitation, same "precision over recall, iterate later"
+spirit as content_filter.py: this doesn't attempt span-level entity
+disambiguation, and being a fallback path only (not the primary mechanism
+anymore), it hasn't had the same depth of production-sample research the
+original 8-category version got -- it only needs to be a reasonable safety
+net, not the main event.
 """
 
 CATEGORY_TERMS: dict[str, set[str]] = {
-    "technology": {
+    "science_technology": {
         "opensource",
         "open-source",
         "github",
@@ -43,6 +48,44 @@ CATEGORY_TERMS: dict[str, set[str]] = {
         "openai",
         "anthropic",
         "chatgpt",
+        "scientist",
+        "scientists",
+        "researcher",
+        "researchers",
+        "nasa",
+        "telescope",
+        "astronomy",
+        "astronomer",
+        "biology",
+        "physics",
+        "chemistry",
+        "observatory",
+        "discovery",
+    },
+    "sports": {
+        "championship",
+        "olympics",
+        "olympic",
+        "tournament",
+        "medal",
+        "athlete",
+        "athletes",
+        "marathon",
+        "coach",
+    },
+    "health_fitness": {
+        "hospital",
+        "surgery",
+        "vaccine",
+        "vaccination",
+        "diagnosis",
+        "healthcare",
+        "gym",
+        "workout",
+        "fitness",
+        "yoga",
+        "nutrition",
+        "wellness",
     },
     "arts_culture": {
         "museum",
@@ -62,138 +105,101 @@ CATEGORY_TERMS: dict[str, set[str]] = {
         "poetry",
         "film",
         "cinema",
+        "music",
+        "song",
+        "musician",
+        "movie",
+        "soundtrack",
     },
-    "animals": {
-        "wildlife",
-        "zoo",
-        "puppy",
-        "puppies",
-        "kitten",
-        "kittens",
-        "sanctuary",
-        "veterinarian",
-        "aquarium",
+    "learning_education": {
+        "scholarship",
+        "university",
+        "professor",
+        "curriculum",
+        "classroom",
+        "literacy",
+        "tutoring",
+        "graduation",
+        "textbook",
+        "teacher",
     },
-    "science_discovery": {
-        "scientist",
-        "scientists",
-        "researcher",
-        "researchers",
-        "nasa",
-        "telescope",
-        "astronomy",
-        "astronomer",
-        "biology",
-        "physics",
-        "chemistry",
-        "observatory",
-        "discovery",
+    "food_dining": {
+        "recipe",
+        "restaurant",
+        "chef",
+        "cuisine",
+        "bakery",
+        "brewery",
+        "culinary",
+        "cookbook",
     },
-    "kindness_community": {
-        "volunteer",
-        "volunteers",
-        "charity",
-        "nonprofit",
-        "fundraiser",
-        "neighbors",
-        "generous",
+    "travel_adventure": {
+        "backpacking",
+        "itinerary",
+        "expedition",
+        "hiking",
+        "trekking",
+        "wanderlust",
+        "passport",
+        "hostel",
     },
-    "environment_nature": {
-        "climate",
-        "recycling",
-        "conservation",
-        "renewable",
-        "sustainability",
-        "ecosystem",
-        "biodiversity",
-        "reforestation",
-        "rainforest",
-    },
-    "health_recovery": {
-        "hospital",
-        "surgery",
-        "vaccine",
-        "vaccination",
-        "diagnosis",
-        "healthcare",
-    },
-    "sports_achievement": {
-        "championship",
-        "olympics",
-        "olympic",
-        "tournament",
-        "medal",
-        "athlete",
-        "athletes",
-        "marathon",
-        "coach",
+    "gaming": {
+        "esports",
+        "playstation",
+        "xbox",
+        "nintendo",
+        "speedrun",
+        "multiplayer",
+        "gamer",
+        "videogame",
+        "twitch",
     },
 }
 
 # Multi-word, matched as substrings of the post's normalize_text()'d text --
 # for terms that are only unambiguous as a phrase (see module docstring).
 CATEGORY_PHRASES: dict[str, set[str]] = {
-    "animals": {
-        "animal rescue",
-        "rescue dog",
-        "rescue cat",
-        "foster dog",
-        "foster cat",
-        "adopt dont shop",
-    },
-    "environment_nature": {
-        "solar power",
-        "solar powered",
-        "solar-powered",
-        "solar panel",
-        "solar panels",
-        "solar eclipse",
-        "solar energy",
-        "renewable energy",
-        "clean energy",
-        "climate change",
-        "wildlife conservation",
-    },
-    "kindness_community": {
-        "donated to charity",
-        "charity donation",
-        "donation drive",
-        "community garden",
-        "mutual aid",
-        "food bank",
-    },
-    "health_recovery": {
+    "health_fitness": {
         "cancer remission",
         "in remission",
         "medical breakthrough",
         "successful surgery",
         "organ transplant",
-        "heart transplant",
-        "kidney transplant",
-        "clinical trial",
+    },
+    "food_dining": {
+        "farmers market",
+        "food truck",
+    },
+    "travel_adventure": {
+        "road trip",
+    },
+    "gaming": {
+        "video game",
+        "video games",
     },
 }
 
-# Tie-break order when a post scores equally across categories -- e.g. an AI
-# model/company-product post matches both "technology" and
-# "science_discovery" terms; research found these read better as technology.
+# Tie-break order when a post scores equally across categories. No
+# dedicated production-sample research pass behind this ordering (unlike
+# the original 8, which had one) -- this module is a fallback now, not the
+# primary path, so a reasonable order is enough.
 CATEGORY_PRIORITY: list[str] = [
-    "technology",
-    "science_discovery",
-    "animals",
-    "environment_nature",
-    "health_recovery",
-    "kindness_community",
+    "science_technology",
+    "health_fitness",
     "arts_culture",
-    "sports_achievement",
+    "learning_education",
+    "food_dining",
+    "travel_adventure",
+    "gaming",
+    "sports",
 ]
 
 
 def categorize(entities: list[str], top_terms: list[str], normalized_text: str) -> str | None:
     """Highest-scoring category by (term hits + phrase hits), CATEGORY_PRIORITY
     as tie-break. None means nothing matched -- expected for a large share of
-    posts (political/generic content in particular, by design: it stays
-    visible only in the unfiltered feed, never a named category)."""
+    posts, same as the primary classifier's own confidence-threshold "none of
+    these" case."""
     candidate_terms = set(entities) | set(top_terms)
 
     scores: dict[str, int] = {}

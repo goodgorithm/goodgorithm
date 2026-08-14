@@ -40,10 +40,10 @@ describe("api client", () => {
       new Response(JSON.stringify({ posts: [], next_cursor: null }), { status: 200 }),
     );
 
-    await fetchFeed(null, 10, "technology");
+    await fetchFeed(null, 10, "science_technology");
 
     const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
-    expect(calledUrl).toContain("category=technology");
+    expect(calledUrl).toContain("category=science_technology");
   });
 
   it("omits the category param when not provided", async () => {

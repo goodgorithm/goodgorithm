@@ -7,9 +7,9 @@ describe("CategorySelector", () => {
   it("renders a chip for every category plus Full feed", () => {
     render(<CategorySelector selected={null} onSelect={() => {}} />);
 
-    expect(screen.getByRole("button", { name: "Technology" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Animals" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Science & Discovery" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Science & Technology" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Gaming" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sports" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Full feed" })).toBeInTheDocument();
   });
 
@@ -17,13 +17,13 @@ describe("CategorySelector", () => {
     const onSelect = vi.fn();
     render(<CategorySelector selected={null} onSelect={onSelect} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Animals" }));
-    expect(onSelect).toHaveBeenCalledWith("animals");
+    fireEvent.click(screen.getByRole("button", { name: "Gaming" }));
+    expect(onSelect).toHaveBeenCalledWith("gaming");
   });
 
   it("calls onSelect with null when Full feed is clicked", () => {
     const onSelect = vi.fn();
-    render(<CategorySelector selected="technology" onSelect={onSelect} />);
+    render(<CategorySelector selected="science_technology" onSelect={onSelect} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Full feed" }));
     expect(onSelect).toHaveBeenCalledWith(null);
@@ -34,14 +34,14 @@ describe("CategorySelector", () => {
 
     const labels = screen.getAllByRole("button").map((button) => button.textContent);
     expect(labels).toEqual([
-      "Animals",
       "Arts & Culture",
-      "Environment & Nature",
-      "Health & Recovery",
-      "Kindness & Community",
-      "Science & Discovery",
-      "Sports & Achievement",
-      "Technology",
+      "Food & Dining",
+      "Gaming",
+      "Health & Fitness",
+      "Learning & Education",
+      "Science & Technology",
+      "Sports",
+      "Travel & Adventure",
       "Full feed",
     ]);
   });

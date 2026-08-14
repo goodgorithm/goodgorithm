@@ -7,7 +7,7 @@ import spacy
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 import redis_client
-from dedup import normalize_text
+from text_normalize import normalize_text
 
 TFIDF_TOP_K = 3
 # Discounts _top_k_mean's raw score by nnz (a doc's distinct-term count) **
