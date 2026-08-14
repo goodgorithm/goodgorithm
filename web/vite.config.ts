@@ -31,6 +31,19 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
+        // Without this, Workbox's NavigationRoute (bound to index.html)
+        // intercepts *every* browser navigation with no exceptions -
+        // including a direct visit to /robots.txt or /sitemap.xml, which
+        // would silently serve the cached SPA shell instead (issue #17:
+        // caught because a browser that had already visited the site once
+        // - and so already had the service worker installed - got
+        // redirected to the feed on both paths, while curl/crawlers with
+        // no installed service worker got the real files). Search engines
+        // and Search Console's own sitemap fetcher don't run service
+        // workers, so this was never an actual crawlability problem - but
+        // it's still wrong for any returning human visitor checking these
+        // files themselves.
+        navigateFallbackDenylist: [/^\/robots\.txt$/, /^\/sitemap\.xml$/],
         // Deliberately no runtimeCaching entry for the api/ origin. The
         // default generateSW strategy only precaches build output (matched
         // above) and never intercepts cross-origin fetches unless a rule is
