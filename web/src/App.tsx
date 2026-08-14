@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import faqSource from "./content/faq.md?raw";
 import styles from "./App.module.css";
 import { ContentPage } from "./components/ContentPage";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Feed } from "./components/Feed";
 import { GitHubIcon } from "./components/GitHubIcon";
 import { ScrollToTopButton } from "./components/ScrollToTopButton";
@@ -68,11 +69,16 @@ export default function App() {
             </a>
           </nav>
         </header>
-        {activePage ? (
-          <ContentPage source={activePage.source} onBack={() => navigate("/")} />
-        ) : (
-          <Feed />
-        )}
+        {/* key={path}: remounts (and so resets) the boundary on navigation,
+            so a crash on one page doesn't stay stuck forever - navigating
+            away and back is a lighter recovery path than a full reload. */}
+        <ErrorBoundary key={path}>
+          {activePage ? (
+            <ContentPage source={activePage.source} onBack={() => navigate("/")} />
+          ) : (
+            <Feed />
+          )}
+        </ErrorBoundary>
         <ScrollToTopButton />
       </main>
     </QueryClientProvider>
