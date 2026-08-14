@@ -27,8 +27,10 @@ class FakeModelStore:
         self.model_bytes = model_bytes
         self.vocab = vocab
         self.version = version
+        self.resolve_version_calls = 0
 
     def resolve_version(self) -> str:
+        self.resolve_version_calls += 1
         return self.version
 
     def fetch(self, version: str):
@@ -93,7 +95,8 @@ def test_score_sentiment_lazy_loads_once(monkeypatch, fixture_onnx_bytes, fixtur
     store = FakeModelStore(fixture_onnx_bytes, fixture_vocab)
     construct_count = {"n": 0}
 
-    def fake_construct():
+    def fake_construct(prefix):
+        assert prefix == "sentiment-cnn"
         construct_count["n"] += 1
         return store
 
@@ -104,4 +107,19 @@ def test_score_sentiment_lazy_loads_once(monkeypatch, fixture_onnx_bytes, fixtur
     sentiment.score_sentiment("goodword")
 
     assert construct_count["n"] == 1
+    assert sentiment.SENTIMENT_METHOD == "cnn_v1"
+
+
+def test_load_model_uses_env_override_without_hitting_r2(fixture_onnx_bytes, fixture_vocab):
+    # SENTIMENT_MODEL_VERSION set -> resolve_version() (the network call)
+    # should never be reached at all, not just its result ignored.
+    store = FakeModelStore(fixture_onnx_bytes, fixture_vocab, version="v1")
+    original = sentiment.config.SENTIMENT_MODEL_VERSION
+    sentiment.config.SENTIMENT_MODEL_VERSION = "v7-pinned"
+    try:
+        sentiment.load_model(store)
+    finally:
+        sentiment.config.SENTIMENT_MODEL_VERSION = original
+
+    assert store.resolve_version_calls == 0
     assert sentiment.SENTIMENT_METHOD == "cnn_v1"

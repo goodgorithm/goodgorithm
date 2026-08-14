@@ -30,14 +30,7 @@ def store(monkeypatch):
     monkeypatch.setattr(config, "R2_ACCESS_KEY_ID", "test-key")
     monkeypatch.setattr(config, "R2_SECRET_ACCESS_KEY", "test-secret")
     monkeypatch.setattr(config, "R2_BUCKET_NAME", "test-bucket")
-    monkeypatch.setattr(config, "SENTIMENT_MODEL_VERSION", None)
-    return model_store.R2ModelStore()
-
-
-def test_resolve_version_uses_env_override_without_network(store, monkeypatch):
-    monkeypatch.setattr(config, "SENTIMENT_MODEL_VERSION", "v7")
-    store.client = FakeS3Client({})  # would KeyError if actually queried
-    assert store.resolve_version() == "v7"
+    return model_store.R2ModelStore(prefix="sentiment-cnn")
 
 
 def test_resolve_version_reads_latest_json(store):
@@ -62,3 +55,24 @@ def test_fetch_reads_model_vocab_and_config(store):
     assert model_bytes == b"fake-onnx-bytes"
     assert vocab == {"<pad>": 0, "hello": 1}
     assert model_config == {"embedding_dim": 100}
+
+
+def test_get_bytes_and_get_json_work_with_any_prefix(monkeypatch):
+    # category_model.py uses these two directly (no vocab file, so fetch()
+    # doesn't fit) - confirm they're usable standalone with a different
+    # prefix, not just through fetch()'s sentiment-shaped bundling.
+    monkeypatch.setattr(config, "R2_ACCOUNT_ID", "test-account")
+    monkeypatch.setattr(config, "R2_ACCESS_KEY_ID", "test-key")
+    monkeypatch.setattr(config, "R2_SECRET_ACCESS_KEY", "test-secret")
+    monkeypatch.setattr(config, "R2_BUCKET_NAME", "test-bucket")
+    category_store = model_store.R2ModelStore(prefix="category-classifier")
+    fake = FakeS3Client(
+        {
+            "category-classifier/v1/model.onnx": b"fake-onnx-bytes",
+            "category-classifier/v1/config.json": json.dumps({"labels": ["sports"]}).encode(),
+        }
+    )
+    category_store.client = fake
+
+    assert category_store.get_bytes("category-classifier/v1/model.onnx") == b"fake-onnx-bytes"
+    assert category_store.get_json("category-classifier/v1/config.json") == {"labels": ["sports"]}

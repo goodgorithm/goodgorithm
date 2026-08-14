@@ -29,7 +29,7 @@ for (const path of ["/v1/feed", "/feed"]) {
   test(`${path} accepts a real category value (passes schema validation, fails later only on the unreachable DB)`, async () => {
     const app = await buildApp();
     try {
-      const res = await app.inject({ method: "GET", url: `${path}?category=technology` });
+      const res = await app.inject({ method: "GET", url: `${path}?category=science_technology` });
       // Not 400: proves the category value cleared schema validation. Whatever
       // status follows is the DB-unreachable path, not a validation rejection.
       assert.notEqual(res.statusCode, 400);

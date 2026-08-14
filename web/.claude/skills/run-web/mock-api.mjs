@@ -12,14 +12,14 @@ const PAGE_SIZE = 20;
 
 // Mirrors web/src/api/types.ts's CATEGORIES - keep in sync if that changes.
 const CATEGORIES = [
-  "technology",
+  "science_technology",
+  "sports",
+  "health_fitness",
   "arts_culture",
-  "animals",
-  "science_discovery",
-  "kindness_community",
-  "environment_nature",
-  "health_recovery",
-  "sports_achievement",
+  "learning_education",
+  "food_dining",
+  "travel_adventure",
+  "gaming",
 ];
 
 const LONG_TEXT =

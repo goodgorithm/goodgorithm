@@ -1,6 +1,5 @@
 import base64
 import hashlib
-import re
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID, uuid4
@@ -9,6 +8,7 @@ import numpy as np
 from datasketch import MinHash
 
 import redis_client
+from text_normalize import normalize_text
 
 # NUM_PERM=128/NUM_BANDS=16 (ROWS_PER_BAND=8) is the empirically verified
 # config -- it catches a real near-duplicate pair (0.773 Jaccard) that a
@@ -25,18 +25,6 @@ JACCARD_THRESHOLD = 0.7
 # matches RETENTION_HOURS (pipeline.py) -- no point deduplicating against a
 # post whose row will already have been deleted from Postgres.
 BAND_TTL_SECONDS = 24 * 60 * 60
-
-_URL_RE = re.compile(r"https?://\S+")
-_MENTION_RE = re.compile(r"@[\w.-]+")
-_WHITESPACE_RE = re.compile(r"\s+")
-
-
-def normalize_text(text: str) -> str:
-    text = text.lower()
-    text = _URL_RE.sub(" ", text)
-    text = _MENTION_RE.sub(" ", text)
-    return _WHITESPACE_RE.sub(" ", text).strip()
-
 
 def shingles(text: str, k: int = SHINGLE_SIZE) -> set[str]:
     words = text.split()

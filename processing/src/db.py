@@ -76,6 +76,7 @@ class ProcessedPostUpsert:
     rank_score: float | None = None
     quote_content: dict | None = None
     category: str | None = None
+    category_method: str | None = None
 
 
 UPSERT_PROCESSED_POSTS_CHUNK_SIZE = 500
@@ -92,7 +93,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
     with pool.connection() as conn:
         for i in range(0, len(rows), UPSERT_PROCESSED_POSTS_CHUNK_SIZE):
             chunk = rows[i : i + UPSERT_PROCESSED_POSTS_CHUNK_SIZE]
-            values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk))
+            values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk))
             params = [
                 value
                 for row in chunk
@@ -110,6 +111,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.rank_score,
                     Jsonb(row.quote_content) if row.quote_content is not None else None,
                     row.category,
+                    row.category_method,
                     row.pipeline_version,
                 )
             ]
@@ -118,7 +120,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                 INSERT INTO processed_posts (
                     raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score,
                     sentiment_score, sentiment_method, topicality_score, entities,
-                    base_score, rank_score, quote_content, category, pipeline_version
+                    base_score, rank_score, quote_content, category, category_method, pipeline_version
                 )
                 VALUES {values_sql}
                 ON CONFLICT (raw_post_id) DO UPDATE SET
@@ -134,6 +136,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     rank_score         = EXCLUDED.rank_score,
                     quote_content      = EXCLUDED.quote_content,
                     category           = EXCLUDED.category,
+                    category_method    = EXCLUDED.category_method,
                     pipeline_version   = EXCLUDED.pipeline_version,
                     processed_at       = NOW()
                 """,

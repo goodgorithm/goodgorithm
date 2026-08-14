@@ -7,12 +7,12 @@ export * from "./types.generated";
 import type { Category } from "./types.generated";
 
 export const CATEGORY_LABELS: Record<Category, string> = {
-  technology: "Technology",
+  science_technology: "Science & Technology",
+  sports: "Sports",
+  health_fitness: "Health & Fitness",
   arts_culture: "Arts & Culture",
-  animals: "Animals",
-  science_discovery: "Science & Discovery",
-  kindness_community: "Kindness & Community",
-  environment_nature: "Environment & Nature",
-  health_recovery: "Health & Recovery",
-  sports_achievement: "Sports & Achievement",
+  learning_education: "Learning & Education",
+  food_dining: "Food & Dining",
+  travel_adventure: "Travel & Adventure",
+  gaming: "Gaming",
 };

@@ -38,10 +38,10 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
         if not config.r2_configured():
             logger.info("R2 not configured — sentiment CNN unavailable, using VADER")
             return
-        store = model_store.R2ModelStore()
+        store = model_store.R2ModelStore(prefix="sentiment-cnn")
 
     try:
-        version = store.resolve_version()
+        version = config.SENTIMENT_MODEL_VERSION or store.resolve_version()
         model_bytes, vocab, _model_config = store.fetch(version)
         session = ort.InferenceSession(model_bytes, providers=["CPUExecutionProvider"])
     except Exception:

@@ -7,7 +7,7 @@ from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from dedup import normalize_text
+from text_normalize import normalize_text
 
 POSITIVITY_THRESHOLD = 0.3  # eligibility bar — only clearly-positive posts rank at all
 HALF_LIFE_HOURS = 12.0  # a post's recency weight halves every 12h
