@@ -2,11 +2,11 @@ import { Capacitor } from "@capacitor/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-import algorithmSource from "./content/algorithm.md?raw";
-import missionSource from "./content/mission.md?raw";
+import faqSource from "./content/faq.md?raw";
 import styles from "./App.module.css";
 import { ContentPage } from "./components/ContentPage";
 import { Feed } from "./components/Feed";
+import { GitHubIcon } from "./components/GitHubIcon";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { Wordmark } from "./components/Wordmark";
 import { useLocation } from "./lib/useLocation";
@@ -15,12 +15,10 @@ import { useNativeStatusBar } from "./lib/useNativeStatusBar";
 const queryClient = new QueryClient();
 
 // Static content pages reachable from the header nav. Adding a new one
-// (e.g. the content policy page, issue #4) means adding a content/*.md
-// file and one entry here - App.tsx doesn't otherwise need to change.
-const CONTENT_PAGES = [
-  { path: "/mission", label: "Our mission", source: missionSource },
-  { path: "/algorithm", label: "The algorithm", source: algorithmSource },
-];
+// means adding a content/*.md file and one entry here - App.tsx doesn't
+// otherwise need to change. Mission/Algorithm/Content Policy moved to the
+// GitHub Wiki (issue #31) - FAQ is the one page that stays in-app.
+const CONTENT_PAGES = [{ path: "/faq", label: "FAQ", source: faqSource }];
 
 export default function App() {
   const [path, navigate] = useLocation();
@@ -83,15 +81,16 @@ export default function App() {
               href="https://github.com/goodgorithm/goodgorithm"
               target="_blank"
               rel="noreferrer noopener"
+              aria-label="GitHub"
             >
-              GitHub
+              <GitHubIcon />
             </a>
           </nav>
         </header>
         {activePage ? (
           <ContentPage source={activePage.source} onBack={() => navigate("/")} />
         ) : (
-          <Feed navigate={navigate} />
+          <Feed />
         )}
       </main>
     </QueryClientProvider>

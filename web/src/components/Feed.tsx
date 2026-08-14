@@ -10,7 +10,7 @@ import { PostCard } from "./PostCard";
 
 const NO_RELATIVE: RelativeFractions = { topicality: 0, base: 0, rank: 0 };
 
-export function Feed({ navigate }: { navigate: (path: string) => void }) {
+export function Feed() {
   const [category, setCategory] = useCategoryParam();
   const {
     data,
@@ -69,7 +69,6 @@ export function Feed({ navigate }: { navigate: (path: string) => void }) {
           key={post.id}
           post={post}
           relative={relativeByPostId.get(post.id) ?? NO_RELATIVE}
-          navigate={navigate}
         />
       ))}
       <div ref={sentinelRef} />

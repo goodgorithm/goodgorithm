@@ -12,7 +12,8 @@ import { SourceBadge } from "./SourceBadge";
 // with this post's permalink under the template's own "Post or account"
 // heading -- GitHub's standard query-param pre-fill for .md-style issue
 // templates, no backend needed. The reporter still fills in "What's wrong"
-// themselves; a moderator reviews and acts by hand (see CONTENT_POLICY.md).
+// themselves; a moderator reviews and acts by hand (see the Content
+// Policy wiki page).
 function reportUrl(permalink: string): string {
   const body = `## Post or account\n\n${permalink}\n\n## What's wrong\n\n`;
   const params = new URLSearchParams({
@@ -26,11 +27,9 @@ function reportUrl(permalink: string): string {
 export function PostCard({
   post,
   relative,
-  navigate,
 }: {
   post: FeedPost;
   relative: RelativeFractions;
-  navigate: (path: string) => void;
 }) {
   return (
     <article className={styles.card}>
@@ -74,7 +73,7 @@ export function PostCard({
             </a>
           </div>
         )}
-        <ScoreDetails scores={post.scores} relative={relative} navigate={navigate} />
+        <ScoreDetails scores={post.scores} relative={relative} />
       </div>
     </article>
   );

@@ -22,11 +22,9 @@ function ScoreBar({ fraction }: { fraction: number }) {
 export function ScoreDetails({
   scores,
   relative,
-  navigate,
 }: {
   scores: FeedPostScores;
   relative: RelativeFractions;
-  navigate: (path: string) => void;
 }) {
   const sentiment = sentimentFraction(scores.sentiment);
 
@@ -72,14 +70,13 @@ export function ScoreDetails({
           <span className={styles.rowValue}>{scores.rank.toFixed(2)}</span>
         </div>
       </div>
+      {/* Algorithm mechanics moved to the GitHub Wiki (issue #31) - this is
+          now a plain external link, not client-side routing. */}
       <a
         className={styles.algorithmLink}
-        href="/algorithm"
-        onClick={(e) => {
-          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-          e.preventDefault();
-          navigate("/algorithm");
-        }}
+        href="https://github.com/goodgorithm/goodgorithm/wiki/Algorithm"
+        target="_blank"
+        rel="noreferrer noopener"
       >
         How these are calculated →
       </a>

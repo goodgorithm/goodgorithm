@@ -14,9 +14,9 @@ reads) without needing to re-run the training notebook. Useful for:
 `publish` also mirrors the version's three artifacts to a public GitHub
 Release (sentiment-cnn-<version>) -- goodgorithm-models is a private R2
 bucket (no r2.dev/custom domain configured, confirmed 2026-08-12), so
-without this the "we open-source model weights" claim in
-web/src/content/mission.md/algorithm.md wasn't actually true: the
-weights existed, but nobody outside the project could download them.
+without this the "we open-source model weights" claim on the Mission/
+Algorithm wiki pages wasn't actually true: the weights existed, but
+nobody outside the project could download them.
 Making the live version public is now a required part of promoting it,
 not a separate/optional step.
 Requires the `gh` CLI, authenticated, with access to goodgorithm/goodgorithm.
