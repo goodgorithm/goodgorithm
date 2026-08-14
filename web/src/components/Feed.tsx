@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 
+import type { FeedPost } from "../api/types";
 import { useFeed } from "../api/useFeed";
 import { CategorySelector } from "./CategorySelector";
 import styles from "./Feed.module.css";
@@ -36,7 +37,27 @@ export function Feed() {
     return () => observer.disconnect();
   }, [hasNextPage, fetchNextPage]);
 
-  const posts = data?.pages.flatMap((page) => page.posts) ?? [];
+  // Deduped by id, keeping the first (earlier-page) occurrence - api/'s
+  // rank_score-keyset pagination isn't fully airtight against the live
+  // background re-ranking that runs concurrently with pagination (issue
+  // #36: a post can shift to a lower rank_score between page fetches and
+  // satisfy the cursor comparison again). This doesn't fix the server
+  // occasionally serving the same post twice, just stops it from ever
+  // rendering twice in one continuous scroll - the fuller fix (pinning a
+  // consistent ranking snapshot for the duration of a scroll session) is
+  // tracked separately.
+  const posts = useMemo(() => {
+    const seen = new Set<string>();
+    const deduped: FeedPost[] = [];
+    for (const page of data?.pages ?? []) {
+      for (const post of page.posts) {
+        if (seen.has(post.id)) continue;
+        seen.add(post.id);
+        deduped.push(post);
+      }
+    }
+    return deduped;
+  }, [data?.pages]);
 
   // One percentile basis per fetched page (see scoreScale.ts) - computed
   // per page, then merged, so a page already on screen never has its
