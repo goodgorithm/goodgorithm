@@ -1,0 +1,27 @@
+/* Fixed floating button, deliberately not styled like Feed's inline
+   .backToTop pill (Feed.module.css) - different position (fixed vs.
+   in-flow), different shape (circular icon vs. full-width text), so the
+   two are never visually confusable even though both can be on screen
+   at once. */
+.button {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}

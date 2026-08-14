@@ -7,6 +7,7 @@ import styles from "./App.module.css";
 import { ContentPage } from "./components/ContentPage";
 import { Feed } from "./components/Feed";
 import { GitHubIcon } from "./components/GitHubIcon";
+import { ScrollToTopButton } from "./components/ScrollToTopButton";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { Wordmark } from "./components/Wordmark";
 import { useLocation } from "./lib/useLocation";
@@ -72,6 +73,7 @@ export default function App() {
         ) : (
           <Feed />
         )}
+        <ScrollToTopButton />
       </main>
     </QueryClientProvider>
   );
