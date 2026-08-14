@@ -7,7 +7,7 @@ function mockFeedResponse() {
   return new Response(JSON.stringify({ posts: [], next_cursor: null }), { status: 200 });
 }
 
-describe("App header nav toggle (issue #27)", () => {
+describe("App header nav (issue #31: down to FAQ + GitHub icon, no collapse needed)", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockFeedResponse()));
     window.history.pushState(null, "", "/");
@@ -17,34 +17,18 @@ describe("App header nav toggle (issue #27)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("starts collapsed", () => {
-    render(<App />);
-    expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("expands and collapses on toggle click", () => {
-    render(<App />);
-    const toggle = screen.getByRole("button", { name: "Open menu" });
-
-    fireEvent.click(toggle);
-    expect(screen.getByRole("button", { name: "Close menu" })).toHaveAttribute("aria-expanded", "true");
-
-    fireEvent.click(screen.getByRole("button", { name: "Close menu" }));
-    expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("nav links are always present in the DOM regardless of toggle state -- CSS handles the narrow-viewport collapse, not conditional rendering", () => {
+  it("shows both nav links directly, with no toggle button", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: "FAQ" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "GitHub" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /menu/i })).not.toBeInTheDocument();
   });
 
-  it("closes the menu after navigating, so it doesn't stay open behind the new page", () => {
+  it("navigates to the FAQ page on click", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
     fireEvent.click(screen.getByRole("button", { name: "FAQ" }));
 
-    expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText(/what is goodgorithm/i)).toBeInTheDocument();
   });
 });
 

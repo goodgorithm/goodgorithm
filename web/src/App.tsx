@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import faqSource from "./content/faq.md?raw";
 import styles from "./App.module.css";
@@ -22,7 +22,6 @@ const CONTENT_PAGES = [{ path: "/faq", label: "FAQ", source: faqSource }];
 
 export default function App() {
   const [path, navigate] = useLocation();
-  const [navOpen, setNavOpen] = useState(false);
   const activePage = CONTENT_PAGES.find((p) => p.path === path);
 
   useNativeStatusBar();
@@ -30,11 +29,6 @@ export default function App() {
   useEffect(() => {
     document.title = activePage ? `${activePage.label} — Goodgorithm` : "Goodgorithm";
   }, [activePage]);
-
-  // Don't leave the expanded menu open behind whatever page it navigated to.
-  useEffect(() => {
-    setNavOpen(false);
-  }, [path]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -51,21 +45,7 @@ export default function App() {
           <button type="button" className={styles.logoButton} onClick={() => navigate("/")}>
             <Wordmark />
           </button>
-          {/* Only shown below the narrow-viewport breakpoint (App.module.css)
-              -- the nav row itself always renders above it, so this has
-              nothing to toggle and stays hidden (issue #27: the header
-              previously just overflowed off-screen with no indication more
-              nav existed). */}
-          <button
-            type="button"
-            className={styles.navToggle}
-            aria-expanded={navOpen}
-            aria-label={navOpen ? "Close menu" : "Open menu"}
-            onClick={() => setNavOpen((open) => !open)}
-          >
-            {navOpen ? "✕" : "☰"}
-          </button>
-          <nav className={navOpen ? `${styles.nav} ${styles.navOpen}` : styles.nav}>
+          <nav className={styles.nav}>
             {CONTENT_PAGES.filter((p) => p.path !== path).map((p) => (
               <button
                 key={p.path}

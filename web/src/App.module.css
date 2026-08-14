@@ -15,7 +15,6 @@
 .header {
   margin-bottom: 1rem;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
@@ -30,54 +29,10 @@
   cursor: pointer;
 }
 
-/* Hidden by default -- the nav row fits fine at normal widths and this has
-   nothing to do. Shown only below the breakpoint where .nav collapses
-   (issue #27). */
-.navToggle {
-  display: none;
-  font: inherit;
-  font-size: 1.1rem;
-  width: 2.2em;
-  height: 2.2em;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: none;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-}
-
 .nav {
   display: flex;
   gap: 0.5em;
   flex-shrink: 0;
-}
-
-/* issue #27: below this width the logo + 3 nav pills (Our mission, The
-   algorithm, GitHub) don't fit in one row and previously just overflowed
-   off-screen with no indication more nav existed. Below it, the row
-   collapses behind .navToggle instead -- opening it adds flex-basis: 100%
-   so it wraps onto its own full-width row under the logo/toggle line
-   (.header's flex-wrap, above), rather than needing an absolutely
-   positioned dropdown overlay. */
-@media (max-width: 480px) {
-  .navToggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .nav {
-    display: none;
-    flex-basis: 100%;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5em;
-    margin-top: 0.75rem;
-  }
-
-  .nav.navOpen {
-    display: flex;
-  }
 }
 
 .navLink {
