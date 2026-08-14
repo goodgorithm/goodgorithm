@@ -35,7 +35,7 @@ Every training run publishes its artifacts to `category-classifier/<version>/` i
 
    Same "no hard pass/fail bar, judge relatively" stance as the sentiment skill — but for a *first* version specifically, there's no prior version to judge against; judge against the keyword-only fallback's own real production numbers instead (issue #34's baseline: most categories under 10 posts, technology's ~126 as the best performer) — the bar to clear is "meaningfully more than that," not some absolute target.
 
-5. **The notebook always uploads the versioned artifacts** (`category-classifier/<version>/model.onnx`, `config.json`) regardless of the decision in step 4 — safe and reversible on its own.
+5. **The notebook always uploads the versioned artifacts** (`category-classifier/<version>/model.onnx`, `config.json`) regardless of the decision in step 4 — safe and reversible on its own. If the notebook was run somewhere other than an interactive session with R2 access (e.g. artifacts produced elsewhere and handed off as local files), upload them manually instead: `cd training && uv run python r2_release.py --model category upload <version> --path <local-dir>` — `<local-dir>` needs exactly `model.onnx` and `config.json` under those plain names.
 
 6. **Promote to live only if step 4 looks good:**
    - `cd training && uv run python r2_release.py --model category publish <version>` (needs the R2 env vars and an authenticated `gh` CLI with access to `goodgorithm/goodgorithm`, same as the sentiment model).

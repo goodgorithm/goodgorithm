@@ -35,6 +35,15 @@ Usage:
     uv run python r2_release.py --model category current
     uv run python r2_release.py --model category list
     uv run python r2_release.py --model category publish <version>
+    uv run python r2_release.py --model category upload <version> --path <local-dir>
+
+`upload` is the manual alternative to the training notebook's own R2 cell
+-- for when artifacts were produced somewhere other than an interactive
+Colab/Kaggle run (e.g. handed off from an agent session as local files)
+and just need to get to R2 before `publish` can promote them. `<local-dir>`
+must contain exactly the files this model type expects (see
+MODEL_REGISTRY below) under their plain names, e.g. `model.onnx`,
+`config.json`.
 
 Requires the same R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY /
 R2_BUCKET_NAME env vars processing/ uses -- see .env.example in the repo
@@ -168,6 +177,26 @@ def create_github_release(client, prefix: str, artifacts: list[str], version: st
     print(f"created public GitHub release {tag}")
 
 
+def upload(client, prefix: str, artifacts: list[str], version: str, local_dir: Path) -> None:
+    """Uploads local artifact files to R2 at `<prefix>/<version>/` --
+    unconditional, same as the notebook's own upload cell (cheap and
+    reversible, doesn't touch `latest.json`). Run `publish` afterward to
+    actually promote this version to live."""
+    for artifact in artifacts:
+        local_path = local_dir / artifact
+        if not local_path.is_file():
+            sys.exit(f"{local_path} not found -- expected all of {artifacts} in {local_dir}")
+
+    for artifact in artifacts:
+        local_path = local_dir / artifact
+        key = f"{prefix}/{version}/{artifact}"
+        client.upload_file(str(local_path), _bucket(), key)
+        print(f"uploaded {local_path} -> s3://{_bucket()}/{key}")
+
+    print(f"\n{prefix}/{version} uploaded but not live yet -- run publish to promote it:")
+    print(f"  uv run python r2_release.py --model <name> publish {version}")
+
+
 def publish(client, prefix: str, artifacts: list[str], version: str) -> None:
     """Points `<prefix>/latest.json` at `version`. Checks all required
     artifacts actually exist first -- publishing a version that's missing
@@ -204,8 +233,9 @@ def publish(client, prefix: str, artifacts: list[str], version: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", required=True, choices=sorted(MODEL_REGISTRY), help="which model type to act on")
-    parser.add_argument("command", choices=["current", "list", "publish"])
-    parser.add_argument("version", nargs="?", help="required for `publish`")
+    parser.add_argument("command", choices=["current", "list", "publish", "upload"])
+    parser.add_argument("version", nargs="?", help="required for `publish`/`upload`")
+    parser.add_argument("--path", help="local directory containing the artifacts, required for `upload`")
     args = parser.parse_args()
 
     registry_entry = MODEL_REGISTRY[args.model]
@@ -228,6 +258,12 @@ def main() -> None:
         if not args.version:
             sys.exit("usage: uv run python r2_release.py --model <sentiment|category> publish <version>")
         publish(client, prefix, artifacts, args.version)
+    elif args.command == "upload":
+        if not args.version or not args.path:
+            sys.exit(
+                "usage: uv run python r2_release.py --model <sentiment|category> upload <version> --path <local-dir>"
+            )
+        upload(client, prefix, artifacts, args.version, Path(args.path))
 
 
 if __name__ == "__main__":

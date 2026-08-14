@@ -35,7 +35,7 @@ Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the 
 
    There's no hard pass/fail bar defined here on purpose — judge against the *previous* live version's numbers (check `training/r2_release.py --model sentiment current`, then that version's `config.json` in R2 for its recorded `best_val_macro_f1`), not an absolute target.
 
-5. **The notebook always uploads the versioned artifacts** (`sentiment-cnn/<version>/model.onnx`, `vocab.json`, `config.json`) regardless of the decision in step 4 — that part is safe and reversible on its own.
+5. **The notebook always uploads the versioned artifacts** (`sentiment-cnn/<version>/model.onnx`, `vocab.json`, `config.json`) regardless of the decision in step 4 — that part is safe and reversible on its own. If the notebook was run somewhere other than an interactive session with R2 access (e.g. artifacts produced elsewhere and handed off as local files), upload them manually instead: `cd training && uv run python r2_release.py --model sentiment upload <version> --path <local-dir>` — `<local-dir>` needs exactly `model.onnx`, `vocab.json`, and `config.json` under those plain names.
 
 6. **Promote to live only if step 4 looks good, via `r2_release.py`** — the only path that also makes the version public:
    - `cd training && uv run python r2_release.py --model sentiment publish <version>` (needs the R2 env vars, e.g. from a local `.env` or exported in your shell, *and* an authenticated `gh` CLI with access to `goodgorithm/goodgorithm`).
