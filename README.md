@@ -11,7 +11,7 @@ An open-source algorithmic feed of positive/uplifting public social posts, curat
 - Never reads likes, reposts, replies, or follower counts from the source platform anywhere in scoring or ranking. A deliberate, load-bearing constraint, not an aspiration.
 - Free forever, no ads, no revenue on the core product.
 
-For the full step-by-step walkthrough of how a post moves from ingestion to the ranked feed, see the published [Algorithm](https://app.notion.com/p/3b79243701a781a8997ed17609a60bc7) doc.
+For the full step-by-step walkthrough of how a post moves from ingestion to the ranked feed, see the [Algorithm](https://github.com/goodgorithm/goodgorithm/wiki/Algorithm) wiki page.
 
 ## Services
 
@@ -28,12 +28,14 @@ Each service has its own `package.json` / `pyproject.toml` and expects its own `
 
 ## Docs
 
-Full project context for anyone (human or Claude) picking this up lives in [`CLAUDE.md`](CLAUDE.md), not scattered across this README. Deeper docs live in Notion:
+Full project context for anyone (human or Claude) picking this up lives in [`CLAUDE.md`](CLAUDE.md), not scattered across this README. Deeper, public-facing docs live in the [GitHub Wiki](https://github.com/goodgorithm/goodgorithm/wiki), not Notion:
 
-- **Published, public docs:** [Goodgorithm — Public Docs](https://app.notion.com/p/3b69243701a7813bbf0feabdcec0a7b0) — start with **Algorithm** (step-by-step pipeline walkthrough) and **Infrastructure** (hosting/tooling and why).
-- **Internal docs** (decisions log, research, infra planning with pricing, setup checklist): team Notion workspace, not public.
+- **[Mission](https://github.com/goodgorithm/goodgorithm/wiki/Mission)** — goals, decision-making principles, commitments.
+- **[Algorithm](https://github.com/goodgorithm/goodgorithm/wiki/Algorithm)** — step-by-step pipeline mechanics.
+- **[Infrastructure](https://github.com/goodgorithm/goodgorithm/wiki/Infrastructure)** — hosting/tooling and why.
+- **[Content Policy](https://github.com/goodgorithm/goodgorithm/wiki/Content-Policy)** — what's excluded from the feed, and why.
 
-The values and policy behind what the app actually shows: [`mission.md`](web/src/content/mission.md) (goals, decision-making principles, commitments — live in the app at `/mission`), [`algorithm.md`](web/src/content/algorithm.md) (step-by-step pipeline mechanics, live at `/algorithm`), and [`CONTENT_POLICY.md`](CONTENT_POLICY.md) (what's excluded from the feed, and why). The first two live under `web/` since that's what the app actually serves — not duplicated at repo root.
+The app itself only surfaces a condensed FAQ in-app (`web/src/content/faq.md`, live at `/faq`) plus a link to this repo — the wiki is where the full docs live, not the app's own navigation (issue #31). Notion is internal-only now: decisions log, research, planning — not public.
 
 ## A note on LLMs
 

@@ -12,8 +12,9 @@ than adding a redundant `moderation` label -- same reasoning as Feature
 reusing `enhancement` (see feature_request.md), and CONTRIBUTING.md's
 Issue types section: every issue gets exactly one type. This is a signal
 for a human moderator to review by hand -- filing this doesn't remove
-anything automatically. See CONTENT_POLICY.md for what's already excluded
-and why.
+anything automatically. See the Content Policy wiki page
+(https://github.com/goodgorithm/goodgorithm/wiki/Content-Policy) for
+what's already excluded and why.
 -->
 
 ## Post or account

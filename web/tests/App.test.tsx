@@ -35,14 +35,14 @@ describe("App header nav toggle (issue #27)", () => {
 
   it("nav links are always present in the DOM regardless of toggle state -- CSS handles the narrow-viewport collapse, not conditional rendering", () => {
     render(<App />);
-    expect(screen.getByRole("button", { name: "Our mission" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "FAQ" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "GitHub" })).toBeInTheDocument();
   });
 
   it("closes the menu after navigating, so it doesn't stay open behind the new page", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
-    fireEvent.click(screen.getByRole("button", { name: "Our mission" }));
+    fireEvent.click(screen.getByRole("button", { name: "FAQ" }));
 
     expect(screen.getByRole("button", { name: "Open menu" })).toHaveAttribute("aria-expanded", "false");
   });

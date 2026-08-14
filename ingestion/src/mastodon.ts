@@ -13,8 +13,8 @@ import { insertPost } from "./db";
 // "popular instances" lists: mstdn.party -- a random sample of its public
 // timeline surfaced genuinely concerning sexualized content involving
 // minors, so it fails this project's moderation bar outright regardless of
-// volume/topic fit (CONTENT_POLICY.md: "we'd rather exclude too much than
-// too little").
+// volume/topic fit (Content Policy wiki page: "we'd rather exclude too
+// much than too little").
 const INSTANCES = [
   "fosstodon.org",
   "hachyderm.io",
