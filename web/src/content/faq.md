@@ -24,6 +24,10 @@ We're not a social network ourselves, and we don't want to pretend to be one. If
 
 Yes, and it always will be — no paywall, no premium tier, no ads. If the project ever needs financial support to keep running, that support is voluntary, not funded by selling access to you or your data. There's no login and no user data collected, so there's nothing to sell even if that ever changed.
 
+## Do you track visitors?
+
+We use Cloudflare Web Analytics for basic traffic numbers — nothing else. It's cookieless: visitor uniqueness is computed from a hash of the request, then discarded, so there's no tracking cookie and no personal data retained. We picked it specifically because it doesn't need a cookie-consent banner and doesn't conflict with "no accounts, no user data by design" above.
+
 ## What does it exclude from the feed?
 
 Explicit/adult content, spam and bot accounts, and non-English posts (every model in the pipeline is English-only). The full policy — including where the filters are still imperfect, and how to report something that slipped through — is on the [Content Policy](https://github.com/goodgorithm/goodgorithm/wiki/Content-Policy) wiki page.
