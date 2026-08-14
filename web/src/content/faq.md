@@ -16,6 +16,10 @@ No. Content selection — sentiment scoring, topic detection, ranking — runs o
 
 Never. No engagement metric from the source platform factors into scoring or ranking, anywhere. Ranking runs purely on a post's own content: sentiment, topicality, and recency.
 
+## Why is there no share button on the posts?
+
+We're not a social network ourselves, and we don't want to pretend to be one. If you want to interact with a post — reply, like, repost, follow the author — we encourage you to go to the source (yes, leave this app) and do it there.
+
 ## Is it free?
 
 Yes, and it always will be — no paywall, no premium tier, no ads. If the project ever needs financial support to keep running, that support is voluntary, not funded by selling access to you or your data. There's no login and no user data collected, so there's nothing to sell even if that ever changed.
@@ -32,13 +36,9 @@ Explicit/adult content, spam and bot accounts, and non-English posts (every mode
 
 Yes, MIT-licensed, on [GitHub](https://github.com/goodgorithm/goodgorithm) — including the model weights and training data behind the algorithm, not just the app code.
 
-## Where did the "Our mission" and "The algorithm" pages go?
-
-They moved to the [GitHub Wiki](https://github.com/goodgorithm/goodgorithm/wiki), along with the content policy and an infrastructure overview, so the app itself stays focused on the feed. Nothing was removed — it's all still public, just not sitting in the app's own navigation.
-
 ## Can I use this on my phone?
 
-The web app is a PWA — on most browsers you can "Add to Home Screen" for an app-like experience. Native iOS/Android builds exist in the codebase; whether they're published to the App Store/Play Store yet is tracked on GitHub.
+The web app is a PWA — on most browsers you can "Add to Home Screen" for an app-like experience. Native iOS and Android apps are coming soon.
 
 ## Can I contribute?
 
