@@ -11,12 +11,20 @@ export interface RawPost {
   text: string;
   lang: string | null;
   created_at: Date;
+  // Mastodon's account.created_at, promoted out of raw_json into its own
+  // column (issue #44) -- null for Bluesky (no equivalent concept) and
+  // required (not optional) here so every call site states that
+  // explicitly rather than silently defaulting.
+  mastodon_account_created_at: Date | null;
   raw_json: unknown;
 }
 
 export async function insertPost(post: RawPost): Promise<void> {
   await sql`
-    INSERT INTO raw_posts (source, source_id, author_id, text, lang, created_at, raw_json)
+    INSERT INTO raw_posts (
+      source, source_id, author_id, text, lang, created_at,
+      mastodon_account_created_at, raw_json
+    )
     VALUES (
       ${post.source},
       ${post.source_id},
@@ -24,6 +32,7 @@ export async function insertPost(post: RawPost): Promise<void> {
       ${post.text},
       ${post.lang},
       ${post.created_at},
+      ${post.mastodon_account_created_at},
       ${sql.json(post.raw_json as Parameters<typeof sql.json>[0])}
     )
     ON CONFLICT (source, source_id) DO NOTHING

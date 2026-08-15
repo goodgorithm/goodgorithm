@@ -32,7 +32,7 @@ const USER_AGENT = "Goodgorithm/0.1 (https://github.com/goodgorithm)";
 
 interface MastodonStatus {
   id: string;
-  account: { acct: string; discoverable: boolean | null; indexable: boolean | null };
+  account: { acct: string; discoverable: boolean | null; indexable: boolean | null; created_at: string | null };
   content: string;
   language: string | null;
   created_at: string;
@@ -177,6 +177,11 @@ async function pollInstance(
         text,
         lang: status.language,
         created_at: new Date(status.created_at),
+        // Promoted out of raw_json into its own column (issue #44) --
+        // network_detector.py's coordinated-bot-network clustering needs
+        // this for every Mastodon row, and extracting it from raw_json at
+        // query time timed out at the full ~220k-row Mastodon population.
+        mastodon_account_created_at: status.account.created_at ? new Date(status.account.created_at) : null,
         raw_json: status,
       });
       inserted++;

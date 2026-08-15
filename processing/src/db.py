@@ -267,5 +267,100 @@ def purge_blocked_authors() -> int:
         return cur.rowcount
 
 
+@dataclass
+class ClusterCandidate:
+    home_domain: str
+    author_ids: list[str]
+    account_count: int
+    post_count: int
+    earliest_account_created_at: datetime
+    latest_account_created_at: datetime
+
+
+def fetch_cluster_candidates(
+    min_accounts: int, max_creation_span_days: int, min_post_count: int
+) -> list[ClusterCandidate]:
+    """Coordinated-bot-network detection (issue #44) -- a full-table
+    aggregate over raw_posts, structurally different from every other
+    per-post check in this module, deliberately called on a much slower
+    cadence than a normal cycle (see main.py). Clusters Mastodon accounts
+    by home domain (the part of author_id after '@') whose *real* account
+    creation date (Mastodon's own account.created_at, promoted into its
+    own column at ingestion time -- see mastodon_account_created_at's
+    migration -- not "when we first saw a post from them", which is
+    retention-windowed and would look artificially clustered for every
+    account regardless of true age) falls within a tight span, with a
+    volume floor so a handful of low-activity accounts on a big shared
+    instance never gets flagged.
+
+    Reads mastodon_account_created_at directly rather than extracting
+    raw_json->'account'->>'created_at' at query time -- that JSON-path
+    extraction across the full ~220k-row Mastodon population timed out
+    in production (confirmed 2026-08-15), the same class of problem
+    CLAUDE.md documents for a similar raw_json ilike scan. This is the
+    fix, not a workaround: same "promote a frequently-queried field out
+    of raw_json into a real column" pattern text/lang/author_id already
+    follow."""
+    with pool.connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                split_part(author_id, '@', 2) AS home_domain,
+                array_agg(DISTINCT author_id) AS author_ids,
+                COUNT(DISTINCT author_id) AS account_count,
+                COUNT(*) AS post_count,
+                MIN(mastodon_account_created_at) AS earliest_created,
+                MAX(mastodon_account_created_at) AS latest_created
+            FROM raw_posts
+            WHERE source = 'mastodon'
+              AND position('@' in author_id) > 0
+              AND mastodon_account_created_at IS NOT NULL
+            GROUP BY home_domain
+            HAVING COUNT(DISTINCT author_id) >= %s
+               AND MAX(mastodon_account_created_at) - MIN(mastodon_account_created_at)
+                   <= (%s::text || ' days')::interval
+               AND COUNT(*) >= %s
+            """,
+            (min_accounts, max_creation_span_days, min_post_count),
+        ).fetchall()
+    return [ClusterCandidate(*row) for row in rows]
+
+
+def upsert_flagged_clusters(candidates: list[ClusterCandidate]) -> None:
+    """Refreshes flagged_author_clusters from the latest detect_clusters()
+    pass. ON CONFLICT deliberately never touches dismissed_at -- a
+    moderator's dismissal of a false positive survives a later refresh
+    (the cluster's counts still update) rather than silently re-appearing
+    every run."""
+    if not candidates:
+        return
+    with pool.connection() as conn:
+        for c in candidates:
+            conn.execute(
+                """
+                INSERT INTO flagged_author_clusters (
+                    home_domain, author_ids, account_count, post_count,
+                    earliest_account_created_at, latest_account_created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (home_domain) DO UPDATE SET
+                    author_ids                  = EXCLUDED.author_ids,
+                    account_count                = EXCLUDED.account_count,
+                    post_count                   = EXCLUDED.post_count,
+                    earliest_account_created_at  = EXCLUDED.earliest_account_created_at,
+                    latest_account_created_at    = EXCLUDED.latest_account_created_at,
+                    updated_at                   = NOW()
+                """,
+                (
+                    c.home_domain,
+                    c.author_ids,
+                    c.account_count,
+                    c.post_count,
+                    c.earliest_account_created_at,
+                    c.latest_account_created_at,
+                ),
+            )
+
+
 def close() -> None:
     pool.close()

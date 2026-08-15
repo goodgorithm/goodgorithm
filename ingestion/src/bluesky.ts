@@ -129,6 +129,7 @@ export function startBlueskyIngestion(): void {
           text,
           lang: langs[0] ?? null,
           created_at: record.createdAt ? new Date(record.createdAt) : new Date(),
+          mastodon_account_created_at: null, // no equivalent concept on Bluesky
           raw_json: event,
         });
       } catch (err) {

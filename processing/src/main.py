@@ -7,6 +7,7 @@ import time
 import config
 import db
 import heartbeat
+import network_detector
 import pipeline
 
 logging.basicConfig(level=logging.INFO, format="[processing] %(message)s")
@@ -63,6 +64,16 @@ def main() -> None:
         type=int,
         default=int(os.environ.get("REFRESH_RANKINGS_INTERVAL_SECONDS", 30)),
     )
+    # network_detector.detect_clusters() is a full-table aggregate over
+    # raw_posts (issue #44), structurally heavier than a normal cycle and
+    # looking for a slow-forming pattern (a coordinated bot network), not
+    # something needing near-real-time freshness -- throttled far less
+    # frequently than refresh_rankings above.
+    parser.add_argument(
+        "--network-detection-interval",
+        type=int,
+        default=int(os.environ.get("NETWORK_DETECTION_INTERVAL_SECONDS", 3600)),
+    )
     args = parser.parse_args()
 
     config.validate()
@@ -76,10 +87,12 @@ def main() -> None:
         pipeline.refresh_rankings()
         pipeline.cleanup_old_data()
         pipeline.purge_blocked_authors()
+        network_detector.record_clusters(network_detector.detect_clusters())
         db.close()
         return
 
     last_refresh_time = 0.0
+    last_network_detection_time = 0.0
     while not _shutdown:
         pipeline.enforce_redis_capacity()
         processed_count = pipeline.run_cycle(args.batch_size)
@@ -88,6 +101,10 @@ def main() -> None:
         if now - last_refresh_time >= args.refresh_interval:
             pipeline.refresh_rankings()
             last_refresh_time = now
+
+        if now - last_network_detection_time >= args.network_detection_interval:
+            network_detector.record_clusters(network_detector.detect_clusters())
+            last_network_detection_time = now
 
         pipeline.cleanup_old_data()
         pipeline.purge_blocked_authors()
