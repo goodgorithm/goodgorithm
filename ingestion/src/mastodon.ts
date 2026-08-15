@@ -93,6 +93,24 @@ function decodeHtmlEntities(text: string): string {
 // behind so adjacent chunks don't run together into one word.
 const BLOCK_TAGS = /<\/?(p|br|div|li|ul|ol|blockquote)\b[^>]*>/gi;
 
+// Bridgy Fed (and possibly other bridges/clients) sometimes wrap a
+// genuinely truncated display string ("openai.com/index/unders...") in a
+// plain anchor whose href is the real, full URL - unlike the
+// invisible/ellipsis-span pattern stripHtml already handles (issue #22),
+// there's no second span carrying the untruncated remainder, so the real
+// URL only exists in the href attribute (confirmed against real
+// production content, issue #42). Substitute the href before generic
+// tag-stripping runs, so the emitted text carries a working link instead
+// of a dead-end fragment. Scoped to anchors with no nested tags in their
+// visible text - hashtag/mention anchors always wrap a nested <span>
+// (see the reconstruction below), so this never touches those.
+export function resolveTruncatedLinks(html: string): string {
+  return html.replace(/<a\s+([^>]*)>([^<]*(?:\.\.\.|…))<\/a>/gi, (match, attrs: string) => {
+    const hrefMatch = /href="([^"]*)"/i.exec(attrs);
+    return hrefMatch ? hrefMatch[1] : match;
+  });
+}
+
 export function stripHtml(html: string): string {
   // Mastodon splits a single token (a URL, a hashtag) across multiple
   // adjacent inline <span>/<a> elements purely for its own client-side
@@ -104,7 +122,8 @@ export function stripHtml(html: string): string {
   // - issue #22). So this strips in two passes: block tags first (with a
   // separating space), then everything else - now purely inline markup -
   // with no separator at all.
-  const withBlockBreaks = html.replace(BLOCK_TAGS, " ");
+  const withResolvedLinks = resolveTruncatedLinks(html);
+  const withBlockBreaks = withResolvedLinks.replace(BLOCK_TAGS, " ");
   const withoutTags = withBlockBreaks.replace(/<[^>]+>/g, "");
   return decodeHtmlEntities(withoutTags).replace(/\s+/g, " ").trim();
 }

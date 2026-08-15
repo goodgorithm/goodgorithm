@@ -55,6 +55,30 @@ test("stripHtml reconstructs hashtags Mastodon wraps in a nested span (issue #22
   assert.equal(stripHtml(html), "#Greenland #Trump");
 });
 
+test("stripHtml resolves a truncated anchor's real href (issue #42)", () => {
+  // Real markup pulled from production raw_posts.raw_json->>'content' -- a
+  // Bluesky post bridged into Mastodon via Bridgy Fed. Both anchors are
+  // flat (no invisible/ellipsis spans, unlike the issue #22 case above),
+  // so the real URL only exists in href.
+  const html =
+    "<p>Meanwhile, OpenAI is running a massive experiment right now " +
+    '<a href="https://openai.com/index/understanding-ai-and-learning-outcomes/" rel="nofollow noopener" target="_blank">openai.com/index/unders...</a>' +
+    "<br><br>" +
+    '<a href="https://openai.com/index/understanding-ai-and-learning-outcomes/" rel="nofollow noopener" target="_blank">New tools for understanding AI...</a>' +
+    "</p>";
+
+  assert.equal(
+    stripHtml(html),
+    "Meanwhile, OpenAI is running a massive experiment right now " +
+      "https://openai.com/index/understanding-ai-and-learning-outcomes/ " +
+      "https://openai.com/index/understanding-ai-and-learning-outcomes/",
+  );
+});
+
+test("stripHtml leaves plain trailing ellipsis text (not inside a link) untouched", () => {
+  assert.equal(stripHtml("<p>to be continued...</p>"), "to be continued...");
+});
+
 test("isDiscoverable is true when both fields are opted in (issue #25)", () => {
   assert.equal(isDiscoverable({ discoverable: true, indexable: true }), true);
 });

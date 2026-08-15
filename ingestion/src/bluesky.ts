@@ -29,8 +29,57 @@ interface JetstreamEvent {
       text?: string;
       createdAt?: string;
       langs?: string[];
+      facets?: unknown;
     };
   };
+}
+
+interface BlueskyFacet {
+  index: { byteStart: number; byteEnd: number };
+  features: Array<{ $type?: unknown; uri?: unknown }>;
+}
+
+// AT Protocol facet byte ranges are UTF-8 byte offsets into `text`, not JS
+// string (UTF-16 code unit) offsets - these diverge for any text with
+// multi-byte characters before the facet, so this must operate on real
+// UTF-8 bytes (Buffer), not string indices. A poster's own client often
+// shows a shortened display string for a long link ("apnews.com/article/
+// davi...") while the real target only lives in a facet -- confirmed
+// live at real volume in production (issue #42), completely unused until
+// now. Processed back-to-front so each earlier byteStart/byteEnd stays
+// valid as later replacements change the buffer's length. Only
+// substitutes when the visible text doesn't already look like a complete
+// URL, to avoid needlessly rewriting already-fine links.
+export function resolveFacetLinks(text: string, facets: unknown): string {
+  if (!Array.isArray(facets)) return text;
+
+  const linkFacets = (facets as BlueskyFacet[])
+    .filter(
+      (f): f is BlueskyFacet =>
+        typeof f?.index?.byteStart === "number" &&
+        typeof f?.index?.byteEnd === "number" &&
+        Array.isArray(f.features),
+    )
+    .map((f) => ({
+      index: f.index,
+      uri: f.features.find(
+        (feat) => feat.$type === "app.bsky.richtext.facet#link" && typeof feat.uri === "string",
+      )?.uri as string | undefined,
+    }))
+    .filter((f): f is { index: BlueskyFacet["index"]; uri: string } => typeof f.uri === "string")
+    .sort((a, b) => b.index.byteStart - a.index.byteStart);
+
+  let buf = Buffer.from(text, "utf8");
+  for (const facet of linkFacets) {
+    const visible = buf.subarray(facet.index.byteStart, facet.index.byteEnd).toString("utf8");
+    if (visible.startsWith("http://") || visible.startsWith("https://")) continue;
+    buf = Buffer.concat([
+      buf.subarray(0, facet.index.byteStart),
+      Buffer.from(facet.uri, "utf8"),
+      buf.subarray(facet.index.byteEnd),
+    ]);
+  }
+  return buf.toString("utf8");
 }
 
 export function startBlueskyIngestion(): void {
@@ -61,7 +110,9 @@ export function startBlueskyIngestion(): void {
       }
 
       const record = event.commit.record;
-      const text = record.text?.trim() ?? "";
+      // Resolve facet-marked links before trimming -- byte offsets are
+      // computed against the original, untrimmed text.
+      const text = resolveFacetLinks(record.text ?? "", record.facets).trim();
       if (!text) return;
 
       // only ingest English posts — pipeline models are English-only
