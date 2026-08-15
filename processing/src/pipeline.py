@@ -106,7 +106,7 @@ def run_cycle(batch_size: int) -> int:
             reason = "no tag" if post.lang is None else f"tagged {post.lang!r}"
             logger.info("language-filtered post %s (%s, detected non-English)", post.id, reason)
         else:
-            classification = context_dependency.classify(post.source, post.author_id, post.raw_json)
+            classification = context_dependency.classify(post.source, post.author_id, post.raw_json, post.text)
             if classification.action == "exclude":
                 db.delete_raw_post(post.id)
                 logger.info("context-dependency-excluded post %s (%s)", post.id, post.source)

@@ -20,13 +20,26 @@ pool, and structured replies specifically skew notably less positive --
 cheap to exclude outright without denting Mastodon's contribution.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Callable, Literal
 
 Action = Literal["exclude", "devalue", "none"]
 
+# Bridgy Fed marks a bridged Bluesky quote-post with `class="quote-inline"`
+# (checked below), but that's one bridging tool's implementation detail --
+# confirmed live in production (issue #33 follow-up) that a person can
+# also just type "RE: <bsky.app post URL>" themselves as their own
+# reference-a-post convention, with no such wrapper at all. Matching the
+# text pattern directly catches both, since the actual signal we care
+# about is "this post's meaning depends on an unstated quoted post," not
+# "Bridgy Fed specifically generated this." Handle-based and DID-based
+# profile URLs both confirmed live (.../profile/did:plc:xyz/post/... and
+# .../profile/someone.bsky.social/post/...).
+_BLUESKY_QUOTE_REFERENCE_RE = re.compile(r"\bre:\s*https://bsky\.app/profile/\S+/post/\S+", re.IGNORECASE)
 
-def _bluesky_action(author_id: str, raw_json: dict) -> Action:
+
+def _bluesky_action(author_id: str, raw_json: dict, text: str) -> Action:
     record = (raw_json or {}).get("commit", {}).get("record", {})
     reply = record.get("reply") if isinstance(record, dict) else None
     if not isinstance(reply, dict):
@@ -50,18 +63,20 @@ def _bluesky_action(author_id: str, raw_json: dict) -> Action:
     return "devalue"
 
 
-def _mastodon_action(author_id: str, raw_json: dict) -> Action:
+def _mastodon_action(author_id: str, raw_json: dict, text: str) -> Action:
     if (raw_json or {}).get("in_reply_to_id") is not None:
         return "exclude"
     content = (raw_json or {}).get("content")
     if isinstance(content, str) and "quote-inline" in content:
+        return "exclude"
+    if _BLUESKY_QUOTE_REFERENCE_RE.search(text or ""):
         return "exclude"
     return "none"
 
 
 @dataclass(frozen=True)
 class PlatformPolicy:
-    handler: Callable[[str, dict], Action]
+    handler: Callable[[str, dict, str], Action]
     # Only consulted when handler() returns "devalue" -- exclude-only
     # platforms never read this.
     devalue_multiplier: float = 1.0
@@ -79,7 +94,7 @@ class ContextClassification:
     devalue_multiplier: float = 1.0  # base_score multiplier; 1.0 == no penalty
 
 
-def classify(source: str, author_id: str, raw_json: dict) -> ContextClassification:
+def classify(source: str, author_id: str, raw_json: dict, text: str) -> ContextClassification:
     """What to do with a post whose full meaning may depend on missing
     context, per its source platform's policy. A platform with no entry
     here, or a post that isn't context-dependent under its platform's
@@ -88,7 +103,7 @@ def classify(source: str, author_id: str, raw_json: dict) -> ContextClassificati
     if policy is None:
         return ContextClassification(action="none")
 
-    action = policy.handler(author_id, raw_json)
+    action = policy.handler(author_id, raw_json, text)
     if action == "devalue":
         return ContextClassification(action="devalue", devalue_multiplier=policy.devalue_multiplier)
     return ContextClassification(action=action)
