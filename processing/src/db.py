@@ -77,6 +77,7 @@ class ProcessedPostUpsert:
     quote_content: dict | None = None
     category: str | None = None
     category_method: str | None = None
+    context_penalty: float = 1.0
 
 
 UPSERT_PROCESSED_POSTS_CHUNK_SIZE = 500
@@ -93,7 +94,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
     with pool.connection() as conn:
         for i in range(0, len(rows), UPSERT_PROCESSED_POSTS_CHUNK_SIZE):
             chunk = rows[i : i + UPSERT_PROCESSED_POSTS_CHUNK_SIZE]
-            values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk))
+            values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk))
             params = [
                 value
                 for row in chunk
@@ -112,6 +113,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     Jsonb(row.quote_content) if row.quote_content is not None else None,
                     row.category,
                     row.category_method,
+                    row.context_penalty,
                     row.pipeline_version,
                 )
             ]
@@ -120,7 +122,8 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                 INSERT INTO processed_posts (
                     raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score,
                     sentiment_score, sentiment_method, topicality_score, entities,
-                    base_score, rank_score, quote_content, category, category_method, pipeline_version
+                    base_score, rank_score, quote_content, category, category_method,
+                    context_penalty, pipeline_version
                 )
                 VALUES {values_sql}
                 ON CONFLICT (raw_post_id) DO UPDATE SET
@@ -137,6 +140,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     quote_content      = EXCLUDED.quote_content,
                     category           = EXCLUDED.category,
                     category_method    = EXCLUDED.category_method,
+                    context_penalty    = EXCLUDED.context_penalty,
                     pipeline_version   = EXCLUDED.pipeline_version,
                     processed_at       = NOW()
                 """,
@@ -154,6 +158,7 @@ class RankableRow:
     entities: list
     is_bot: bool
     is_dedup_canonical: bool
+    context_penalty: float
 
 
 def fetch_rankable_posts(since: datetime) -> list[RankableRow]:
@@ -161,7 +166,7 @@ def fetch_rankable_posts(since: datetime) -> list[RankableRow]:
         rows = conn.execute(
             """
             SELECT r.id, r.text, r.created_at, p.sentiment_score, p.topicality_score,
-                   p.entities, p.is_bot, p.is_dedup_canonical
+                   p.entities, p.is_bot, p.is_dedup_canonical, p.context_penalty
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
             WHERE r.created_at >= %s

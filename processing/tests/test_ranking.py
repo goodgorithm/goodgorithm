@@ -17,6 +17,7 @@ def make_post(
     is_bot=False,
     is_dedup_canonical=True,
     text="a distinct post about nothing in particular",
+    context_penalty=1.0,
 ):
     return ranking.RankablePost(
         id=uuid4(),
@@ -27,6 +28,7 @@ def make_post(
         entities=entities or [],
         is_bot=is_bot,
         is_dedup_canonical=is_dedup_canonical,
+        context_penalty=context_penalty,
     )
 
 
@@ -58,6 +60,15 @@ def test_recency_decay_snaps_to_zero_for_very_old_posts():
 def test_compute_base_score_multiplies_components():
     post = make_post(sentiment_score=0.5, topicality_score=2.0, age_hours=0.0)
     assert abs(ranking.compute_base_score(post, NOW) - 1.0) < 1e-9  # positivity(0.5) * 2.0 * decay(1.0)
+
+
+def test_compute_base_score_applies_context_penalty():
+    # issue #33: a devalued (e.g. context-dependent Bluesky reply) post's
+    # base_score is scaled down by context_penalty, same as any other
+    # content-derived multiplier.
+    full = make_post(sentiment_score=0.5, topicality_score=2.0, context_penalty=1.0)
+    devalued = make_post(sentiment_score=0.5, topicality_score=2.0, context_penalty=0.4)
+    assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.4) < 1e-9
 
 
 def test_filter_eligible_excludes_bots_duplicates_and_low_sentiment():

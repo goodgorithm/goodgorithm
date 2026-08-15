@@ -28,6 +28,12 @@ class RankablePost:
     entities: list[str]
     is_bot: bool
     is_dedup_canonical: bool
+    # context_dependency.py's per-platform devalue multiplier (issue #33) --
+    # 1.0 for posts that aren't context-dependent (or whose platform's
+    # policy is exclude-only, so a devalued post never reaches ranking at
+    # all). Content-derived, same category as topicality/sentiment, not an
+    # engagement signal.
+    context_penalty: float = 1.0
 
 
 @dataclass
@@ -61,9 +67,15 @@ def recency_decay(created_at: datetime, now: datetime) -> float:
 
 
 def compute_base_score(post: RankablePost, now: datetime) -> float:
-    """Content-derived only — positivity x topicality x recency. No
-    engagement field exists on RankablePost for this to accidentally read."""
-    return positivity(post.sentiment_score) * post.topicality_score * recency_decay(post.created_at, now)
+    """Content-derived only — positivity x topicality x recency x
+    context_penalty. No engagement field exists on RankablePost for this to
+    accidentally read."""
+    return (
+        positivity(post.sentiment_score)
+        * post.topicality_score
+        * recency_decay(post.created_at, now)
+        * post.context_penalty
+    )
 
 
 def filter_eligible(posts: list[RankablePost]) -> list[RankablePost]:

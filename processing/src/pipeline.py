@@ -5,6 +5,7 @@ import bot_filter
 import category_model
 import config
 import content_filter
+import context_dependency
 import db
 import dedup
 import language_filter
@@ -31,7 +32,7 @@ RETENTION_HOURS = 24
 # this module until now -- see CLAUDE.md's Versioning & migration section.
 # Bump this when a change to any scoring stage would make two posts'
 # base_score/rank_score not directly comparable to each other.
-PIPELINE_VERSION = "v2"
+PIPELINE_VERSION = "v3"
 
 
 def enforce_redis_capacity() -> None:
@@ -70,6 +71,15 @@ def run_cycle(batch_size: int) -> int:
     # here wouldn't change anything.
     blocked = db.fetch_blocked_authors()
 
+    # Platform-differentiated reply/quote-inline handling (issue #33) -- a
+    # post whose meaning depends on unstated context is either hard-excluded
+    # or kept-but-devalued, per its source platform's policy in
+    # context_dependency.py. Classified once here (not re-derived later)
+    # so an "exclude" verdict skips it in this same loop, and a "devalue"
+    # verdict's multiplier can be threaded straight into RankablePost below
+    # without a second raw_json parse.
+    context_classifications: dict = {}
+
     kept_posts = []
     for post in posts:
         if (post.source, post.author_id) in blocked:
@@ -82,7 +92,13 @@ def run_cycle(batch_size: int) -> int:
             db.delete_raw_post(post.id)
             logger.info("language-filtered post %s (no tag, detected non-English)", post.id)
         else:
-            kept_posts.append(post)
+            classification = context_dependency.classify(post.source, post.author_id, post.raw_json)
+            if classification.action == "exclude":
+                db.delete_raw_post(post.id)
+                logger.info("context-dependency-excluded post %s (%s)", post.id, post.source)
+            else:
+                context_classifications[post.id] = classification
+                kept_posts.append(post)
 
     if not kept_posts:
         logger.info("processed 0 posts (%d content-filtered)", len(posts))
@@ -113,6 +129,8 @@ def run_cycle(batch_size: int) -> int:
         topic = topicality_results[post.id]
         sentiment_score = sentiment.score_sentiment(post.text)
 
+        context_penalty = context_classifications[post.id].devalue_multiplier
+
         rankable = ranking.RankablePost(
             id=post.id,
             text=post.text,
@@ -122,6 +140,7 @@ def run_cycle(batch_size: int) -> int:
             entities=topic.entities,
             is_bot=bot_score.is_bot,
             is_dedup_canonical=cluster.is_canonical,
+            context_penalty=context_penalty,
         )
         base_score = ranking.compute_base_score(rankable, now)
 
@@ -152,6 +171,7 @@ def run_cycle(batch_size: int) -> int:
                 quote_content=quote_content,
                 category=category,
                 category_method=category_model.CATEGORY_METHOD,
+                context_penalty=context_penalty,
             )
         )
 
@@ -185,6 +205,7 @@ def refresh_rankings() -> int:
             entities=row.entities or [],
             is_bot=row.is_bot,
             is_dedup_canonical=row.is_dedup_canonical,
+            context_penalty=row.context_penalty,
         )
         for row in rows
     ]
