@@ -32,26 +32,3 @@
   border-color: var(--color-accent);
   color: #ffffff;
 }
-
-.fullFeed {
-  grid-column: 1 / -1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 500;
-  padding: 0.4em 0.8em;
-  border-radius: 999px;
-  border: 1px dashed var(--color-border);
-  background: none;
-  color: var(--color-text-tertiary);
-  cursor: pointer;
-}
-
-.fullFeedSelected {
-  border-style: solid;
-  border-color: var(--color-text-tertiary);
-  background: var(--color-border);
-  color: var(--color-text-secondary);
-}

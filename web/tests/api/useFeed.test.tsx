@@ -30,7 +30,7 @@ describe("useFeed", () => {
   it("starts from the top when no cursor is persisted", async () => {
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse("next-1"));
 
-    renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    renderHook(() => useFeed("arts_culture"), { wrapper: createWrapper() });
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
@@ -38,10 +38,10 @@ describe("useFeed", () => {
   });
 
   it("resumes from a persisted cursor", async () => {
-    saveCursor(null, "resume-me");
+    saveCursor("arts_culture", "resume-me");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
-    renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    renderHook(() => useFeed("arts_culture"), { wrapper: createWrapper() });
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
@@ -51,24 +51,24 @@ describe("useFeed", () => {
   it("persists the next cursor once a page loads", async () => {
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse("next-1"));
 
-    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeed("arts_culture"), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(loadCursor(null)).toBe("next-1");
+    expect(loadCursor("arts_culture")).toBe("next-1");
   });
 
   it("resetToTop clears the persisted cursor and re-fetches from the top", async () => {
-    saveCursor(null, "resume-me");
+    saveCursor("arts_culture", "resume-me");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
-    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeed("arts_culture"), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.data).toBeDefined());
     expect(result.current.resumed).toBe(true);
 
     act(() => result.current.resetToTop());
 
     await waitFor(() => expect(result.current.resumed).toBe(false));
-    expect(loadCursor(null)).toBeNull();
+    expect(loadCursor("arts_culture")).toBeNull();
 
     const lastCallUrl = vi.mocked(fetch).mock.calls.at(-1)?.[0] as string;
     expect(lastCallUrl).not.toContain("cursor=");
@@ -89,7 +89,7 @@ describe("useFeed", () => {
     // frozen, so switching category would silently resume using whatever
     // cursor was loaded for the category the hook happened to start on.
     saveCursor("science_technology", "tech-cursor");
-    saveCursor("animals", "animals-cursor");
+    saveCursor("gaming", "gaming-cursor");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
     const { rerender } = renderHook(({ category }) => useFeed(category), {
@@ -100,10 +100,10 @@ describe("useFeed", () => {
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect((vi.mocked(fetch).mock.calls[0][0] as string)).toContain("cursor=tech-cursor");
 
-    rerender({ category: "animals" as const });
+    rerender({ category: "gaming" as const });
 
     await waitFor(() =>
-      expect(vi.mocked(fetch).mock.calls.some((call) => (call[0] as string).includes("cursor=animals-cursor"))).toBe(
+      expect(vi.mocked(fetch).mock.calls.some((call) => (call[0] as string).includes("cursor=gaming-cursor"))).toBe(
         true,
       ),
     );
@@ -114,7 +114,7 @@ describe("useFeed", () => {
     // resetting one category's feed would also suppress resume for the
     // next category switched to, even if that category was never reset.
     saveCursor("science_technology", "tech-cursor");
-    saveCursor("animals", "animals-cursor");
+    saveCursor("gaming", "gaming-cursor");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
     const { result, rerender } = renderHook(({ category }) => useFeed(category), {
@@ -126,7 +126,7 @@ describe("useFeed", () => {
     act(() => result.current.resetToTop());
     await waitFor(() => expect(result.current.resumed).toBe(false));
 
-    rerender({ category: "animals" as const });
+    rerender({ category: "gaming" as const });
     await waitFor(() => expect(result.current.resumed).toBe(true));
   });
 });

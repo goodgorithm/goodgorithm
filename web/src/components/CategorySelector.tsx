@@ -12,8 +12,8 @@ export function CategorySelector({
   selected,
   onSelect,
 }: {
-  selected: Category | null;
-  onSelect: (category: Category | null) => void;
+  selected: Category;
+  onSelect: (category: Category) => void;
 }) {
   return (
     <div className={styles.grid}>
@@ -27,16 +27,6 @@ export function CategorySelector({
           {CATEGORY_LABELS[category]}
         </button>
       ))}
-      {/* Deliberately last and visually de-emphasized (dashed border, muted
-          color, never accent-colored even when active) - a category should
-          feel like the default pick, not the unfiltered feed. */}
-      <button
-        type="button"
-        className={selected === null ? `${styles.fullFeed} ${styles.fullFeedSelected}` : styles.fullFeed}
-        onClick={() => onSelect(null)}
-      >
-        Full feed
-      </button>
     </div>
   );
 }

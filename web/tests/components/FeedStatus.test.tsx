@@ -20,19 +20,9 @@ describe("FeedError", () => {
 });
 
 describe("FeedEmpty", () => {
-  it("shows a generic message for the unfiltered feed", () => {
-    render(<FeedEmpty category={null} onShowFullFeed={() => {}} />);
-    expect(screen.getByText("No posts yet.")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-  });
-
-  it("offers a way back to the full feed when a category is empty", () => {
-    const onShowFullFeed = vi.fn();
-    render(<FeedEmpty category="gaming" onShowFullFeed={onShowFullFeed} />);
-
+  it("shows a message naming the empty category", () => {
+    render(<FeedEmpty category="gaming" />);
     expect(screen.getByText(/no posts in gaming yet/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /show full feed/i }));
-
-    expect(onShowFullFeed).toHaveBeenCalled();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

@@ -77,9 +77,7 @@ export function Feed() {
       <CategorySelector selected={category} onSelect={setCategory} />
       {isPending && <FeedLoading />}
       {error && <FeedError message={error.message} onRetry={refetch} />}
-      {!isPending && !error && posts.length === 0 && (
-        <FeedEmpty category={category} onShowFullFeed={() => setCategory(null)} />
-      )}
+      {!isPending && !error && posts.length === 0 && <FeedEmpty category={category} />}
       {!isPending && !error && resumed && (
         <button type="button" className={styles.backToTop} onClick={resetToTop}>
           ↑ Back to top

@@ -1,7 +1,7 @@
 import type { Category } from "../api/types";
 
-function storageKey(category: Category | null): string {
-  return `goodgorithm:feedCursor:${category ?? "all"}`;
+function storageKey(category: Category): string {
+  return `goodgorithm:feedCursor:${category}`;
 }
 
 // Real inflow is a few thousand posts/hour, so a resumed cursor goes stale
@@ -14,7 +14,7 @@ interface StoredCursor {
   savedAt: number;
 }
 
-export function loadCursor(category: Category | null): string | null {
+export function loadCursor(category: Category): string | null {
   try {
     const key = storageKey(category);
     const raw = localStorage.getItem(key);
@@ -31,7 +31,7 @@ export function loadCursor(category: Category | null): string | null {
   }
 }
 
-export function saveCursor(category: Category | null, cursor: string | null): void {
+export function saveCursor(category: Category, cursor: string | null): void {
   try {
     const key = storageKey(category);
     if (!cursor) {
@@ -45,7 +45,7 @@ export function saveCursor(category: Category | null, cursor: string | null): vo
   }
 }
 
-export function clearCursor(category: Category | null): void {
+export function clearCursor(category: Category): void {
   try {
     localStorage.removeItem(storageKey(category));
   } catch {
