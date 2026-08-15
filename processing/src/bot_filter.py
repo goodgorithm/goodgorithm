@@ -18,13 +18,30 @@ CAPS_RATIO_CAP = 0.6
 # How many words of the normalized text form the "skeleton" checked for
 # repetition (issue #40) -- long enough to be a real fixed template, short
 # enough to reliably land inside it rather than spilling into variable
-# content. Validated against real reported posts: "Now playing on Mixify
-# Evergreen Hits: SONG! Tune in now: URL" and "...Mixify Bangla Hits: SONG!
-# Tune in now: URL" both normalize to the identical 4-word-prefix +
-# 3-word-suffix skeleton despite the whole-text Jaccard between them being
-# ~0.01-0.13 (see dedup.py's JACCARD_THRESHOLD=0.7 -- nowhere close).
-TEMPLATE_PREFIX_WORDS = 4
-TEMPLATE_SUFFIX_WORDS = 3
+# content. Originally 4-word-prefix + 3-word-suffix, validated against
+# "Now playing on Mixify Evergreen Hits: SONG! Tune in now: URL" vs
+# "...Mixify Bangla Hits: SONG! Tune in now: URL" (identical skeleton
+# despite whole-text Jaccard of ~0.01-0.13 between them -- see dedup.py's
+# JACCARD_THRESHOLD=0.7, nowhere close).
+#
+# Narrowed to 3+2 after a real production account ("Joint Radio",
+# jointil@mastodon.social) evaded that window: it rotates across several
+# named "stations" ("Joint Radio Beat Trance", "...Reggae", "...Blues
+# Rock"), each with its own emoji landing exactly on word 4 and its own
+# genre hashtag landing in the last 3 words -- e.g. "Now playing on 🎧
+# Joint Radio Beat Trance: ... #PsyTrance #NowPlaying #Radio" vs "Now
+# playing on ❤️💛💚 Joint Radio Reggae: ... #Rocksteady #NowPlaying
+# #Radio". Each station computed to a different skeleton, splitting one
+# account's repeat count across several counters instead of accumulating
+# in one. Confirmed directly against the real text that 3-word-prefix
+# ("now playing on") + 2-word-suffix ("#nowplaying #radio") is common
+# across all of that account's stations. Different accounts sharing an
+# otherwise-similar skeleton under the narrower window (e.g. Mixify and
+# DFM both reducing to "now playing on || in now:") is fine, not a
+# regression -- bump_template_repeat is keyed by (author_id, skeleton),
+# so cross-account collisions were never a correctness risk.
+TEMPLATE_PREFIX_WORDS = 3
+TEMPLATE_SUFFIX_WORDS = 2
 # Same 24h window as SELF_DUP_TTL_SECONDS, not VELOCITY_WINDOW_SECONDS --
 # a lower-volume templated bot may take longer than an hour to accumulate
 # enough repeats to be conclusive; this is "structural repetition over

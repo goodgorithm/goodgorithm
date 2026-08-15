@@ -152,14 +152,54 @@ MIXIFY_B = "Now playing on Mixify Bangla Hits: Nohe Nohe Prio by Asha Bhosle! Tu
 DFM_A = "Now playing on DFM: Unwritten by Natasha Bedingfield! Tune in now: https://a12.asurahosting.com/public/dfm"
 DFM_B = "Now playing on DFM: Tika Taka Loka Tika Nilo Makata Niro 2026 by BeatWizzies! Tune in now: https://a12.asurahosting.com/public/dfm"
 
+# Real production text (post-deploy, issue #40 follow-up): a second
+# templated radio-bot account, jointil@mastodon.social, evaded the
+# original 4-word-prefix/3-word-suffix window because it rotates across
+# several named "stations", each with its own emoji landing exactly on
+# word 4 and its own genre hashtag landing in the last 3 words.
+JOINT_TRANCE = (
+    "Now playing on 🎧 Joint Radio Beat Trance: 🎵 Echotek - Mini Pack This one is an absolute banger. "
+    "Tune in: 🔊 https://www.jointil.com #Trance #ProgressiveTrance #Goa #PsyTrance #NowPlaying #Radio"
+)
+JOINT_REGGAE = (
+    "Now playing on ❤️💛💚 Joint Radio Reggae: 🎵 Barrington Levy & Beenie Man - Under Me Sensi "
+    "Just the right vibe for right now. Come listen: 🌴 https://www.jointil.com "
+    "#Reggae #Roots #Dub #Rocksteady #NowPlaying #Radio"
+)
+JOINT_BLUES = (
+    "Now playing on 🎸 Joint Radio Blues Rock: 🎵 The Beatles - Here Comes The Sun "
+    "Perfect song for right now. Jump in the stream: https://www.jointil.com "
+    "#Blues #Rock #BluesRock #classicRock #NowPlaying #Radio"
+)
+
 
 def test_template_skeleton_matches_same_stations_varying_songs():
     assert bot_filter.template_skeleton(MIXIFY_A) == bot_filter.template_skeleton(MIXIFY_B)
     assert bot_filter.template_skeleton(DFM_A) == bot_filter.template_skeleton(DFM_B)
 
 
-def test_template_skeleton_differs_across_stations():
-    assert bot_filter.template_skeleton(MIXIFY_A) != bot_filter.template_skeleton(DFM_A)
+def test_template_skeleton_matches_across_a_bots_rotating_stations():
+    # The original gap: three different "stations" from the same account,
+    # each with a different emoji (word 4) and genre hashtag (in the last
+    # 3 words under the old window) -- the narrower 3-word-prefix/
+    # 2-word-suffix window unifies them into one skeleton.
+    assert (
+        bot_filter.template_skeleton(JOINT_TRANCE)
+        == bot_filter.template_skeleton(JOINT_REGGAE)
+        == bot_filter.template_skeleton(JOINT_BLUES)
+    )
+
+
+def test_template_skeleton_differs_from_unrelated_content():
+    # Different accounts landing on a similar skeleton (e.g. Mixify and
+    # DFM both reducing to "now playing on || in now:") is fine, not a
+    # bug -- bump_template_repeat is keyed by (author_id, skeleton), so
+    # cross-account collisions were never a correctness risk. What still
+    # matters is that the function isn't degenerate against genuinely
+    # unrelated text.
+    assert bot_filter.template_skeleton(MIXIFY_A) != bot_filter.template_skeleton(
+        "had a lovely walk in the park this morning, the weather was perfect"
+    )
 
 
 def test_score_bot_repeated_template_flags_as_bot():
