@@ -12,6 +12,7 @@ export interface AttachmentSource {
   mastodon_sensitive: boolean | null;
   bluesky_labels: unknown;
   quote_content: unknown;
+  generated_thumbnail_url: string | null;
 }
 
 export interface AttachmentResult {
@@ -85,13 +86,17 @@ interface BlueskyExternal {
   thumb?: { ref?: { $link?: unknown } };
 }
 
-function parseBlueskyExternal(did: string, external: unknown): Attachment | null {
+function parseBlueskyExternal(did: string, external: unknown, generatedThumbnailUrl: string | null): Attachment | null {
   if (typeof external !== "object" || external === null) return null;
   const ext = external as BlueskyExternal;
   if (!isHttpUrl(ext.uri)) return null;
 
   const cid = ext.thumb?.ref?.$link;
-  const thumbnailUrl = typeof cid === "string" ? blueskyImageUrls(did, cid).thumbnailUrl : null;
+  const sourceThumbnailUrl = typeof cid === "string" ? blueskyImageUrls(did, cid).thumbnailUrl : null;
+  // issue #43: fall back to processing/'s own og:image fetch
+  // (thumbnail_resolver.py) when the poster's own client didn't capture
+  // one - never overrides a real source thumbnail when one exists.
+  const thumbnailUrl = sourceThumbnailUrl ?? (isHttpUrl(generatedThumbnailUrl) ? generatedThumbnailUrl : null);
 
   return {
     kind: "link",
@@ -184,13 +189,13 @@ function parseBlueskyQuote(record: unknown, quoteContent: QuoteContent | null): 
   return { kind: "quote", url: buildBlueskyPostUrl(did, rkey), content: quoteContent };
 }
 
-function parseBlueskyMediaUnion(did: string, media: unknown): Attachment[] {
+function parseBlueskyMediaUnion(did: string, media: unknown, generatedThumbnailUrl: string | null): Attachment[] {
   if (typeof media !== "object" || media === null) return [];
   const typed = media as { $type?: unknown; images?: unknown; external?: unknown };
 
   if (typed.$type === "app.bsky.embed.images") return parseBlueskyImages(did, typed.images);
   if (typed.$type === "app.bsky.embed.external") {
-    const link = parseBlueskyExternal(did, typed.external);
+    const link = parseBlueskyExternal(did, typed.external, generatedThumbnailUrl);
     return link ? [link] : [];
   }
   if (typed.$type === "app.bsky.embed.video") {
@@ -200,7 +205,12 @@ function parseBlueskyMediaUnion(did: string, media: unknown): Attachment[] {
   return []; // gallery/etc - not yet observed in production, deferred
 }
 
-function parseBlueskyEmbed(did: string, embed: unknown, quoteContent: QuoteContent | null): Attachment[] {
+function parseBlueskyEmbed(
+  did: string,
+  embed: unknown,
+  quoteContent: QuoteContent | null,
+  generatedThumbnailUrl: string | null,
+): Attachment[] {
   if (typeof embed !== "object" || embed === null) return [];
   const typed = embed as { $type?: unknown; images?: unknown; external?: unknown; record?: unknown; media?: unknown };
 
@@ -209,7 +219,7 @@ function parseBlueskyEmbed(did: string, embed: unknown, quoteContent: QuoteConte
       return parseBlueskyImages(did, typed.images);
 
     case "app.bsky.embed.external": {
-      const link = parseBlueskyExternal(did, typed.external);
+      const link = parseBlueskyExternal(did, typed.external, generatedThumbnailUrl);
       return link ? [link] : [];
     }
 
@@ -226,7 +236,7 @@ function parseBlueskyEmbed(did: string, embed: unknown, quoteContent: QuoteConte
     case "app.bsky.embed.recordWithMedia": {
       // Nesting confirmed against a real row: the quote is at
       // embed.record.record, not embed.record directly.
-      const media = parseBlueskyMediaUnion(did, typed.media);
+      const media = parseBlueskyMediaUnion(did, typed.media, generatedThumbnailUrl);
       const recordWrapper = typed.record as { record?: unknown } | null | undefined;
       const quote = parseBlueskyQuote(recordWrapper?.record, quoteContent);
       return quote ? [...media, quote] : media;
@@ -293,17 +303,26 @@ interface MastodonCard {
   provider_name?: unknown;
 }
 
-function parseMastodonCard(card: unknown): Attachment | null {
+function parseMastodonCard(card: unknown, generatedThumbnailUrl: string | null): Attachment | null {
   if (typeof card !== "object" || card === null) return null;
   const c = card as MastodonCard;
   if (!isHttpUrl(c.url)) return null;
+
+  // issue #43: fall back to processing/'s own og:image fetch
+  // (thumbnail_resolver.py) when Mastodon's own server-side card-fetch
+  // didn't capture one - never overrides a real source thumbnail.
+  const thumbnailUrl = isHttpUrl(c.image)
+    ? c.image
+    : isHttpUrl(generatedThumbnailUrl)
+      ? generatedThumbnailUrl
+      : null;
 
   return {
     kind: "link",
     url: c.url,
     title: nonEmptyString(c.title),
     description: nonEmptyString(c.description),
-    thumbnailUrl: isHttpUrl(c.image) ? c.image : null,
+    thumbnailUrl,
     providerName: nonEmptyString(c.provider_name),
   };
 }
@@ -326,9 +345,14 @@ function isSensitive(mastodonSensitive: boolean | null, blueskyLabels: unknown):
 export function buildAttachments(row: AttachmentSource): AttachmentResult {
   let attachments: Attachment[];
   if (row.source === "bluesky") {
-    attachments = parseBlueskyEmbed(row.author_id, row.bluesky_embed, parseQuoteContent(row.quote_content));
+    attachments = parseBlueskyEmbed(
+      row.author_id,
+      row.bluesky_embed,
+      parseQuoteContent(row.quote_content),
+      row.generated_thumbnail_url,
+    );
   } else {
-    const card = parseMastodonCard(row.mastodon_card);
+    const card = parseMastodonCard(row.mastodon_card, row.generated_thumbnail_url);
     attachments = [...parseMastodonMedia(row.mastodon_media), ...(card ? [card] : [])];
   }
 

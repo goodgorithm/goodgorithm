@@ -13,6 +13,7 @@ import quote_resolver
 import ranking
 import redis_guard
 import sentiment
+import thumbnail_resolver
 import topicality
 
 logger = logging.getLogger("processing")
@@ -134,6 +135,17 @@ def run_cycle(batch_size: int) -> int:
         suppressed_terms,
     )
 
+    # Same batched/deduped shape as quote resolution above -- multiple
+    # posts linking to the same page (a widely-shared article) only
+    # trigger one fetch (issue #43).
+    thumbnail_urls_by_post = {
+        post.id: thumbnail_resolver.extract_link_needing_thumbnail(post.source, post.raw_json)
+        for post in kept_posts
+    }
+    thumbnail_by_url = thumbnail_resolver.resolve_thumbnails(
+        [url for url in thumbnail_urls_by_post.values() if url is not None]
+    )
+
     now = datetime.now(timezone.utc)
 
     upserts: list[db.ProcessedPostUpsert] = []
@@ -168,6 +180,9 @@ def run_cycle(batch_size: int) -> int:
         quote_uri = quote_uris_by_post.get(post.id)
         quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None
 
+        thumbnail_url = thumbnail_urls_by_post.get(post.id)
+        generated_thumbnail_url = thumbnail_by_url.get(thumbnail_url) if thumbnail_url else None
+
         upserts.append(
             db.ProcessedPostUpsert(
                 raw_post_id=post.id,
@@ -186,6 +201,7 @@ def run_cycle(batch_size: int) -> int:
                 category=category,
                 category_method=category_model.CATEGORY_METHOD,
                 context_penalty=context_penalty,
+                generated_thumbnail_url=generated_thumbnail_url,
             )
         )
 

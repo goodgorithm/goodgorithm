@@ -78,6 +78,7 @@ class ProcessedPostUpsert:
     category: str | None = None
     category_method: str | None = None
     context_penalty: float = 1.0
+    generated_thumbnail_url: str | None = None
 
 
 UPSERT_PROCESSED_POSTS_CHUNK_SIZE = 500
@@ -94,7 +95,9 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
     with pool.connection() as conn:
         for i in range(0, len(rows), UPSERT_PROCESSED_POSTS_CHUNK_SIZE):
             chunk = rows[i : i + UPSERT_PROCESSED_POSTS_CHUNK_SIZE]
-            values_sql = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk))
+            values_sql = ", ".join(
+                ["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk)
+            )
             params = [
                 value
                 for row in chunk
@@ -114,6 +117,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.category,
                     row.category_method,
                     row.context_penalty,
+                    row.generated_thumbnail_url,
                     row.pipeline_version,
                 )
             ]
@@ -123,26 +127,27 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score,
                     sentiment_score, sentiment_method, topicality_score, entities,
                     base_score, rank_score, quote_content, category, category_method,
-                    context_penalty, pipeline_version
+                    context_penalty, generated_thumbnail_url, pipeline_version
                 )
                 VALUES {values_sql}
                 ON CONFLICT (raw_post_id) DO UPDATE SET
-                    dedup_cluster_id   = EXCLUDED.dedup_cluster_id,
-                    is_dedup_canonical = EXCLUDED.is_dedup_canonical,
-                    is_bot             = EXCLUDED.is_bot,
-                    bot_score          = EXCLUDED.bot_score,
-                    sentiment_score    = EXCLUDED.sentiment_score,
-                    sentiment_method   = EXCLUDED.sentiment_method,
-                    topicality_score   = EXCLUDED.topicality_score,
-                    entities           = EXCLUDED.entities,
-                    base_score         = EXCLUDED.base_score,
-                    rank_score         = EXCLUDED.rank_score,
-                    quote_content      = EXCLUDED.quote_content,
-                    category           = EXCLUDED.category,
-                    category_method    = EXCLUDED.category_method,
-                    context_penalty    = EXCLUDED.context_penalty,
-                    pipeline_version   = EXCLUDED.pipeline_version,
-                    processed_at       = NOW()
+                    dedup_cluster_id       = EXCLUDED.dedup_cluster_id,
+                    is_dedup_canonical     = EXCLUDED.is_dedup_canonical,
+                    is_bot                 = EXCLUDED.is_bot,
+                    bot_score              = EXCLUDED.bot_score,
+                    sentiment_score        = EXCLUDED.sentiment_score,
+                    sentiment_method       = EXCLUDED.sentiment_method,
+                    topicality_score       = EXCLUDED.topicality_score,
+                    entities               = EXCLUDED.entities,
+                    base_score             = EXCLUDED.base_score,
+                    rank_score             = EXCLUDED.rank_score,
+                    quote_content          = EXCLUDED.quote_content,
+                    category               = EXCLUDED.category,
+                    category_method        = EXCLUDED.category_method,
+                    context_penalty        = EXCLUDED.context_penalty,
+                    generated_thumbnail_url = EXCLUDED.generated_thumbnail_url,
+                    pipeline_version       = EXCLUDED.pipeline_version,
+                    processed_at           = NOW()
                 """,
                 params,
             )

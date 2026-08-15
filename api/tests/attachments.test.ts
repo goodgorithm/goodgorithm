@@ -5,7 +5,12 @@ import { buildAttachments, type AttachmentSource } from "../src/attachments";
 
 const DID = "did:plc:ibf6ehn7ba3va4jyqhzx6vv3";
 
-function bskyRow(embed: unknown, labels: unknown = null, quoteContent: unknown = null): AttachmentSource {
+function bskyRow(
+  embed: unknown,
+  labels: unknown = null,
+  quoteContent: unknown = null,
+  generatedThumbnailUrl: string | null = null,
+): AttachmentSource {
   return {
     source: "bluesky",
     author_id: DID,
@@ -15,6 +20,7 @@ function bskyRow(embed: unknown, labels: unknown = null, quoteContent: unknown =
     mastodon_sensitive: null,
     bluesky_labels: labels,
     quote_content: quoteContent,
+    generated_thumbnail_url: generatedThumbnailUrl,
   };
 }
 
@@ -22,6 +28,7 @@ function mastodonRow(
   media: unknown = null,
   card: unknown = null,
   sensitive: boolean | null = null,
+  generatedThumbnailUrl: string | null = null,
 ): AttachmentSource {
   return {
     source: "mastodon",
@@ -32,6 +39,7 @@ function mastodonRow(
     mastodon_sensitive: sensitive,
     bluesky_labels: null,
     quote_content: null,
+    generated_thumbnail_url: generatedThumbnailUrl,
   };
 }
 
@@ -129,6 +137,63 @@ test("bluesky external embed with empty description", () => {
       providerName: null,
     },
   ]);
+});
+
+test("bluesky external embed falls back to the generated thumbnail when no source thumb exists (issue #43)", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(
+      {
+        $type: "app.bsky.embed.external",
+        external: { uri: "https://example.com/article", title: "An article" },
+      },
+      null,
+      null,
+      "https://example.com/generated-thumb.jpg",
+    ),
+  );
+
+  assert.equal(attachments[0]?.kind, "link");
+  if (attachments[0]?.kind === "link") {
+    assert.equal(attachments[0].thumbnailUrl, "https://example.com/generated-thumb.jpg");
+  }
+});
+
+test("bluesky external embed prefers the source thumb over a generated one when both exist", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(
+      {
+        $type: "app.bsky.embed.external",
+        external: {
+          uri: "https://example.com/article",
+          thumb: { ref: { $link: "bafkreisource" } },
+        },
+      },
+      null,
+      null,
+      "https://example.com/generated-thumb.jpg",
+    ),
+  );
+
+  assert.equal(attachments[0]?.kind, "link");
+  if (attachments[0]?.kind === "link") {
+    assert.ok(attachments[0].thumbnailUrl?.includes("bafkreisource"));
+  }
+});
+
+test("bluesky external embed ignores a non-http(s) generated thumbnail", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(
+      { $type: "app.bsky.embed.external", external: { uri: "https://example.com/article" } },
+      null,
+      null,
+      "javascript:alert(1)",
+    ),
+  );
+
+  assert.equal(attachments[0]?.kind, "link");
+  if (attachments[0]?.kind === "link") {
+    assert.equal(attachments[0].thumbnailUrl, null);
+  }
 });
 
 test("bluesky external embed with a non-http(s) uri is dropped", () => {
@@ -447,6 +512,38 @@ test("mastodon card with image: null (confirmed real, ~13% of cards)", () => {
   if (attachments[0]?.kind === "link") {
     assert.equal(attachments[0].thumbnailUrl, null);
     assert.equal(attachments[0].providerName, null); // "" normalized to null
+  }
+});
+
+test("mastodon card falls back to the generated thumbnail when card.image is absent (issue #43)", () => {
+  const { attachments } = buildAttachments(
+    mastodonRow(
+      null,
+      { url: "https://ku.bz/zJkxP7NL_", title: "Senior Configuration Engineer", image: null },
+      null,
+      "https://example.com/generated-thumb.jpg",
+    ),
+  );
+
+  assert.equal(attachments[0]?.kind, "link");
+  if (attachments[0]?.kind === "link") {
+    assert.equal(attachments[0].thumbnailUrl, "https://example.com/generated-thumb.jpg");
+  }
+});
+
+test("mastodon card prefers card.image over a generated thumbnail when both exist", () => {
+  const { attachments } = buildAttachments(
+    mastodonRow(
+      null,
+      { url: "https://ku.bz/zJkxP7NL_", image: "https://example.com/card-image.jpg" },
+      null,
+      "https://example.com/generated-thumb.jpg",
+    ),
+  );
+
+  assert.equal(attachments[0]?.kind, "link");
+  if (attachments[0]?.kind === "link") {
+    assert.equal(attachments[0].thumbnailUrl, "https://example.com/card-image.jpg");
   }
 });
 

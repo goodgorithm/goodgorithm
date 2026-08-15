@@ -31,6 +31,7 @@ export interface FeedRow {
   bluesky_labels: unknown;
   quote_content: unknown;
   category: string | null;
+  generated_thumbnail_url: string | null;
 }
 
 export async function fetchFeed(
@@ -51,7 +52,8 @@ export async function fetchFeed(
            (r.raw_json->>'sensitive')::boolean AS mastodon_sensitive,
            r.raw_json->'commit'->'record'->'labels' AS bluesky_labels,
            p.quote_content,
-           p.category
+           p.category,
+           p.generated_thumbnail_url
     FROM processed_posts p
     JOIN raw_posts r ON r.id = p.raw_post_id
     WHERE p.rank_score IS NOT NULL
