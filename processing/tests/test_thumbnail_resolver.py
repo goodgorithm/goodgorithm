@@ -203,6 +203,8 @@ def test_resolve_thumbnails_empty_input_makes_no_requests(monkeypatch):
 
 # --- extract_link_needing_thumbnail ---
 
+PLAIN_TEXT = "just a normal post with no links"
+
 
 def test_extract_link_needing_thumbnail_bluesky_no_thumb():
     raw_json = {
@@ -215,7 +217,10 @@ def test_extract_link_needing_thumbnail_bluesky_no_thumb():
             }
         }
     }
-    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", raw_json) == "https://example.com/article"
+    assert (
+        thumbnail_resolver.extract_link_needing_thumbnail("bluesky", raw_json, PLAIN_TEXT)
+        == "https://example.com/article"
+    )
 
 
 def test_extract_link_needing_thumbnail_bluesky_already_has_thumb():
@@ -232,30 +237,57 @@ def test_extract_link_needing_thumbnail_bluesky_already_has_thumb():
             }
         }
     }
-    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", raw_json) is None
+    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", raw_json, PLAIN_TEXT) is None
 
 
 def test_extract_link_needing_thumbnail_bluesky_non_external_embed():
     raw_json = {"commit": {"record": {"embed": {"$type": "app.bsky.embed.images", "images": []}}}}
-    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", raw_json) is None
+    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", raw_json, PLAIN_TEXT) is None
 
 
 def test_extract_link_needing_thumbnail_mastodon_no_image():
     raw_json = {"card": {"url": "https://example.com/article", "image": None}}
-    assert thumbnail_resolver.extract_link_needing_thumbnail("mastodon", raw_json) == "https://example.com/article"
+    assert (
+        thumbnail_resolver.extract_link_needing_thumbnail("mastodon", raw_json, PLAIN_TEXT)
+        == "https://example.com/article"
+    )
 
 
 def test_extract_link_needing_thumbnail_mastodon_already_has_image():
     raw_json = {"card": {"url": "https://example.com/article", "image": "https://example.com/thumb.jpg"}}
-    assert thumbnail_resolver.extract_link_needing_thumbnail("mastodon", raw_json) is None
+    assert thumbnail_resolver.extract_link_needing_thumbnail("mastodon", raw_json, PLAIN_TEXT) is None
 
 
-def test_extract_link_needing_thumbnail_mastodon_no_card():
-    assert thumbnail_resolver.extract_link_needing_thumbnail("mastodon", {"card": None}) is None
+def test_extract_link_needing_thumbnail_mastodon_no_card_falls_back_to_text_url():
+    # Confirmed live in production (issue #43 follow-up): Mastodon's own
+    # card generation is async per-instance and isn't always populated by
+    # the time we poll a post -- the identical post relayed through a
+    # different instance can have a full card while this one has
+    # card: null entirely. The real URL is still in the post's own text
+    # (already resolved by issue #42's stripHtml fix), so this should
+    # fall back to it rather than giving up.
+    text = "Reminder: check this out https://example.com/article Posted into Travel"
+    assert thumbnail_resolver.extract_link_needing_thumbnail("mastodon", {"card": None}, text) == (
+        "https://example.com/article"
+    )
+
+
+def test_extract_link_needing_thumbnail_mastodon_no_card_and_no_url_in_text():
+    assert thumbnail_resolver.extract_link_needing_thumbnail("mastodon", {"card": None}, PLAIN_TEXT) is None
+
+
+def test_extract_link_needing_thumbnail_mastodon_card_with_no_usable_url_falls_back_to_text():
+    # A card dict that exists but has neither an image nor a usable url --
+    # same fallback as card being null entirely.
+    raw_json = {"card": {"image": None, "url": None}}
+    text = "check this out https://example.com/article"
+    assert (
+        thumbnail_resolver.extract_link_needing_thumbnail("mastodon", raw_json, text) == "https://example.com/article"
+    )
 
 
 def test_extract_link_needing_thumbnail_is_defensive_about_malformed_shapes():
-    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", {}) is None
-    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", None) is None
-    assert thumbnail_resolver.extract_link_needing_thumbnail("mastodon", {}) is None
-    assert thumbnail_resolver.extract_link_needing_thumbnail("unknown-source", {"card": {"url": "x"}}) is None
+    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", {}, PLAIN_TEXT) is None
+    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", None, PLAIN_TEXT) is None
+    assert thumbnail_resolver.extract_link_needing_thumbnail("mastodon", {}, PLAIN_TEXT) is None
+    assert thumbnail_resolver.extract_link_needing_thumbnail("unknown-source", {"card": {"url": "x"}}, PLAIN_TEXT) is None

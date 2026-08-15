@@ -139,7 +139,7 @@ def run_cycle(batch_size: int) -> int:
     # posts linking to the same page (a widely-shared article) only
     # trigger one fetch (issue #43).
     thumbnail_urls_by_post = {
-        post.id: thumbnail_resolver.extract_link_needing_thumbnail(post.source, post.raw_json)
+        post.id: thumbnail_resolver.extract_link_needing_thumbnail(post.source, post.raw_json, post.text)
         for post in kept_posts
     }
     thumbnail_by_url = thumbnail_resolver.resolve_thumbnails(

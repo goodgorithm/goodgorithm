@@ -139,7 +139,10 @@ def resolve_thumbnails(urls: list[str]) -> dict[str, str | None]:
     return {url: resolve_thumbnail(url) for url in dict.fromkeys(urls)}
 
 
-def extract_link_needing_thumbnail(source: str, raw_json: dict) -> str | None:
+_TEXT_URL_RE = re.compile(r"https?://\S+")
+
+
+def extract_link_needing_thumbnail(source: str, raw_json: dict, text: str) -> str | None:
     """The link URL that should get a generated thumbnail, or None if this
     post has no external-link embed or already has a source-provided
     thumbnail (issue #43). Hand-mirrors api/src/attachments.ts's
@@ -159,9 +162,22 @@ def extract_link_needing_thumbnail(source: str, raw_json: dict) -> str | None:
 
     if source == "mastodon":
         card = (raw_json or {}).get("card")
-        if not isinstance(card, dict) or card.get("image"):
-            return None
-        url = card.get("url")
-        return url if isinstance(url, str) else None
+        if isinstance(card, dict):
+            if card.get("image"):
+                return None  # already has a source thumbnail
+            url = card.get("url")
+            if isinstance(url, str):
+                return url
+
+        # No usable card.url, confirmed live in production to be common,
+        # not an edge case: Mastodon's own card generation is async per-
+        # instance, and isn't always done by the time we poll a post --
+        # the *identical* post relayed through a different instance can
+        # have a full card while this one has card: null entirely. Falls
+        # back to the first URL in the post's own text, which already has
+        # any truncated-link href resolved into it at ingestion time
+        # (issue #42's stripHtml fix), rather than giving up.
+        match = _TEXT_URL_RE.search(text)
+        return match.group(0) if match else None
 
     return None
