@@ -88,10 +88,18 @@ def detect_language(text: str) -> tuple[str, float]:
 def is_non_english(text: str) -> bool:
     """True only when confidently non-English. Blank text, an unloadable
     model, and low-confidence guesses on short/ambiguous content all fall
-    through as "not confidently non-English" (i.e. kept) -- matching how
-    this is meant to be used (pipeline.py): only for posts with no self-
-    reported language tag at all, so there's no metadata to fall back on
-    if the content itself is inconclusive, same "don't exclude on a weak
-    signal" caution as bot_filter.py's velocity-alone-can't-flag rule."""
+    through as "not confidently non-English" (i.e. kept) -- same "don't
+    exclude on a weak signal" caution as bot_filter.py's
+    velocity-alone-can't-flag rule.
+
+    Called from pipeline.py in two cases: any post with no self-reported
+    language tag at all (issue #28 -- there's no metadata to fall back on
+    if the content itself is inconclusive), and every Mastodon post
+    regardless of its tag (issue #41 -- unlike Bluesky's poster-set langs,
+    Mastodon's server-reported language can be defaulted wrong by an
+    automated posting tool, confirmed at a real ~6% rate in production).
+    Deliberately NOT extended to Bluesky's tagged posts -- tested against
+    real data and found to trade a small, mostly-illusory gap for a real
+    false-positive problem on short, casual English text."""
     label, confidence = detect_language(text)
     return label != "" and label != "en" and confidence >= CONFIDENCE_THRESHOLD

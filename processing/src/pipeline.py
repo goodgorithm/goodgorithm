@@ -61,14 +61,25 @@ def run_cycle(batch_size: int) -> int:
     # the block came from a moderator's manual entry or the Bluesky
     # bot-label auto-insert (ingestion/src/blueskyLabels.ts).
     #
-    # Language verification (issue #28) only runs when post.lang is None --
-    # ingestion/'s own language filters (bluesky.ts/mastodon.ts) already
+    # Language verification (issue #28) always runs when post.lang is None
+    # -- ingestion/'s own language filters (bluesky.ts/mastodon.ts) already
     # exclude anything self-/server-tagged as non-English; the confirmed
     # gap was specifically posts with no language signal at all
     # (~11-13% of ingested volume), which those filters let through
-    # unconditionally on the assumption "no tag = English". A tagged post
-    # has already been through that check, so re-verifying its content
-    # here wouldn't change anything.
+    # unconditionally on the assumption "no tag = English".
+    #
+    # It also runs on every Mastodon post regardless of tag (issue #41) --
+    # unlike Bluesky's poster-set langs, Mastodon's language field can be
+    # server-defaulted wrong by an automated posting tool (e.g. the
+    # feedtoot-driven bot in #41's report), and a real production sample
+    # confirmed a genuine ~6% mistagged-as-English rate with only 1/150
+    # borderline false positives. The same check was tested against a
+    # real Bluesky sample too and deliberately NOT extended there: at
+    # least a third of its "mistagged" hits were fastText false positives
+    # on short, casual English text ("Hehehehe" -> German, "Yes >:3" ->
+    # Russian) -- Bluesky's tag has no analogous wrong-by-default
+    # mechanism, so re-verifying it trades a small, mostly-illusory gap
+    # for a real new false-exclusion problem.
     blocked = db.fetch_blocked_authors()
     suppressed_terms = db.fetch_suppressed_terms()
 
@@ -89,9 +100,10 @@ def run_cycle(batch_size: int) -> int:
         elif content_filter.is_content_excluded(post.text, post.raw_json, suppressed_terms):
             db.delete_raw_post(post.id)
             logger.info("content-filtered post %s (hashtag/self-label/spoiler-text)", post.id)
-        elif post.lang is None and language_filter.is_non_english(post.text):
+        elif (post.lang is None or post.source == "mastodon") and language_filter.is_non_english(post.text):
             db.delete_raw_post(post.id)
-            logger.info("language-filtered post %s (no tag, detected non-English)", post.id)
+            reason = "no tag" if post.lang is None else f"tagged {post.lang!r}"
+            logger.info("language-filtered post %s (%s, detected non-English)", post.id, reason)
         else:
             classification = context_dependency.classify(post.source, post.author_id, post.raw_json)
             if classification.action == "exclude":
