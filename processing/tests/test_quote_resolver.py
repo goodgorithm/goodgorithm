@@ -2,6 +2,8 @@ import requests
 
 import quote_resolver
 
+TERMS = frozenset({"nsfw"})
+
 # --- extract_quote_uri ---
 
 
@@ -112,7 +114,7 @@ def test_resolve_quotes_maps_a_resolvable_post(monkeypatch):
         requests, "get", lambda *a, **k: FakeResponse({"posts": [post_view(uri, "a lovely post")]})
     )
 
-    result = quote_resolver.resolve_quotes([uri])
+    result = quote_resolver.resolve_quotes([uri], TERMS)
 
     assert result[uri]["status"] == "available"
     assert result[uri]["text"] == "a lovely post"
@@ -131,7 +133,7 @@ def test_resolve_quotes_uri_absent_from_response_is_not_found(monkeypatch):
     uri = "at://did:plc:abc/app.bsky.feed.post/deleted"
     monkeypatch.setattr(requests, "get", lambda *a, **k: FakeResponse({"posts": []}))
 
-    result = quote_resolver.resolve_quotes([uri])
+    result = quote_resolver.resolve_quotes([uri], TERMS)
 
     assert result[uri] == {"status": "unavailable", "reason": "not_found"}
 
@@ -142,7 +144,7 @@ def test_resolve_quotes_hashtag_match_is_filtered(monkeypatch):
         requests, "get", lambda *a, **k: FakeResponse({"posts": [post_view(uri, "check this out #nsfw")]})
     )
 
-    result = quote_resolver.resolve_quotes([uri])
+    result = quote_resolver.resolve_quotes([uri], TERMS)
 
     assert result[uri] == {"status": "unavailable", "reason": "filtered"}
 
@@ -155,7 +157,7 @@ def test_resolve_quotes_self_label_match_is_filtered(monkeypatch):
         lambda *a, **k: FakeResponse({"posts": [post_view(uri, "a normal caption", self_labels=["sexual"])]}),
     )
 
-    result = quote_resolver.resolve_quotes([uri])
+    result = quote_resolver.resolve_quotes([uri], TERMS)
 
     assert result[uri] == {"status": "unavailable", "reason": "filtered"}
 
@@ -171,7 +173,7 @@ def test_resolve_quotes_moderation_label_match_is_filtered(monkeypatch):
         lambda *a, **k: FakeResponse({"posts": [post_view(uri, "a normal caption", labels=["porn"])]}),
     )
 
-    result = quote_resolver.resolve_quotes([uri])
+    result = quote_resolver.resolve_quotes([uri], TERMS)
 
     assert result[uri] == {"status": "unavailable", "reason": "filtered"}
 
@@ -187,7 +189,7 @@ def test_resolve_quotes_batches_at_25_uri_boundary(monkeypatch):
 
     monkeypatch.setattr(requests, "get", fake_get)
 
-    result = quote_resolver.resolve_quotes(uris)
+    result = quote_resolver.resolve_quotes(uris, TERMS)
 
     assert len(calls) == 2
     assert len(calls[0]) == 25
@@ -205,7 +207,7 @@ def test_resolve_quotes_dedupes_repeated_uris(monkeypatch):
 
     monkeypatch.setattr(requests, "get", fake_get)
 
-    quote_resolver.resolve_quotes([uri, uri, uri])
+    quote_resolver.resolve_quotes([uri, uri, uri], TERMS)
 
     assert len(calls) == 1
     assert len(calls[0]) == 1
@@ -221,7 +223,7 @@ def test_resolve_quotes_network_failure_omits_uris_entirely(monkeypatch):
 
     monkeypatch.setattr(requests, "get", raise_error)
 
-    result = quote_resolver.resolve_quotes([uri])  # must not raise
+    result = quote_resolver.resolve_quotes([uri], TERMS)  # must not raise
 
     assert uri not in result
 
@@ -234,7 +236,7 @@ def test_resolve_quotes_http_error_status_omits_uris_entirely(monkeypatch):
         lambda *a, **k: FakeResponse(status_error=requests.HTTPError("429 rate limited")),
     )
 
-    result = quote_resolver.resolve_quotes([uri])  # must not raise
+    result = quote_resolver.resolve_quotes([uri], TERMS)  # must not raise
 
     assert uri not in result
 
@@ -243,7 +245,7 @@ def test_resolve_quotes_empty_input_makes_no_requests(monkeypatch):
     calls = []
     monkeypatch.setattr(requests, "get", lambda *a, **k: calls.append(1))
 
-    result = quote_resolver.resolve_quotes([])
+    result = quote_resolver.resolve_quotes([], TERMS)
 
     assert result == {}
     assert calls == []

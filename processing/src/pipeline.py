@@ -70,6 +70,7 @@ def run_cycle(batch_size: int) -> int:
     # has already been through that check, so re-verifying its content
     # here wouldn't change anything.
     blocked = db.fetch_blocked_authors()
+    suppressed_terms = db.fetch_suppressed_terms()
 
     # Platform-differentiated reply/quote-inline handling (issue #33) -- a
     # post whose meaning depends on unstated context is either hard-excluded
@@ -85,9 +86,9 @@ def run_cycle(batch_size: int) -> int:
         if (post.source, post.author_id) in blocked:
             db.delete_raw_post(post.id)
             logger.info("moderation-blocked post %s (author %s/%s)", post.id, post.source, post.author_id)
-        elif content_filter.is_content_excluded(post.text, post.raw_json):
+        elif content_filter.is_content_excluded(post.text, post.raw_json, suppressed_terms):
             db.delete_raw_post(post.id)
-            logger.info("content-filtered post %s (hashtag/self-label)", post.id)
+            logger.info("content-filtered post %s (hashtag/self-label/spoiler-text)", post.id)
         elif post.lang is None and language_filter.is_non_english(post.text):
             db.delete_raw_post(post.id)
             logger.info("language-filtered post %s (no tag, detected non-English)", post.id)
@@ -117,7 +118,8 @@ def run_cycle(batch_size: int) -> int:
     # cycle, not hundreds.
     quote_uris_by_post = {post.id: quote_resolver.extract_quote_uri(post.raw_json) for post in kept_posts}
     quote_content_by_uri = quote_resolver.resolve_quotes(
-        [uri for uri in quote_uris_by_post.values() if uri is not None]
+        [uri for uri in quote_uris_by_post.values() if uri is not None],
+        suppressed_terms,
     )
 
     now = datetime.now(timezone.utc)

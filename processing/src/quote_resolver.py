@@ -51,7 +51,7 @@ def _chunk(items: list[str], size: int) -> list[list[str]]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
-def _map_post_view(post_view: dict) -> dict:
+def _map_post_view(post_view: dict, suppressed_terms: frozenset[str]) -> dict:
     """Maps a hydrated postView into the exact display shape api/ serves
     verbatim. Never reads likeCount/repostCount/replyCount/quoteCount/
     bookmarkCount even though they're required/standard fields on
@@ -67,7 +67,7 @@ def _map_post_view(post_view: dict) -> dict:
     # here to the quoted post's own text/self-labels -- a quoted post
     # carries its own moderation status independent of the outer post
     # quoting it (Decisions Log: precision over recall).
-    if content_filter.is_content_excluded(text, {"commit": {"record": record}}):
+    if content_filter.is_content_excluded(text, {"commit": {"record": record}}, suppressed_terms):
         return {"status": "unavailable", "reason": "filtered"}
 
     # postView.labels are moderation labels applied by labelers (e.g.
@@ -98,7 +98,7 @@ def _map_post_view(post_view: dict) -> dict:
     }
 
 
-def resolve_quotes(uris: list[str]) -> dict[str, dict]:
+def resolve_quotes(uris: list[str], suppressed_terms: frozenset[str]) -> dict[str, dict]:
     """Batches into groups of 25 (getPosts' documented max), calls
     Bluesky's public getPosts endpoint. Never crashes the calling cycle --
     a failed batch (network error, non-200, timeout) just omits those URIs
@@ -138,7 +138,7 @@ def resolve_quotes(uris: list[str]) -> dict[str, dict]:
             if not isinstance(uri, str):
                 continue
             found_uris.add(uri)
-            results[uri] = _map_post_view(post_view)
+            results[uri] = _map_post_view(post_view, suppressed_terms)
 
         for uri in batch:
             if uri not in found_uris:

@@ -235,6 +235,17 @@ def fetch_blocked_authors() -> set[tuple[str, str]]:
     return {(row[0], row[1]) for row in rows}
 
 
+def fetch_suppressed_terms() -> frozenset[str]:
+    """Whole table, loaded fresh once per cycle -- same "cheaper than a
+    per-post query, no caching/TTL, moderatable without a service restart"
+    pattern as fetch_blocked_authors (issue #7). Moderator-curated term
+    list (issue #39): a moderator adds/removes rows directly via the
+    Supabase SQL editor, no admin UI/CLI, same precedent."""
+    with pool.connection() as conn:
+        rows = conn.execute("SELECT term FROM suppressed_terms").fetchall()
+    return frozenset(row[0] for row in rows)
+
+
 def purge_blocked_authors() -> int:
     """Deletes any already-ingested raw_posts (processed_posts cascades)
     for a blocklisted (source, author_id) -- run every cycle so a new

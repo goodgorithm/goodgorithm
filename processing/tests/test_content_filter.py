@@ -1,16 +1,42 @@
 import content_filter
 
+TERMS = frozenset({"nsfw"})
+
 
 def test_has_excluded_hashtag_matches_case_insensitively():
-    assert content_filter.has_excluded_hashtag("great news #NSFW today") is True
-    assert content_filter.has_excluded_hashtag("#nsfw book out now") is True
+    assert content_filter.has_excluded_hashtag("great news #NSFW today", TERMS) is True
+    assert content_filter.has_excluded_hashtag("#nsfw book out now", TERMS) is True
 
 
 def test_has_excluded_hashtag_does_not_match_unlisted_tags():
-    # #lesbian/#spanking deliberately excluded from EXCLUDED_HASHTAGS --
-    # identity term / ambiguous-outside-context, see module docstring.
-    assert content_filter.has_excluded_hashtag("#lesbian #spanking book out now") is False
-    assert content_filter.has_excluded_hashtag("just a normal positive post") is False
+    # #lesbian/#spanking deliberately not in the suppressed-terms list --
+    # identity term / ambiguous-outside-context, see the migration's
+    # comment (0009_add_suppressed_terms.sql).
+    assert content_filter.has_excluded_hashtag("#lesbian #spanking book out now", TERMS) is False
+    assert content_filter.has_excluded_hashtag("just a normal positive post", TERMS) is False
+
+
+def test_has_excluded_spoiler_text_matches_case_insensitively():
+    assert content_filter.has_excluded_spoiler_text({"spoiler_text": "NSFW"}, TERMS) is True
+    assert content_filter.has_excluded_spoiler_text({"spoiler_text": "cw: nsfw content"}, TERMS) is True
+
+
+def test_has_excluded_spoiler_text_requires_a_whole_word_match():
+    # "nsfwoosh" contains "nsfw" as a substring but isn't the term itself --
+    # proves \b is doing real work, not a bare `in` check.
+    assert content_filter.has_excluded_spoiler_text({"spoiler_text": "nsfwoosh nonsense"}, TERMS) is False
+
+
+def test_has_excluded_spoiler_text_does_not_match_unrelated_content_warnings():
+    assert content_filter.has_excluded_spoiler_text({"spoiler_text": "spoilers: series finale"}, TERMS) is False
+
+
+def test_has_excluded_spoiler_text_is_defensive_about_missing_or_empty():
+    assert content_filter.has_excluded_spoiler_text({}, TERMS) is False
+    assert content_filter.has_excluded_spoiler_text({"spoiler_text": ""}, TERMS) is False
+    assert content_filter.has_excluded_spoiler_text({"spoiler_text": None}, TERMS) is False
+    # Bluesky raw_json has no spoiler_text key at all.
+    assert content_filter.has_excluded_spoiler_text({"commit": {"record": {}}}, TERMS) is False
 
 
 def test_extract_self_label_values_reads_bluesky_self_labels():
@@ -49,11 +75,13 @@ def test_has_excluded_self_label():
     assert content_filter.has_excluded_self_label(no_labels) is False
 
 
-def test_is_content_excluded_combines_both_checks():
+def test_is_content_excluded_combines_all_three_checks():
     hashtag_only = ("free book #nsfw", {"commit": {"record": {}}})
     label_only = ("a totally normal post", {"commit": {"record": {"labels": {"values": [{"val": "nudity"}]}}}})
+    spoiler_only = ("a totally normal post", {"spoiler_text": "nsfw"})
     neither = ("a totally normal post", {"commit": {"record": {}}})
 
-    assert content_filter.is_content_excluded(*hashtag_only) is True
-    assert content_filter.is_content_excluded(*label_only) is True
-    assert content_filter.is_content_excluded(*neither) is False
+    assert content_filter.is_content_excluded(*hashtag_only, TERMS) is True
+    assert content_filter.is_content_excluded(*label_only, TERMS) is True
+    assert content_filter.is_content_excluded(*spoiler_only, TERMS) is True
+    assert content_filter.is_content_excluded(*neither, TERMS) is False
