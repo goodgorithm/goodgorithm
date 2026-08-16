@@ -12,20 +12,13 @@
 export type Source = "bluesky" | "mastodon";
 
 // The fixed 8-category taxonomy assigned by processing/'s category_model.py
-// (a trained TF-IDF + logistic regression classifier, with taxonomy.py's
-// keyword matcher as a fallback for when that model can't load) -
-// replaced the original rule-only 8 categories (issue #34: the exact-
-// keyword-match approach had a hard recall ceiling, most categories
-// showed well under 10 posts at any time). Sourced from a trimmed subset
-// of cardiffnlp/tweet_topic_multi's labels rather than a direct rename -
-// animals/kindness_community/environment_nature were dropped entirely
-// (no equivalent in that dataset; kept alive via keyword-only matching
-// would still show near-zero volume, worse than not showing them at all
-// for this alpha version). Deliberately no DB CHECK constraint enforcing
-// this set (see processed_posts.category in
-// supabase/migrations/0005_add_category.sql) - a stricter constraint
-// would make the taxonomy harder to extend, not easier, which cuts
-// against this project's migration-friendliness goal.
+// (a trained classifier, with taxonomy.py's keyword matcher as a fallback)
+// - see CLAUDE.md's Category filtering section for why these 8 and the
+// history behind them. Deliberately no DB CHECK constraint enforcing this
+// set (see processed_posts.category in supabase/migrations/0005_add_category.sql)
+// - a stricter constraint would make the taxonomy harder to extend, not
+// easier. See the wiki's API Internals page for what happens end to end
+// when this list and the DB disagree.
 export const CATEGORIES = [
   "science_technology",
   "sports",
@@ -104,11 +97,8 @@ export interface FeedPost {
   permalink: string;
   author: FeedPostAuthor;
   scores: FeedPostScores;
-  // Which pipeline logic produced this post's scores - mirrors how
-  // sentiment_method already records which sentiment scorer (CNN vs VADER)
-  // produced a score. processed_posts.pipeline_version existed as a schema
-  // column since the table was created but was never actually written by
-  // processing/ or read here until this was wired up (see CLAUDE.md).
+  // Which pipeline logic produced this post's scores - see CLAUDE.md's
+  // Versioning & migration section.
   pipeline_version: string;
   attachments: Attachment[];
   sensitive: boolean;
