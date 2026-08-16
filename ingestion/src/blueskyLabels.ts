@@ -3,8 +3,9 @@ import { blockAuthor, deleteBySourceId } from "./db";
 
 const MOD_BSKY_LABELS_URL = "wss://mod.bsky.app/xrpc/com.atproto.label.subscribeLabels";
 
-const RECONNECT_BASE_MS = 5_000;
-const RECONNECT_MAX_MS = 60_000;
+// Shared with bluesky.ts's connection to the Jetstream firehose.
+const RECONNECT_BASE_MS = Number(process.env.BLUESKY_RECONNECT_BASE_MS ?? "5000");
+const RECONNECT_MAX_MS = Number(process.env.BLUESKY_RECONNECT_MAX_MS ?? "60000");
 
 // Bluesky's own moderation-service global label values for adult content
 // (com.atproto.label.defs), confirmed 2026-08-11. Bluesky can add more

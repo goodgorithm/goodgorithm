@@ -1,19 +1,17 @@
 import WebSocket from "ws";
 import { insertPost } from "./db";
 
+// Fixed since this connection was first added - no operational need found
+// yet to point it at a different Jetstream instance.
 const JETSTREAM_URL =
   "wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=app.bsky.feed.post";
 
-const RECONNECT_BASE_MS = 5_000;
-const RECONNECT_MAX_MS = 60_000;
+// Shared with blueskyLabels.ts's connection to the labels stream.
+const RECONNECT_BASE_MS = Number(process.env.BLUESKY_RECONNECT_BASE_MS ?? "5000");
+const RECONNECT_MAX_MS = Number(process.env.BLUESKY_RECONNECT_MAX_MS ?? "60000");
 
-// Bluesky Jetstream volume (~86,670 posts/hour observed 2026-08-10) vastly
-// exceeds processing/'s throughput even after the backlog-aware-sleep fix
-// (~7,800-8,570/hour capacity) - keeping every post guarantees an
-// ever-deepening backlog where posts age past the 24h retention cutoff
-// before processing ever reaches them. Sampling down to a representative
-// subset keeps the backlog bounded by design. Default 1.0 (no throttling)
-// so nothing changes unless explicitly configured.
+// Keeps ingestion volume from outrunning processing/'s throughput. See the
+// wiki's Configuration page for tuning guidance.
 const BLUESKY_SAMPLE_RATE = Number(process.env.BLUESKY_SAMPLE_RATE ?? "1.0");
 
 interface JetstreamEvent {
@@ -39,16 +37,13 @@ interface BlueskyFacet {
   features: Array<{ $type?: unknown; uri?: unknown }>;
 }
 
-// AT Protocol facet byte ranges are UTF-8 byte offsets into `text`, not JS
-// string (UTF-16 code unit) offsets - these diverge for any text with
-// multi-byte characters before the facet, so this must operate on real
-// UTF-8 bytes (Buffer), not string indices. A poster's own client often
-// shows a shortened display string for a long link ("apnews.com/article/
-// davi...") while the real target only lives in a facet -- confirmed
-// live at real volume in production (issue #42), completely unused until
-// now. Processed back-to-front so each earlier byteStart/byteEnd stays
-// valid as later replacements change the buffer's length. Only
-// substitutes when the visible text doesn't already look like a complete
+// Recovers a post's real link target from its facets (AT Protocol's
+// rich-text annotations) when the visible text is just a shortened display
+// string: https://docs.bsky.app/docs/advanced-guides/post-richtext
+// Facet byte offsets are UTF-8 byte offsets, not JS string indices, so this
+// operates on a Buffer. Processed back-to-front so each earlier
+// byteStart/byteEnd stays valid as later substitutions change the buffer's
+// length. Skips a facet whose visible text already looks like a complete
 // URL, to avoid needlessly rewriting already-fine links.
 export function resolveFacetLinks(text: string, facets: unknown): string {
   if (!Array.isArray(facets)) return text;
