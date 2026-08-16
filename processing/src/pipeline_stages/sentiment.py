@@ -31,7 +31,8 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     """Attempts to load the trained CNN from R2. On any failure — R2 not
     configured, network error, missing/corrupt objects — logs once and
     leaves the VADER path active. score_sentiment() never raises because of
-    this and never blocks waiting for R2 to recover mid-run."""
+    this and never blocks waiting for R2 to recover mid-run. See the
+    wiki's Pipeline Internals page."""
     global _session, _vocab, SENTIMENT_METHOD
 
     if store is None:
@@ -55,19 +56,23 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
 
 
 def _score_with_cnn(text: str) -> float:
+    # One inference call per post -- the published model's ONNX graph has
+    # a fixed batch dimension of 1, unlike topicality.py's batched spaCy
+    # pass. See the wiki's Pipeline Internals page.
     ids = sentiment_model.encode(sentiment_model.tokenize(text), _vocab)
     input_ids = np.array([ids], dtype=np.int64)
     # label order 0=negative, 1=neutral, 2=positive — fixed by the training
     # notebook's label mapping, baked into the exported graph's output.
     probs = _session.run(None, {"input_ids": input_ids})[0][0]
-    return float(probs[2] - probs[0])
+    return float(probs[2] - probs[0])  # P(positive) - P(negative); see the wiki
 
 
 def score_sentiment(text: str) -> float:
     """[-1, 1]. Lazily attempts to load the trained CNN once per process on
     first call; falls back to VADER if that fails or R2 isn't configured.
     The decision is made once, not retried per call, so a single process's
-    output never mixes cnn_v1/vader_v1 labels."""
+    output never mixes cnn_v1/vader_v1 labels. See the wiki's Pipeline
+    Internals page."""
     global _load_attempted
     if not _load_attempted:
         _load_attempted = True
