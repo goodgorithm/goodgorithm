@@ -31,42 +31,25 @@ def main() -> None:
     parser.add_argument(
         "--interval", type=int, default=int(os.environ.get("PROCESSING_INTERVAL_SECONDS", 300))
     )
-    # Backlog-aware sleep: only take the full --interval as idle time when a
-    # cycle genuinely had nothing to process. A full unconditional sleep after
-    # every cycle regardless of backlog depth was measured 2026-08-10 costing
-    # ~300s of pure idle time on top of every ~200-230s cycle (real
-    # cycle-to-cycle gaps were ~510s against a 300s configured interval) -
-    # fine for an occasional idle moment, not for the sustained deep backlog
-    # confirmed the same day (ingestion outpacing processing ~39x). A short
-    # fixed buffer instead of looping with zero delay avoids hammering
-    # Postgres/Redis in a tight loop while there's real backlog. Configurable
-    # (2026-08-11) so a low-traffic environment can use a larger buffer
-    # without hardcoding a second code path.
+    # Only taken as idle time when a cycle had nothing to process -- under a
+    # real backlog, cycles run back-to-back on this shorter buffer instead.
+    # See the wiki's Configuration page.
     parser.add_argument(
         "--backlog-buffer",
         type=int,
         default=int(os.environ.get("PROCESSING_BACKLOG_BUFFER_SECONDS", 3)),
     )
-    # refresh_rankings() rebuilds the full MMR similarity matrices from
-    # scratch (ranking.py's _similarity_matrix) over the whole candidate
-    # pool - real O(n^2) compute, ~96MB of dense arrays at the current
-    # MMR_CANDIDATE_POOL_SIZE cap. Running it on literally every loop
-    # iteration (as often as every --backlog-buffer seconds under any
-    # backlog) redoes that work almost entirely from scratch for a pool
-    # that's barely changed since the last run. rank_score being up to
-    # this many seconds stale is imperceptible - feed freshness is
-    # dominated by run_cycle inserting new posts continuously, not by how
-    # fast the diversity re-ranking catches up.
+    # Throttled well below cycle frequency -- refresh_rankings() rebuilds
+    # MMR's similarity matrices from scratch, real O(n^2) work. See the
+    # wiki's Configuration page.
     parser.add_argument(
         "--refresh-interval",
         type=int,
         default=int(os.environ.get("REFRESH_RANKINGS_INTERVAL_SECONDS", 30)),
     )
-    # network_detector.detect_clusters() is a full-table aggregate over
-    # raw_posts (issue #44), structurally heavier than a normal cycle and
-    # looking for a slow-forming pattern (a coordinated bot network), not
-    # something needing near-real-time freshness -- throttled far less
-    # frequently than refresh_rankings above.
+    # A full-table aggregate looking for a slow-forming pattern, not
+    # near-real-time freshness -- throttled far less frequently than
+    # --refresh-interval above. See the wiki's Configuration page.
     parser.add_argument(
         "--network-detection-interval",
         type=int,
