@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
 
 import { buildAttachments } from "../attachments";
-import { CATEGORIES } from "../categories";
 import { fetchFeed } from "../db";
 import { decodeCursor, encodeCursor, type Cursor } from "../pagination";
 import { buildPermalink } from "../permalink";
+import { CATEGORIES } from "../types";
 
 // See the wiki's Configuration page. minimum stays hardcoded at 1 - not a
 // tunable, just the structural floor for "a page of posts" to mean anything.
