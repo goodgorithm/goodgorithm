@@ -55,6 +55,14 @@ def main() -> None:
         type=int,
         default=int(os.environ.get("NETWORK_DETECTION_INTERVAL_SECONDS", 3600)),
     )
+    # Redis usage can't spike meaningfully within a few seconds, so this
+    # doesn't need checking on every single loop iteration -- throttled
+    # the same way as --refresh-interval. See the wiki's Configuration page.
+    parser.add_argument(
+        "--redis-guard-interval",
+        type=int,
+        default=int(os.environ.get("REDIS_GUARD_INTERVAL_SECONDS", 30)),
+    )
     args = parser.parse_args()
 
     config.validate()
@@ -74,8 +82,13 @@ def main() -> None:
 
     last_refresh_time = 0.0
     last_network_detection_time = 0.0
+    last_redis_guard_time = 0.0
     while not _shutdown:
-        pipeline.enforce_redis_capacity()
+        now = time.monotonic()
+        if now - last_redis_guard_time >= args.redis_guard_interval:
+            pipeline.enforce_redis_capacity()
+            last_redis_guard_time = now
+
         processed_count = pipeline.run_cycle(args.batch_size)
 
         now = time.monotonic()
