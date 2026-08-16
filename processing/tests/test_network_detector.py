@@ -28,9 +28,9 @@ def test_detect_clusters_passes_the_configured_thresholds(monkeypatch):
     network_detector.detect_clusters()
 
     assert captured == {
-        "min_accounts": network_detector.MIN_CLUSTER_ACCOUNTS,
-        "max_creation_span_days": network_detector.MAX_ACCOUNT_CREATION_SPAN_DAYS,
-        "min_post_count": network_detector.MIN_CLUSTER_POST_COUNT,
+        "min_accounts": network_detector.NETWORK_DETECTOR_MIN_CLUSTER_ACCOUNTS,
+        "max_creation_span_days": network_detector.NETWORK_DETECTOR_MAX_ACCOUNT_CREATION_SPAN_DAYS,
+        "min_post_count": network_detector.NETWORK_DETECTOR_MIN_CLUSTER_POST_COUNT,
     }
 
 

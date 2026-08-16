@@ -20,7 +20,7 @@ def test_ping_calls_the_configured_url(monkeypatch):
 
     assert len(calls) == 1
     assert calls[0][0] == "https://hc-ping.com/some-uuid"
-    assert calls[0][1]["timeout"] == heartbeat.PING_TIMEOUT_SECONDS
+    assert calls[0][1]["timeout"] == heartbeat.HEARTBEAT_PING_TIMEOUT_SECONDS
 
 
 def test_ping_swallows_request_failures(monkeypatch):

@@ -1,10 +1,11 @@
 import logging
+import os
 
 import requests
 
 logger = logging.getLogger("processing")
 
-PING_TIMEOUT_SECONDS = 5
+HEARTBEAT_PING_TIMEOUT_SECONDS = int(os.environ.get("HEARTBEAT_PING_TIMEOUT_SECONDS", "5"))
 
 
 def ping(url: str | None) -> None:
@@ -15,6 +16,6 @@ def ping(url: str | None) -> None:
     if not url:
         return
     try:
-        requests.get(url, timeout=PING_TIMEOUT_SECONDS)
+        requests.get(url, timeout=HEARTBEAT_PING_TIMEOUT_SECONDS)
     except requests.RequestException as err:
         logger.warning("heartbeat ping failed: %s", err)
