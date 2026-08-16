@@ -1,21 +1,9 @@
 import { insertPost } from "./db";
 
-// Deliberately verified individually before adding, not just picked from a
-// "popular instances" list: many well-known instances (mastodon.social
-// itself, infosec.exchange, scholar.social, mastodon.art) have disabled
-// unauthenticated access to /api/v1/timelines/public (a per-instance admin
-// toggle), so a candidate has to actually respond with real data before it
-// belongs here. fosstodon.org/hachyderm.io are both tech-leaning; the rest
-// were chosen to add topical diversity rather than more of the same --
-// sciences.social (Science & Discovery), journa.host (journalism), and
-// three general-purpose instances (mstdn.social, mas.to, mastodon.world,
-// universeodon.com). Explicitly NOT added despite showing up on general
-// "popular instances" lists: mstdn.party -- a random sample of its public
-// timeline surfaced genuinely concerning sexualized content involving
-// minors, so it fails this project's moderation bar outright regardless of
-// volume/topic fit (Content Policy wiki page: "we'd rather exclude too
-// much than too little").
-const INSTANCES = [
+// Which instances to poll, and why each one is trusted, is documented on
+// the wiki's Mastodon page -- a new candidate should go through the same
+// checks described there before being added here.
+const DEFAULT_INSTANCES = [
   "fosstodon.org",
   "hachyderm.io",
   "sciences.social",
@@ -25,9 +13,13 @@ const INSTANCES = [
   "mas.to",
   "mastodon.world",
 ];
+const MASTODON_INSTANCES = (process.env.MASTODON_INSTANCES ?? DEFAULT_INSTANCES.join(","))
+  .split(",")
+  .map((v) => v.trim())
+  .filter(Boolean);
 
-const POLL_INTERVAL_MS = 30_000;
-const REQUEST_TIMEOUT_MS = 10_000;
+const POLL_INTERVAL_MS = Number(process.env.MASTODON_POLL_INTERVAL_MS ?? "30000");
+const REQUEST_TIMEOUT_MS = Number(process.env.MASTODON_REQUEST_TIMEOUT_MS ?? "10000");
 const USER_AGENT = "Goodgorithm/0.1 (https://github.com/goodgorithm)";
 
 interface MastodonStatus {
@@ -39,28 +31,9 @@ interface MastodonStatus {
   visibility: string;
 }
 
-// Mastodon's two related, distinct opt-out signals for a public account:
-// `discoverable` (opted into in-instance discovery -- profile directory,
-// "who to follow" recommendations, added 3.1.0) and `indexable` ("allows
-// indexing by search engines", added ~4.2/4.3 -- the more literal match for
-// "don't index/reuse my posts externally", which is exactly what a
-// timeline-polling aggregator like this one does). `public` visibility is
-// not consent for reuse (issue #25's research: the fediverse's documented
-// norm, and the recurring friction other aggregator tools -- Awakari,
-// Contentnation.net, Mnemo.social -- have hit is specifically about
-// consent, not about algorithmic ranking itself). Respect either opt-out.
-// Live-sampled both polled instances 2026-08-13: indexable=false is
-// actually the *more* common signal (58-60% of posts) and frequently
-// diverges from discoverable, so checking only one would miss a lot of
-// explicit opt-outs. `noindex` (the account-settings field this maps to
-// user-facing) is only exposed via the authenticated verify_credentials
-// endpoint, not reachable from this unauthenticated polling architecture.
-//
-// Both fields are nullable per Mastodon's docs (older accounts, or remote
-// accounts an instance hasn't fully cached federated data for, may not have
-// them set) -- treat null/undefined as opted-in, only an explicit `false`
-// excludes a post, so this can't silently start dropping posts if a field
-// is ever absent from a response.
+// Respects Mastodon's discoverable/indexable account opt-outs -- public
+// visibility isn't consent for reuse. Null/undefined counts as opted-in;
+// only an explicit false excludes. See the wiki's Mastodon page.
 export function isDiscoverable(account: { discoverable: boolean | null; indexable: boolean | null }): boolean {
   return account.discoverable !== false && account.indexable !== false;
 }
@@ -77,6 +50,7 @@ const NAMED_ENTITIES: Record<string, string> = {
   nbsp: " ",
 };
 
+// "AT&amp;T &#8211; est. 1885" -> "AT&T – est. 1885"
 function decodeHtmlEntities(text: string): string {
   return text.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, entity: string) => {
     if (entity[0] === "#") {
@@ -93,17 +67,10 @@ function decodeHtmlEntities(text: string): string {
 // behind so adjacent chunks don't run together into one word.
 const BLOCK_TAGS = /<\/?(p|br|div|li|ul|ol|blockquote)\b[^>]*>/gi;
 
-// Bridgy Fed (and possibly other bridges/clients) sometimes wrap a
-// genuinely truncated display string ("openai.com/index/unders...") in a
-// plain anchor whose href is the real, full URL - unlike the
-// invisible/ellipsis-span pattern stripHtml already handles (issue #22),
-// there's no second span carrying the untruncated remainder, so the real
-// URL only exists in the href attribute (confirmed against real
-// production content, issue #42). Substitute the href before generic
-// tag-stripping runs, so the emitted text carries a working link instead
-// of a dead-end fragment. Scoped to anchors with no nested tags in their
-// visible text - hashtag/mention anchors always wrap a nested <span>
-// (see the reconstruction below), so this never touches those.
+// Recovers a bridged truncated link's real href before generic
+// tag-stripping runs -- see the wiki's Mastodon page (Status content
+// rendering quirks). Scoped to anchors with no nested tags in their
+// visible text, since hashtag/mention anchors always wrap a nested <span>.
 export function resolveTruncatedLinks(html: string): string {
   return html.replace(/<a\s+([^>]*)>([^<]*(?:\.\.\.|…))<\/a>/gi, (match, attrs: string) => {
     const hrefMatch = /href="([^"]*)"/i.exec(attrs);
@@ -112,16 +79,9 @@ export function resolveTruncatedLinks(html: string): string {
 }
 
 export function stripHtml(html: string): string {
-  // Mastodon splits a single token (a URL, a hashtag) across multiple
-  // adjacent inline <span>/<a> elements purely for its own client-side
-  // truncation UI - e.g. a URL's visible text arrives as
-  // <span class="invisible">https://www.</span><span class="ellipsis">example.com/a</span><span class="invisible">/b</span>,
-  // which must be concatenated with NO separator to reconstruct the real
-  // URL. Stripping every tag to a space (as this used to do) corrupted
-  // exactly that: "https://www. example.com/a /b" (confirmed on production
-  // - issue #22). So this strips in two passes: block tags first (with a
-  // separating space), then everything else - now purely inline markup -
-  // with no separator at all.
+  // Two-pass strip (block tags get a separating space, inline tags don't)
+  // to avoid corrupting Mastodon's split-token truncation markup -- see
+  // the wiki's Mastodon page (Status content rendering quirks).
   const withResolvedLinks = resolveTruncatedLinks(html);
   const withBlockBreaks = withResolvedLinks.replace(BLOCK_TAGS, " ");
   const withoutTags = withBlockBreaks.replace(/<[^>]+>/g, "");
@@ -177,10 +137,8 @@ async function pollInstance(
         text,
         lang: status.language,
         created_at: new Date(status.created_at),
-        // Promoted out of raw_json into its own column (issue #44) --
-        // network_detector.py's coordinated-bot-network clustering needs
-        // this for every Mastodon row, and extracting it from raw_json at
-        // query time timed out at the full ~220k-row Mastodon population.
+        // Own column, not read from raw_json -- a deliberate performance
+        // trade-off required for bot detection's clustering query.
         mastodon_account_created_at: status.account.created_at ? new Date(status.account.created_at) : null,
         raw_json: status,
       });
@@ -200,7 +158,7 @@ export function startMastodonIngestion(): void {
 
   async function poll() {
     await Promise.allSettled(
-      INSTANCES.map((instance) => pollInstance(instance, sinceId))
+      MASTODON_INSTANCES.map((instance) => pollInstance(instance, sinceId))
     );
   }
 
