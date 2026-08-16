@@ -14,6 +14,7 @@ const RECONNECT_MAX_MS = Number(process.env.BLUESKY_RECONNECT_MAX_MS ?? "60000")
 // wiki's Configuration page for tuning guidance.
 const BLUESKY_SAMPLE_RATE = Number(process.env.BLUESKY_SAMPLE_RATE ?? "1.0");
 
+// Jetstream event/commit/record shape -- see the wiki's Bluesky Protocol page.
 interface JetstreamEvent {
   did: string;
   time_us: number;
@@ -37,14 +38,13 @@ interface BlueskyFacet {
   features: Array<{ $type?: unknown; uri?: unknown }>;
 }
 
-// Recovers a post's real link target from its facets (AT Protocol's
-// rich-text annotations) when the visible text is just a shortened display
-// string: https://docs.bsky.app/docs/advanced-guides/post-richtext
-// Facet byte offsets are UTF-8 byte offsets, not JS string indices, so this
-// operates on a Buffer. Processed back-to-front so each earlier
-// byteStart/byteEnd stays valid as later substitutions change the buffer's
-// length. Skips a facet whose visible text already looks like a complete
-// URL, to avoid needlessly rewriting already-fine links.
+// Recovers a post's real link target from its facets when the visible text
+// is just a shortened display string -- see the wiki's Bluesky Protocol
+// page (Rich text facets). Byte offsets are UTF-8 bytes, not JS string
+// indices, so this operates on a Buffer. Processed back-to-front so each
+// earlier byteStart/byteEnd stays valid as later substitutions change the
+// buffer's length. Skips a facet whose visible text already looks like a
+// complete URL, to avoid needlessly rewriting already-fine links.
 export function resolveFacetLinks(text: string, facets: unknown): string {
   if (!Array.isArray(facets)) return text;
 

@@ -7,22 +7,23 @@ const MOD_BSKY_LABELS_URL = "wss://mod.bsky.app/xrpc/com.atproto.label.subscribe
 const RECONNECT_BASE_MS = Number(process.env.BLUESKY_RECONNECT_BASE_MS ?? "5000");
 const RECONNECT_MAX_MS = Number(process.env.BLUESKY_RECONNECT_MAX_MS ?? "60000");
 
-// Bluesky's own moderation-service global label values for adult content
-// (com.atproto.label.defs), confirmed 2026-08-11. Bluesky can add more
-// over time -- this set, not scattered logic, is the place to update.
-// Duplicated by hand in processing/src/content_filter.py -- no shared
-// package exists across the TS/Python boundary in this repo.
-const ADULT_LABEL_VALUES = new Set(["porn", "sexual", "graphic-media", "nudity"]);
+// Bluesky's own global label values -- see the wiki's Bluesky Protocol
+// page. Env-overridable so a new label value can be added without a
+// redeploy; processing/src/content_filter.py hand-mirrors this same set
+// for a separate check and won't pick up a non-default value here
+// automatically -- see the wiki's Configuration page.
+const ADULT_LABEL_VALUES = new Set(
+  (process.env.BLUESKY_ADULT_LABEL_VALUES ?? "porn,sexual,graphic-media,nudity")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean),
+);
 
-// Bluesky's own official global label (com.atproto.label.defs, confirmed
-// against docs.bsky.app and the atproto lexicon source directly, 2026-08-13)
-// -- "marks the account as automated." Unlike the adult-content labels
-// above, this targets the *account*, not a specific post (issue #7) --
-// routed into blocked_authors (see parseAccountTarget/blockAuthor below)
-// rather than a one-off post deletion, so processing/'s purge-and-prevent
-// logic catches all of that account's posts, not just the one that
-// happened to trigger the label.
-const BOT_LABEL_VALUE = "bot";
+// Bluesky's "marks the account as automated" label -- see the wiki's
+// Bluesky Protocol page. Targets the account, not a post, so it's routed
+// into blocked_authors (parseAccountTarget/blockAuthor below) rather than
+// a one-off post deletion.
+const BOT_LABEL_VALUE = process.env.BLUESKY_BOT_LABEL_VALUE ?? "bot";
 
 interface Label {
   src: string;
@@ -59,9 +60,7 @@ export function parsePostTarget(uri: string): { did: string; rkey: string } | nu
 }
 
 // Retractions (neg: true) are deliberately ignored -- once excluded, stays
-// excluded. Direct consequence of "precision over recall" (Decisions Log,
-// 2026-08-11), not an oversight: there's nothing to "undo" once the
-// matching raw_posts row has already been deleted.
+// excluded; there's no row left to "undo."
 export function isExcludedLabel(label: Label): boolean {
   return !label.neg && ADULT_LABEL_VALUES.has(label.val);
 }
@@ -71,11 +70,8 @@ export function isBotLabel(label: Label): boolean {
 }
 
 // at://{did} -> did; null for anything else. An account-level label's uri
-// is just the bare repo authority (per the AT-URI spec's repo-level form
-// and com.atproto.label.defs's "record, repository (account), or other
-// resource" description) -- distinct from parsePostTarget's 3-segment
-// collection/rkey shape above. Verify against a real sample of the live
-// label stream if a "bot" label is ever observed NOT matching this shape.
+// is the bare repo-authority AT-URI form (see the wiki's Bluesky Protocol
+// page), distinct from parsePostTarget's 3-segment shape above.
 export function parseAccountTarget(uri: string): string | null {
   if (!uri.startsWith("at://")) return null;
   const rest = uri.slice("at://".length);
@@ -83,6 +79,9 @@ export function parseAccountTarget(uri: string): string | null {
   return rest;
 }
 
+// Frame/payload shape below (`op`, `#info`, `#labels`, `seq`-based
+// resumption) is AT Protocol's generic event-stream framing -- see the
+// wiki's Bluesky Protocol page.
 export function startBlueskyLabelIngestion(): void {
   if (process.env.DISABLE_LABEL_FILTER) {
     console.log("[bluesky-labels] disabled via DISABLE_LABEL_FILTER");
@@ -91,17 +90,10 @@ export function startBlueskyLabelIngestion(): void {
 
   let delay = RECONNECT_BASE_MS;
   let lastSeq: number | undefined;
-  // @atcute/cbor is a pure-ESM package ("type": "module", no CJS build) --
-  // ingestion/ compiles to CommonJS and runs via plain `node dist/index.js`.
-  // A real dynamic import() can load ESM from CJS code, but tsc's
-  // CommonJS output downlevels a plain `await import(...)` into a
-  // require() wrapped in Promise.resolve() (visible in dist/ output),
-  // which still throws ERR_REQUIRE_ESM -- the Promise wrapper doesn't
-  // change that require() can never load ESM. Routing the call through
-  // `new Function` keeps it as a runtime string, invisible to tsc's
-  // static downlevel transform, so Node performs a genuine import()
-  // instead. Standard workaround for this specific, well-known
-  // TypeScript+Node CJS/ESM interop gap.
+  // @atcute/cbor is ESM-only; ingestion/ compiles to CommonJS, and tsc
+  // downlevels a plain `import()` into a require() that can't load ESM.
+  // `new Function` hides the call from that transform so Node performs a
+  // real import() instead. Tracked upstream: microsoft/TypeScript#43329.
   const importEsm = new Function("specifier", "return import(specifier)") as (
     specifier: string,
   ) => Promise<typeof import("@atcute/cbor")>;
