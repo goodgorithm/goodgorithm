@@ -1,4 +1,5 @@
 import logging
+import os
 import tempfile
 from pathlib import Path
 
@@ -7,31 +8,23 @@ import requests
 
 logger = logging.getLogger("processing")
 
-# Meta's official pretrained language-ID model (176 languages, trained on
-# Wikipedia/Tatoeba/SETimes) -- confirmed against real production text
-# before choosing it over lingua-py (issue #28: benchmarked both against
-# 400 real lang='en' posts and a hand-verified 32-post multilingual set --
-# fastText had roughly half lingua-py's false-positive rate on real
-# English, 5.0% vs 9.0%, with identical 100% recall on confirmed
-# non-English text, and a ~175x smaller footprint). Fetched at runtime
-# rather than committed to the repo -- this project's .gitignore already
-# states "ML artifacts... are large and versioned separately, not in
-# git" -- the same fetch-a-pinned-third-party-artifact shape
-# pyproject.toml already uses for en_core_web_sm's wheel URL. Meta's own
-# CDN has hosted this exact file at this exact URL for years, same
-# reliability bar as a GitHub Releases URL.
+# Meta's official pretrained language-ID model (176 languages). Chosen
+# over lingua-py after benchmarking both against real production text --
+# see CLAUDE.md's Non-English content filtering section and the wiki's
+# Content Policy page for the full comparison and why. Fetched at runtime
+# rather than committed to the repo (this project's .gitignore convention
+# for ML artifacts), same fetch-a-pinned-third-party-artifact shape
+# pyproject.toml uses for en_core_web_sm's wheel URL -- MODEL_URL is a
+# version pin baked into code for the same reason that one is, not an env
+# var. MODEL_PATH isn't a hardcoded location either: tempfile.gettempdir()
+# already respects TMPDIR/TEMP/TMP if a deployment needs to redirect it.
 MODEL_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
 MODEL_PATH = Path(tempfile.gettempdir()) / "lid.176.ftz"
-FETCH_TIMEOUT_SECONDS = 30
+LANGUAGE_FILTER_FETCH_TIMEOUT_SECONDS = int(os.environ.get("LANGUAGE_FILTER_FETCH_TIMEOUT_SECONDS", "30"))
 
-# Tuned against real production text (issue #28): the lowest threshold
-# where fastText's false-positive rate on confirmed-English posts drops
-# meaningfully (5.0% -> 3.5%) while recall on confirmed non-English text
-# stays perfect (32/32). Below this, low-confidence guesses on short or
-# ambiguous text (a handful of words, an emoji, a bare URL) dominate the
-# false-positive rate for no real gain; above ~0.5 recall starts dropping
-# faster than the false-positive rate improves.
-CONFIDENCE_THRESHOLD = 0.3
+# Tuned against real production text -- see the wiki's Pipeline Internals
+# page for what this trades off and why 0.3 specifically.
+LANGUAGE_FILTER_CONFIDENCE_THRESHOLD = float(os.environ.get("LANGUAGE_FILTER_CONFIDENCE_THRESHOLD", "0.3"))
 
 _model: fasttext.FastText._FastText | None = None
 _load_failed = False
@@ -49,7 +42,7 @@ def _get_model() -> fasttext.FastText._FastText | None:
     try:
         if not MODEL_PATH.exists():
             logger.info("fetching language-ID model from %s", MODEL_URL)
-            response = requests.get(MODEL_URL, timeout=FETCH_TIMEOUT_SECONDS)
+            response = requests.get(MODEL_URL, timeout=LANGUAGE_FILTER_FETCH_TIMEOUT_SECONDS)
             response.raise_for_status()
             MODEL_PATH.write_bytes(response.content)
         _model = fasttext.load_model(str(MODEL_PATH))
@@ -92,14 +85,10 @@ def is_non_english(text: str) -> bool:
     exclude on a weak signal" caution as bot_filter.py's
     velocity-alone-can't-flag rule.
 
-    Called from pipeline.py in two cases: any post with no self-reported
-    language tag at all (issue #28 -- there's no metadata to fall back on
-    if the content itself is inconclusive), and every Mastodon post
-    regardless of its tag (issue #41 -- unlike Bluesky's poster-set langs,
-    Mastodon's server-reported language can be defaulted wrong by an
-    automated posting tool, confirmed at a real ~6% rate in production).
-    Deliberately NOT extended to Bluesky's tagged posts -- tested against
-    real data and found to trade a small, mostly-illusory gap for a real
-    false-positive problem on short, casual English text."""
+    Called from pipeline.py for posts with no self-reported language tag,
+    and for every Mastodon post regardless of its tag -- see CLAUDE.md's
+    Non-English content filtering section and the wiki's Content Policy
+    page for why, including why this is deliberately NOT extended to
+    Bluesky's tagged posts."""
     label, confidence = detect_language(text)
-    return label != "" and label != "en" and confidence >= CONFIDENCE_THRESHOLD
+    return label != "" and label != "en" and confidence >= LANGUAGE_FILTER_CONFIDENCE_THRESHOLD

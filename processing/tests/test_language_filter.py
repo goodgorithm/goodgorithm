@@ -11,16 +11,15 @@ def test_detect_language_identifies_clear_english():
         "The city council approved funding for three new community gardens this spring."
     )
     assert label == "en"
-    assert confidence > language_filter.CONFIDENCE_THRESHOLD
+    assert confidence > language_filter.LANGUAGE_FILTER_CONFIDENCE_THRESHOLD
 
 
 def test_detect_language_identifies_clear_non_english():
-    # Real production text (issue #28's benchmark set), hand-verified.
     label, confidence = language_filter.detect_language(
         "Die beiden Krähen auf dem Schornstein haben Logenplätze für die Sonnenfinsternis ergattert."
     )
     assert label == "de"
-    assert confidence > language_filter.CONFIDENCE_THRESHOLD
+    assert confidence > language_filter.LANGUAGE_FILTER_CONFIDENCE_THRESHOLD
 
 
 def test_is_non_english_false_for_english_text():
@@ -28,10 +27,8 @@ def test_is_non_english_false_for_english_text():
 
 
 def test_is_non_english_true_for_confident_non_english_text():
-    # Japanese, from the untagged-post sample that motivated issue #28.
-    assert language_filter.is_non_english("もう今日なんも食えねえや 一個1700kcalのバーガーって") is True
-    # Spanish.
-    assert language_filter.is_non_english("Creo que es la mejor de la tarde.") is True
+    assert language_filter.is_non_english("もう今日なんも食えねえや 一個1700kcalのバーガーって") is True  # Japanese
+    assert language_filter.is_non_english("Creo que es la mejor de la tarde.") is True  # Spanish
 
 
 def test_is_non_english_false_for_blank_text():
