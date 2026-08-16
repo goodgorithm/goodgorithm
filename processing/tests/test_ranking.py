@@ -40,8 +40,8 @@ def test_positivity_clamps_negative_to_zero():
 
 def test_recency_decay_half_life():
     fresh = make_post(age_hours=0.0)
-    at_half_life = make_post(age_hours=ranking.HALF_LIFE_HOURS)
-    older = make_post(age_hours=ranking.HALF_LIFE_HOURS * 2)
+    at_half_life = make_post(age_hours=ranking.RANKING_HALF_LIFE_HOURS)
+    older = make_post(age_hours=ranking.RANKING_HALF_LIFE_HOURS * 2)
 
     assert ranking.recency_decay(fresh.created_at, NOW) == 1.0
     assert abs(ranking.recency_decay(at_half_life.created_at, NOW) - 0.5) < 1e-9
@@ -63,9 +63,9 @@ def test_compute_base_score_multiplies_components():
 
 
 def test_compute_base_score_applies_context_penalty():
-    # issue #33: a devalued (e.g. context-dependent Bluesky reply) post's
-    # base_score is scaled down by context_penalty, same as any other
-    # content-derived multiplier.
+    # A devalued (e.g. context-dependent Bluesky reply) post's base_score
+    # is scaled down by context_penalty, same as any other content-derived
+    # multiplier.
     full = make_post(sentiment_score=0.5, topicality_score=2.0, context_penalty=1.0)
     devalued = make_post(sentiment_score=0.5, topicality_score=2.0, context_penalty=0.4)
     assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.4) < 1e-9
@@ -75,7 +75,7 @@ def test_filter_eligible_excludes_bots_duplicates_and_low_sentiment():
     good = make_post(sentiment_score=0.5)
     bot = make_post(sentiment_score=0.5, is_bot=True)
     duplicate = make_post(sentiment_score=0.5, is_dedup_canonical=False)
-    too_neutral = make_post(sentiment_score=ranking.POSITIVITY_THRESHOLD - 0.01)
+    too_neutral = make_post(sentiment_score=ranking.RANKING_POSITIVITY_THRESHOLD - 0.01)
 
     eligible = ranking.filter_eligible([good, bot, duplicate, too_neutral])
 
@@ -84,7 +84,7 @@ def test_filter_eligible_excludes_bots_duplicates_and_low_sentiment():
 
 def test_rank_posts_excludes_posts_outside_the_window():
     recent = make_post(age_hours=1.0, text="a fresh post about local news")
-    stale = make_post(age_hours=ranking.MMR_WINDOW_HOURS + 1, text="an old post about local news")
+    stale = make_post(age_hours=ranking.RANKING_MMR_WINDOW_HOURS + 1, text="an old post about local news")
 
     results = ranking.rank_posts([recent, stale], now=NOW)
 
@@ -153,16 +153,11 @@ def test_mmr_spreads_out_near_duplicate_topics():
 
 
 def test_rank_posts_scales_to_production_volume():
-    # Regression test for a real 2026-08-09 production incident: the MMR
-    # window can genuinely hold thousands of eligible posts (5,238 seen in
-    # prod), and both the entity-similarity pass and the MMR selection loop
-    # used to be pure-Python O(n^2) - tens of millions of interpreted
-    # operations, slow and memory-hungry enough that the process was
-    # silently OOM-killed every cycle with no traceback. Both are now
-    # vectorized (see _entity_similarity_matrix and rank_posts). A generous
-    # time bound here (not a tight one - CI machines vary) exists
-    # specifically to catch a regression back to the O(n^2) Python loops,
-    # which would blow well past it at this n.
+    # Regression test: the entity-similarity pass and the MMR selection
+    # loop are both vectorized, not pure-Python O(n^2) -- see the wiki's
+    # Ranking page. A generous time bound (not a tight one -- CI machines
+    # vary) exists specifically to catch a regression back to O(n^2)
+    # Python loops, which would blow well past it at this n.
     rng = random.Random(1234)
 
     def make_random_post(i):
@@ -190,16 +185,12 @@ def test_rank_posts_scales_to_production_volume():
 
 
 def test_rank_posts_caps_candidate_pool_by_base_score():
-    # Regression test for a real 2026-08-09 production incident: the MMR
-    # window held 29,770 eligible posts (still growing) by the time this
-    # was diagnosed. _similarity_matrix's vectorized-but-still-dense n x n
-    # float64 arrays are ~7GB at that n - the earlier vectorization fix
-    # (ea4fcb6) made the O(n^2) pass fast, not small, and the process was
-    # OOM-killed on a 1GB container regardless. rank_posts now caps the
-    # pool to the top MMR_CANDIDATE_POOL_SIZE posts by base_score before
-    # building any O(n^2) structure, bounding memory no matter how large
-    # the eligible window grows.
-    n = ranking.MMR_CANDIDATE_POOL_SIZE + 500
+    # Regression test: _similarity_matrix's dense n x n float64 arrays
+    # scale badly with the eligible pool's size, not just its compute time
+    # -- see the wiki's Ranking page for why rank_posts caps the candidate
+    # pool to RANKING_MMR_CANDIDATE_POOL_SIZE before building any O(n^2)
+    # structure.
+    n = ranking.RANKING_MMR_CANDIDATE_POOL_SIZE + 500
     posts = [
         ranking.RankablePost(
             id=uuid4(),
@@ -216,7 +207,7 @@ def test_rank_posts_caps_candidate_pool_by_base_score():
 
     results = ranking.rank_posts(posts, now=NOW)
 
-    assert len(results) == ranking.MMR_CANDIDATE_POOL_SIZE
+    assert len(results) == ranking.RANKING_MMR_CANDIDATE_POOL_SIZE
     # the lowest-base_score posts (smallest i) must be the ones dropped
     kept_ids = set(results)
     dropped = [p for p in posts if p.id not in kept_ids]

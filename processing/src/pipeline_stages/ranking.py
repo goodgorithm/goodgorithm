@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -9,13 +10,19 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from text_normalize import normalize_text
 
-POSITIVITY_THRESHOLD = 0.3  # eligibility bar — only clearly-positive posts rank at all
-HALF_LIFE_HOURS = 12.0  # a post's recency weight halves every 12h
-MMR_WINDOW_HOURS = 72.0  # ranking pool bound — also keeps MMR's O(n^2) pass cheap
-MMR_CANDIDATE_POOL_SIZE = 2000  # hard cap on MMR's O(n^2) *memory* — see rank_posts
-MMR_LAMBDA = 0.7  # weight on relevance (base_score) vs diversity penalty
-SIMILARITY_TFIDF_WEIGHT = 0.5
-SIMILARITY_ENTITY_WEIGHT = 0.5
+# See the wiki's Ranking page for what each of these controls and why the
+# defaults are what they are.
+RANKING_POSITIVITY_THRESHOLD = float(os.environ.get("RANKING_POSITIVITY_THRESHOLD", "0.3"))
+RANKING_HALF_LIFE_HOURS = float(os.environ.get("RANKING_HALF_LIFE_HOURS", "12.0"))
+if RANKING_HALF_LIFE_HOURS <= 0:
+    raise ValueError(f"RANKING_HALF_LIFE_HOURS ({RANKING_HALF_LIFE_HOURS}) must be greater than 0")
+# Deliberately left at 72h even though 24h retention effectively caps it
+# tighter today -- see CLAUDE.md's Data retention section before changing.
+RANKING_MMR_WINDOW_HOURS = float(os.environ.get("RANKING_MMR_WINDOW_HOURS", "72.0"))
+RANKING_MMR_CANDIDATE_POOL_SIZE = int(os.environ.get("RANKING_MMR_CANDIDATE_POOL_SIZE", "2000"))
+RANKING_MMR_LAMBDA = float(os.environ.get("RANKING_MMR_LAMBDA", "0.7"))
+RANKING_SIMILARITY_TFIDF_WEIGHT = float(os.environ.get("RANKING_SIMILARITY_TFIDF_WEIGHT", "0.5"))
+RANKING_SIMILARITY_ENTITY_WEIGHT = float(os.environ.get("RANKING_SIMILARITY_ENTITY_WEIGHT", "0.5"))
 
 
 @dataclass
@@ -28,10 +35,10 @@ class RankablePost:
     entities: list[str]
     is_bot: bool
     is_dedup_canonical: bool
-    # context_dependency.py's per-platform devalue multiplier (issue #33) --
-    # 1.0 for posts that aren't context-dependent (or whose platform's
-    # policy is exclude-only, so a devalued post never reaches ranking at
-    # all). Content-derived, same category as topicality/sentiment, not an
+    # context_dependency.py's per-platform devalue multiplier -- 1.0 for
+    # posts that aren't context-dependent (or whose platform's policy is
+    # exclude-only, so a devalued post never reaches ranking at all).
+    # Content-derived, same category as topicality/sentiment, not an
     # engagement signal.
     context_penalty: float = 1.0
 
@@ -52,17 +59,12 @@ MIN_DECAY = 1e-30  # comfortably above float4/REAL's underflow range (~1.4e-45)
 
 def recency_decay(created_at: datetime, now: datetime) -> float:
     """run_cycle() computes base_score for every fetched post unconditionally
-    (the 72h MMR window is only applied later, in rank_posts), so this has to
-    handle arbitrarily old posts — e.g. backlog/boosted content ingestion can
-    surface that's genuinely months old. 0.5 ** (age_hours / HALF_LIFE_HOURS)
-    for a post that old is still a valid nonzero Python float (float64 has a
-    much wider range), but is too small for Postgres's REAL (float4) column
-    to store, raising `NumericValueOutOfRange: underflow` on write. Snap
-    anything below float4's range to exactly 0.0, which is both safely
-    representable and the semantically correct value for "no recency weight
-    left" anyway."""
+    (the ranking window is only applied later, in rank_posts), so this has
+    to handle arbitrarily old posts. Anything decaying below Postgres's
+    REAL (float4) underflow range snaps to exactly 0.0 instead of raising
+    on write -- see the wiki's Ranking page."""
     age_hours = max(0.0, (now - created_at).total_seconds() / 3600.0)
-    decay = 0.5 ** (age_hours / HALF_LIFE_HOURS)
+    decay = 0.5 ** (age_hours / RANKING_HALF_LIFE_HOURS)
     return decay if decay >= MIN_DECAY else 0.0
 
 
@@ -82,25 +84,17 @@ def filter_eligible(posts: list[RankablePost]) -> list[RankablePost]:
     return [
         p
         for p in posts
-        if not p.is_bot and p.is_dedup_canonical and p.sentiment_score >= POSITIVITY_THRESHOLD
+        if not p.is_bot and p.is_dedup_canonical and p.sentiment_score >= RANKING_POSITIVITY_THRESHOLD
     ]
 
 
 def _entity_similarity_matrix(entity_lists: list[list[str]]) -> np.ndarray:
-    """Pairwise Jaccard similarity for n sets, vectorized. A pure-Python
-    double loop here is O(n^2) *Python-level* work (set ops + function calls
-    per pair) - fine for a handful of posts, but at real production volume
-    (thousands of eligible posts in the MMR window) it's tens of millions of
-    interpreted operations per cycle, slow and memory-hungry enough to crash
-    the process outright (confirmed 2026-08-09: silently OOM-killed every
-    cycle once the window hit ~5,200 eligible posts, no traceback since a
-    kill -9 gives Python no chance to log one).
-
-    Same math (intersection/union), done as one sparse matrix multiply
-    instead: build an n x |vocab| binary "post mentions entity" matrix M;
-    M @ M.T gives pairwise intersection counts in a single (C-level) sparse
-    matmul, and union follows from each set's own size via broadcasting.
-    """
+    """Pairwise Jaccard similarity for n sets, vectorized as one sparse
+    matrix multiply instead of a pure-Python O(n^2) double loop -- build an
+    n x |vocab| binary "post mentions entity" matrix M; M @ M.T gives
+    pairwise intersection counts in a single (C-level) sparse matmul, and
+    union follows from each set's own size via broadcasting. See the
+    wiki's Ranking page for why this matters at real production volume."""
     n = len(entity_lists)
     if n == 0:
         return np.zeros((0, 0))
@@ -143,7 +137,7 @@ def _similarity_matrix(posts: list[RankablePost]) -> np.ndarray:
 
     entity_sim = _entity_similarity_matrix([p.entities for p in posts])
 
-    return SIMILARITY_TFIDF_WEIGHT * tfidf_sim + SIMILARITY_ENTITY_WEIGHT * entity_sim
+    return RANKING_SIMILARITY_TFIDF_WEIGHT * tfidf_sim + RANKING_SIMILARITY_ENTITY_WEIGHT * entity_sim
 
 
 def rank_posts(posts: list[RankablePost], now: datetime | None = None) -> dict[UUID, RankResult]:
@@ -153,12 +147,12 @@ def rank_posts(posts: list[RankablePost], now: datetime | None = None) -> dict[U
     don't dominate the feed. Selection order becomes rank_score — provably
     non-increasing across rounds (each round's winner is bounded by the
     previous round's max), so `ORDER BY rank_score DESC` in the API
-    reproduces this exact order."""
+    reproduces this exact order. See the wiki's Ranking page."""
     if now is None:
         now = datetime.now(timezone.utc)
 
     eligible = filter_eligible(posts)
-    cutoff = now - timedelta(hours=MMR_WINDOW_HOURS)
+    cutoff = now - timedelta(hours=RANKING_MMR_WINDOW_HOURS)
     windowed = [p for p in eligible if p.created_at >= cutoff]
 
     results: dict[UUID, RankResult] = {}
@@ -167,39 +161,31 @@ def rank_posts(posts: list[RankablePost], now: datetime | None = None) -> dict[U
 
     base_scores = {p.id: compute_base_score(p, now) for p in windowed}
 
-    # MMR_WINDOW_HOURS bounds the pool by time, not size — under real
-    # ingestion volume it's held 5k-30k+ eligible posts and kept growing
-    # (confirmed in production 2026-08-09). ea4fcb6 vectorized the O(n^2)
-    # *compute* here (cosine_similarity + the entity Jaccard matmul), but
-    # both still materialize dense n x n float64 arrays: at n=29,770 a
-    # single one is ~7GB, and _similarity_matrix builds three of them
-    # (tfidf_sim, entity_sim, the combined result) against a 1GB container
-    # limit — an OOM kill regardless of how fast the vectorized math runs.
-    # A feed only ever surfaces a bounded slice anyway, so cap the pool to
-    # the top candidates by base_score before the O(n^2) pass — same idea
-    # as the time-based window, just a size-based one. Self-correcting:
-    # the pool is reselected fresh every cycle, so a post that misses the
-    # cut can still enter later once higher-scoring posts decay past it.
-    if len(windowed) > MMR_CANDIDATE_POOL_SIZE:
-        windowed = sorted(windowed, key=lambda p: base_scores[p.id], reverse=True)[:MMR_CANDIDATE_POOL_SIZE]
+    # A size-based cap on top of the time-based window above -- the
+    # eligible pool can hold far more than a feed ever surfaces, and the
+    # O(n^2) similarity pass below is memory-bound, not just compute-bound.
+    # Self-correcting: the pool is reselected fresh every cycle, so a post
+    # that misses the cut can still enter later once higher-scoring posts
+    # decay past it. See the wiki's Ranking page.
+    if len(windowed) > RANKING_MMR_CANDIDATE_POOL_SIZE:
+        windowed = sorted(windowed, key=lambda p: base_scores[p.id], reverse=True)[
+            :RANKING_MMR_CANDIDATE_POOL_SIZE
+        ]
 
     sim_matrix = _similarity_matrix(windowed)
 
-    # Same greedy MMR as before (each round still needs the *current* best
-    # remaining candidate given everything already selected, which is
-    # inherently sequential), but tracked with a running per-post "max
-    # similarity to anything selected so far" vector instead of
-    # recomputing max(sim_matrix[i, j] for j in selected) from scratch for
-    # every remaining i on every round - that was the second O(n^2)
-    # pure-Python hot spot alongside the entity-similarity loop, same
-    # production crash (see _entity_similarity_matrix).
+    # Greedy MMR: each round needs the *current* best remaining candidate
+    # given everything already selected, which is inherently sequential --
+    # but tracked with a running per-post "max similarity to anything
+    # selected so far" vector instead of recomputing it from scratch for
+    # every remaining post on every round. See the wiki's Ranking page.
     n = len(windowed)
     base_scores_arr = np.array([base_scores[p.id] for p in windowed])
     max_sim_to_selected = np.zeros(n)
     remaining_mask = np.ones(n, dtype=bool)
 
     for rank_position in range(n):
-        mmr_values = MMR_LAMBDA * base_scores_arr - (1 - MMR_LAMBDA) * max_sim_to_selected
+        mmr_values = RANKING_MMR_LAMBDA * base_scores_arr - (1 - RANKING_MMR_LAMBDA) * max_sim_to_selected
         mmr_values = np.where(remaining_mask, mmr_values, -np.inf)
         best_idx = int(np.argmax(mmr_values))
 
