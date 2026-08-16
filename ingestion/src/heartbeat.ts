@@ -6,7 +6,7 @@
 // zero inserts is exactly the failure mode this exists to catch (e.g. the
 // Jetstream WebSocket died without reconnecting, or both sources stalled).
 
-const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS ?? "300000");
 
 let insertsSinceLastCheck = 0;
 

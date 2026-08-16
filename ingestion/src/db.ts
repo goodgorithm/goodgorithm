@@ -11,9 +11,8 @@ export interface RawPost {
   text: string;
   lang: string | null;
   created_at: Date;
-  // Mastodon's account.created_at, promoted out of raw_json into its own
-  // column (issue #44) -- null for Bluesky (no equivalent concept) and
-  // required (not optional) here so every call site states that
+  // Mastodon's account.created_at; null for Bluesky (no equivalent
+  // concept). Required, not optional, so every call site states that
   // explicitly rather than silently defaulting.
   mastodon_account_created_at: Date | null;
   raw_json: unknown;
@@ -53,12 +52,11 @@ export async function deleteBySourceId(source: "bluesky" | "mastodon", sourceId:
   return result.count;
 }
 
-// Moderation blocklist (issue #7) -- written to by a human moderator
-// directly (SQL) for manual entries, and by blueskyLabels.ts when
-// Bluesky's own moderation service applies its official "bot" account
-// label. ON CONFLICT DO NOTHING: the label stream can redeliver the same
-// label on reconnect, and a moderator's manual entry should never be
-// silently overwritten by an automated one anyway.
+// Moderation blocklist -- written by a human moderator directly (SQL) or
+// by blueskyLabels.ts's bot-label handling (see the wiki's Content Policy
+// page). ON CONFLICT DO NOTHING: the label stream can redeliver the same
+// label on reconnect, and an automated write should never overwrite a
+// moderator's manual one.
 export async function blockAuthor(
   source: "bluesky" | "mastodon",
   authorId: string,
