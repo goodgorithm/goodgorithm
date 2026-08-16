@@ -1,11 +1,12 @@
 import WebSocket from "ws";
 import { blockAuthor, deleteBySourceId } from "./db";
+import { parseNumberEnv } from "./env";
 
 const MOD_BSKY_LABELS_URL = "wss://mod.bsky.app/xrpc/com.atproto.label.subscribeLabels";
 
 // Shared with bluesky.ts's connection to the Jetstream firehose.
-const BLUESKY_RECONNECT_BASE_MS = Number(process.env.BLUESKY_RECONNECT_BASE_MS ?? "5000");
-const BLUESKY_RECONNECT_MAX_MS = Number(process.env.BLUESKY_RECONNECT_MAX_MS ?? "60000");
+const BLUESKY_RECONNECT_BASE_MS = parseNumberEnv("BLUESKY_RECONNECT_BASE_MS", 5000);
+const BLUESKY_RECONNECT_MAX_MS = parseNumberEnv("BLUESKY_RECONNECT_MAX_MS", 60000);
 
 // Bluesky's own global label values -- see the wiki's Bluesky Protocol
 // page. Env-overridable so a new label value can be added without a

@@ -1,5 +1,6 @@
 import WebSocket from "ws";
 import { insertPost } from "./db";
+import { parseNumberEnv } from "./env";
 
 // Fixed since this connection was first added - no operational need found
 // yet to point it at a different Jetstream instance.
@@ -7,12 +8,12 @@ const JETSTREAM_URL =
   "wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=app.bsky.feed.post";
 
 // Shared with blueskyLabels.ts's connection to the labels stream.
-const BLUESKY_RECONNECT_BASE_MS = Number(process.env.BLUESKY_RECONNECT_BASE_MS ?? "5000");
-const BLUESKY_RECONNECT_MAX_MS = Number(process.env.BLUESKY_RECONNECT_MAX_MS ?? "60000");
+const BLUESKY_RECONNECT_BASE_MS = parseNumberEnv("BLUESKY_RECONNECT_BASE_MS", 5000);
+const BLUESKY_RECONNECT_MAX_MS = parseNumberEnv("BLUESKY_RECONNECT_MAX_MS", 60000);
 
 // Keeps ingestion volume from outrunning processing/'s throughput. See the
 // wiki's Configuration page for tuning guidance.
-const BLUESKY_SAMPLE_RATE = Number(process.env.BLUESKY_SAMPLE_RATE ?? "1.0");
+const BLUESKY_SAMPLE_RATE = parseNumberEnv("BLUESKY_SAMPLE_RATE", 1.0);
 
 // Jetstream event/commit/record shape -- see the wiki's Bluesky Protocol page.
 interface JetstreamEvent {
@@ -105,16 +106,19 @@ export function startBlueskyIngestion(): void {
       }
 
       const record = event.commit.record;
-      // Resolve facet-marked links before trimming -- byte offsets are
-      // computed against the original, untrimmed text.
-      const text = resolveFacetLinks(record.text ?? "", record.facets).trim();
-      if (!text) return;
 
       // only ingest English posts — pipeline models are English-only
       const langs = record.langs ?? [];
       if (langs.length > 0 && !langs.includes("en")) return;
 
       if (Math.random() >= BLUESKY_SAMPLE_RATE) return;
+
+      // Resolve facet-marked links before trimming -- byte offsets are
+      // computed against the original, untrimmed text. Runs after the
+      // cheap checks above (most messages get dropped by those) since
+      // this allocates a buffer per call.
+      const text = resolveFacetLinks(record.text ?? "", record.facets).trim();
+      if (!text) return;
 
       try {
         await insertPost({

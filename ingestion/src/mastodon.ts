@@ -1,4 +1,5 @@
 import { insertPost } from "./db";
+import { parseNumberEnv } from "./env";
 
 // Which instances to poll, and why each one is trusted, is documented on
 // the wiki's Mastodon page -- a new candidate should go through the same
@@ -18,8 +19,8 @@ const MASTODON_INSTANCES = (process.env.MASTODON_INSTANCES ?? DEFAULT_INSTANCES.
   .map((v) => v.trim())
   .filter(Boolean);
 
-const MASTODON_POLL_INTERVAL_MS = Number(process.env.MASTODON_POLL_INTERVAL_MS ?? "30000");
-const MASTODON_REQUEST_TIMEOUT_MS = Number(process.env.MASTODON_REQUEST_TIMEOUT_MS ?? "10000");
+const MASTODON_POLL_INTERVAL_MS = parseNumberEnv("MASTODON_POLL_INTERVAL_MS", 30000);
+const MASTODON_REQUEST_TIMEOUT_MS = parseNumberEnv("MASTODON_REQUEST_TIMEOUT_MS", 10000);
 const USER_AGENT = "Goodgorithm/0.1 (https://github.com/goodgorithm)";
 
 interface MastodonStatus {

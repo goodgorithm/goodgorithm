@@ -6,7 +6,9 @@
 // zero inserts is exactly the failure mode this exists to catch (e.g. the
 // Jetstream WebSocket died without reconnecting, or both sources stalled).
 
-const HEARTBEAT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS ?? "300000");
+import { parseNumberEnv } from "./env";
+
+const HEARTBEAT_INTERVAL_MS = parseNumberEnv("HEARTBEAT_INTERVAL_MS", 300_000);
 
 let insertsSinceLastCheck = 0;
 
