@@ -26,6 +26,15 @@ CATEGORY_MODEL_VERSION = os.environ.get("CATEGORY_MODEL_VERSION")
 # Optional dead-man's-switch heartbeat. See the wiki's Configuration page.
 HEARTBEAT_URL_PROCESSING = os.environ.get("HEARTBEAT_URL_PROCESSING")
 
+# Same env var name as ingestion/'s blueskyLabels.ts -- own copy, since
+# Railway doesn't share env vars across services, so both must be updated
+# to stay in sync. See the wiki's Configuration page.
+BLUESKY_ADULT_LABEL_VALUES = frozenset(
+    v.strip()
+    for v in os.environ.get("BLUESKY_ADULT_LABEL_VALUES", "porn,sexual,graphic-media,nudity").split(",")
+    if v.strip()
+)
+
 _REQUIRED = {
     "DATABASE_URL": DATABASE_URL,
     "UPSTASH_REDIS_REST_URL": UPSTASH_REDIS_REST_URL,

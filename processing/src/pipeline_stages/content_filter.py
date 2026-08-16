@@ -1,9 +1,14 @@
 import re
 
+import config
+
 # Bluesky's own global label values -- not moderator-curated like
-# suppressed_terms below. Hand-mirrored in ingestion/src/blueskyLabels.ts.
-# See the wiki's Bluesky Protocol and Pipeline Internals pages.
-ADULT_LABEL_VALUES = frozenset({"porn", "sexual", "graphic-media", "nudity"})
+# suppressed_terms below. Sourced from config.BLUESKY_ADULT_LABEL_VALUES
+# (same env var name as ingestion/'s blueskyLabels.ts, own copy). Also
+# used directly by quote_resolver.py for the same check against a
+# resolved quote's labels. See the wiki's Bluesky Protocol and Pipeline
+# Internals pages.
+ADULT_LABEL_VALUES = config.BLUESKY_ADULT_LABEL_VALUES
 
 _HASHTAG_RE = re.compile(r"#(\w+)")
 
