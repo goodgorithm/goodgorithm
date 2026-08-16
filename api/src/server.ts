@@ -19,6 +19,9 @@ async function main(): Promise<void> {
   });
 
   const port = Number(process.env.PORT ?? 3000);
+  // 0.0.0.0, not configurable - binding to all interfaces is required for
+  // Railway/container networking to reach the process at all, not a
+  // per-environment preference.
   await app.listen({ host: "0.0.0.0", port });
 }
 
