@@ -6,11 +6,16 @@ import { fetchFeed } from "../db";
 import { decodeCursor, encodeCursor, type Cursor } from "../pagination";
 import { buildPermalink } from "../permalink";
 
+// See the wiki's Configuration page. minimum stays hardcoded at 1 - not a
+// tunable, just the structural floor for "a page of posts" to mean anything.
+const FEED_LIMIT_MAX = Number(process.env.FEED_LIMIT_MAX ?? 100);
+const FEED_LIMIT_DEFAULT = Number(process.env.FEED_LIMIT_DEFAULT ?? 20);
+
 const feedQuerySchema = {
   querystring: {
     type: "object",
     properties: {
-      limit: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+      limit: { type: "integer", minimum: 1, maximum: FEED_LIMIT_MAX, default: FEED_LIMIT_DEFAULT },
       cursor: { type: "string" },
       category: { type: "string", enum: CATEGORIES },
     },
@@ -28,7 +33,7 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
     "/feed",
     { schema: feedQuerySchema },
     async (request, reply) => {
-      const limit = request.query.limit ?? 20;
+      const limit = request.query.limit ?? FEED_LIMIT_DEFAULT;
 
       let cursor: Cursor | null = null;
       if (request.query.cursor) {
