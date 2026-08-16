@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
@@ -7,7 +8,13 @@ from psycopg_pool import ConnectionPool
 
 import config
 
-pool = ConnectionPool(config.DATABASE_URL, min_size=1, max_size=5, open=True)
+# See the wiki's Pipeline Internals page for what each of these controls.
+DB_POOL_MIN_SIZE = int(os.environ.get("DB_POOL_MIN_SIZE", "1"))
+DB_POOL_MAX_SIZE = int(os.environ.get("DB_POOL_MAX_SIZE", "5"))
+if DB_POOL_MIN_SIZE > DB_POOL_MAX_SIZE:
+    raise ValueError(f"DB_POOL_MIN_SIZE ({DB_POOL_MIN_SIZE}) must not exceed DB_POOL_MAX_SIZE ({DB_POOL_MAX_SIZE})")
+
+pool = ConnectionPool(config.DATABASE_URL, min_size=DB_POOL_MIN_SIZE, max_size=DB_POOL_MAX_SIZE, open=True)
 
 
 @dataclass
@@ -23,27 +30,10 @@ class RawPost:
 
 
 def fetch_unprocessed_posts(batch_size: int) -> list[RawPost]:
-    # Newest-first, not FIFO: confirmed 2026-08-10 that oldest-first plus a
-    # deep backlog (ingestion outpacing processing) means processing spends
-    # all its time on posts already at the 24h retention edge - they get a
-    # rank_score and are cascade-deleted by cleanup_old_data() moments
-    # later, before /feed can ever see them. Newest-first guarantees fresh
-    # content always gets processed first; a post that never gets reached
-    # before it ages out was never going to make a useful feed entry
-    # anyway (MMR's recency_decay would have suppressed it too).
-    #
-    # NOT EXISTS, not LEFT JOIN ... WHERE p.id IS NULL: confirmed 2026-08-11
-    # that at real production scale (250k+ raw_posts) the LEFT JOIN form
-    # crash-looped processing for ~22h straight (QueryCanceled: statement
-    # timeout). The planner badly misestimates that anti-join's selectivity
-    # (EXPLAIN showed `rows=1` at every level) and picks a full Parallel
-    # Seq Scan + Hash Join + Sort over both tables instead of walking
-    # raw_posts_created_at_idx newest-first and stopping at LIMIT. NOT
-    # EXISTS gives the planner a much clearer anti-join signal - confirmed
-    # via EXPLAIN against production that it correctly picks a Nested Loop
-    # Anti Join over raw_posts_created_at_idx +
-    # processed_posts_raw_post_id_key (index-only), ~27x cheaper by the
-    # planner's own cost estimate. Same result set, same ORDER BY/LIMIT.
+    # Newest-first, not FIFO, and NOT EXISTS rather than LEFT JOIN ...
+    # WHERE p.id IS NULL -- both deliberate, both learned the hard way at
+    # production scale. See the wiki's Pipeline Internals page for the
+    # full story (a real crash-loop and query-planner postmortem).
     with pool.connection() as conn:
         rows = conn.execute(
             """
@@ -81,20 +71,19 @@ class ProcessedPostUpsert:
     generated_thumbnail_url: str | None = None
 
 
-UPSERT_PROCESSED_POSTS_CHUNK_SIZE = 500
+DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE = int(os.environ.get("DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE", "500"))
 
 
 def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
     """Batched sibling of the old per-post upsert -- run_cycle used to call
-    that once per post (up to batch_size separate round trips every cycle,
-    2026-08-11 perf pass). Mirrors update_rank_scores' existing chunked-
+    that once per post. Mirrors update_rank_scores' existing chunked-
     multi-row-VALUES pattern below rather than one giant statement, so
     param count stays bounded as batch_size grows."""
     if not rows:
         return
     with pool.connection() as conn:
-        for i in range(0, len(rows), UPSERT_PROCESSED_POSTS_CHUNK_SIZE):
-            chunk = rows[i : i + UPSERT_PROCESSED_POSTS_CHUNK_SIZE]
+        for i in range(0, len(rows), DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE):
+            chunk = rows[i : i + DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE]
             values_sql = ", ".join(
                 ["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk)
             )
@@ -181,26 +170,21 @@ def fetch_rankable_posts(since: datetime) -> list[RankableRow]:
     return [RankableRow(*row) for row in rows]
 
 
-RANK_SCORE_UPDATE_CHUNK_SIZE = 1000
+DB_RANK_SCORE_UPDATE_CHUNK_SIZE = int(os.environ.get("DB_RANK_SCORE_UPDATE_CHUNK_SIZE", "1000"))
 
 
 def update_rank_scores(updates: list[tuple[UUID, float, float]]) -> None:
     """Bulk-writes (raw_post_id, base_score, rank_score) after MMR ranking.
-
-    refresh_rankings can touch thousands of posts a cycle (the eligible
-    window isn't bounded to a handful of rows - it's whatever passed the
-    bot/dedup/sentiment filters in the last MMR_WINDOW_HOURS). One UPDATE
-    per row was the actual production crash: even a modest per-round-trip
-    latency compounds into minutes at that volume, all inside a single
-    process cycle with nothing else able to run. Batched into chunks
-    rather than one giant statement so query size/param count stay
-    bounded as the eligible pool grows.
-    """
+    refresh_rankings can touch thousands of posts a cycle -- one UPDATE per
+    row was a real production crash (per-round-trip latency compounding
+    into minutes at that volume). Batched into chunks rather than one
+    giant statement so query size/param count stay bounded as the eligible
+    pool grows."""
     if not updates:
         return
     with pool.connection() as conn:
-        for i in range(0, len(updates), RANK_SCORE_UPDATE_CHUNK_SIZE):
-            chunk = updates[i : i + RANK_SCORE_UPDATE_CHUNK_SIZE]
+        for i in range(0, len(updates), DB_RANK_SCORE_UPDATE_CHUNK_SIZE):
+            chunk = updates[i : i + DB_RANK_SCORE_UPDATE_CHUNK_SIZE]
             values_sql = ", ".join(["(%s::uuid, %s::real, %s::real)"] * len(chunk))
             params = [value for row in chunk for value in row]
             conn.execute(
@@ -232,9 +216,9 @@ def delete_raw_post(post_id: UUID) -> bool:
 
 
 def fetch_blocked_authors() -> set[tuple[str, str]]:
-    """Whole table, loaded fresh once per cycle -- moderation blocklist
-    (issue #7) is small (manual entries + Bluesky bot-label auto-inserts),
-    cheaper than a per-post query."""
+    """Whole table, loaded fresh once per cycle -- the moderation blocklist
+    is small (manual entries + Bluesky bot-label auto-inserts), cheaper
+    than a per-post query. See CLAUDE.md's Content moderation section."""
     with pool.connection() as conn:
         rows = conn.execute("SELECT source, author_id FROM blocked_authors").fetchall()
     return {(row[0], row[1]) for row in rows}
@@ -243,9 +227,8 @@ def fetch_blocked_authors() -> set[tuple[str, str]]:
 def fetch_suppressed_terms() -> frozenset[str]:
     """Whole table, loaded fresh once per cycle -- same "cheaper than a
     per-post query, no caching/TTL, moderatable without a service restart"
-    pattern as fetch_blocked_authors (issue #7). Moderator-curated term
-    list (issue #39): a moderator adds/removes rows directly via the
-    Supabase SQL editor, no admin UI/CLI, same precedent."""
+    pattern as fetch_blocked_authors. See CLAUDE.md's Content moderation
+    section."""
     with pool.connection() as conn:
         rows = conn.execute("SELECT term FROM suppressed_terms").fetchall()
     return frozenset(row[0] for row in rows)
@@ -280,14 +263,13 @@ class ClusterCandidate:
 def fetch_cluster_candidates(
     min_accounts: int, max_creation_span_days: int, min_post_count: int
 ) -> list[ClusterCandidate]:
-    """Coordinated-bot-network detection (issue #44) -- a full-table
-    aggregate over raw_posts, structurally different from every other
-    per-post check in this module, deliberately called on a much slower
-    cadence than a normal cycle (see main.py). Clusters Mastodon accounts
-    by home domain (the part of author_id after '@') whose *real* account
-    creation date (Mastodon's own account.created_at, promoted into its
-    own column at ingestion time -- see mastodon_account_created_at's
-    migration -- not "when we first saw a post from them", which is
+    """Coordinated-bot-network detection -- a full-table aggregate over
+    raw_posts, structurally different from every other per-post check in
+    this module, deliberately called on a much slower cadence than a
+    normal cycle (see main.py). Clusters Mastodon accounts by home domain
+    (the part of author_id after '@') whose *real* account creation date
+    (Mastodon's own account.created_at, promoted into its own column at
+    ingestion time -- not "when we first saw a post from them", which is
     retention-windowed and would look artificially clustered for every
     account regardless of true age) falls within a tight span, with a
     volume floor so a handful of low-activity accounts on a big shared
@@ -295,12 +277,10 @@ def fetch_cluster_candidates(
 
     Reads mastodon_account_created_at directly rather than extracting
     raw_json->'account'->>'created_at' at query time -- that JSON-path
-    extraction across the full ~220k-row Mastodon population timed out
-    in production (confirmed 2026-08-15), the same class of problem
-    CLAUDE.md documents for a similar raw_json ilike scan. This is the
-    fix, not a workaround: same "promote a frequently-queried field out
-    of raw_json into a real column" pattern text/lang/author_id already
-    follow."""
+    extraction across the full Mastodon population timed out in
+    production. Same "promote a frequently-queried field out of raw_json
+    into a real column" pattern text/lang/author_id already follow, not a
+    workaround. See the wiki's Pipeline Internals page."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
