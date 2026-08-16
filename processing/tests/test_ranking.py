@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-import ranking
+from pipeline_stages import ranking
 
 NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
 

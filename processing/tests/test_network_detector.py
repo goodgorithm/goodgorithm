@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 
-import db
-import network_detector
+from infra import db, network_detector
 
 
 def make_candidate(home_domain="example.com", account_count=6) -> db.ClusterCandidate:

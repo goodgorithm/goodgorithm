@@ -1,6 +1,6 @@
 import requests
 
-import quote_resolver
+from pipeline_stages import quote_resolver
 
 TERMS = frozenset({"nsfw"})
 

@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-import bot_filter
+from pipeline_stages import bot_filter
 
 
 class InMemoryBotFilterIndex:

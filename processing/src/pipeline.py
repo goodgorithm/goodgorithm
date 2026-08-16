@@ -1,20 +1,21 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-import bot_filter
-import category_model
 import config
-import content_filter
-import context_dependency
-import db
-import dedup
-import language_filter
-import quote_resolver
-import ranking
-import redis_guard
-import sentiment
-import thumbnail_resolver
-import topicality
+from infra import db, redis_guard
+from pipeline_stages import (
+    bot_filter,
+    category_model,
+    content_filter,
+    context_dependency,
+    dedup,
+    language_filter,
+    quote_resolver,
+    ranking,
+    sentiment,
+    thumbnail_resolver,
+    topicality,
+)
 
 logger = logging.getLogger("processing")
 

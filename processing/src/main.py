@@ -5,10 +5,8 @@ import signal
 import time
 
 import config
-import db
-import heartbeat
-import network_detector
 import pipeline
+from infra import db, heartbeat, network_detector
 
 logging.basicConfig(level=logging.INFO, format="[processing] %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)

@@ -1,4 +1,4 @@
-import content_filter
+from pipeline_stages import content_filter
 
 TERMS = frozenset({"nsfw"})
 

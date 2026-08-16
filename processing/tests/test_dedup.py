@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 
 import numpy as np
 
-import dedup
+from pipeline_stages import dedup
 
 
 @dataclass

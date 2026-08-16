@@ -6,7 +6,7 @@ import numpy as np
 import spacy
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-import redis_client
+from infra import redis_client
 from text_normalize import normalize_text
 
 TFIDF_TOP_K = 3

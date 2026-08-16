@@ -1,6 +1,6 @@
 import logging
 
-import redis_client
+from infra import redis_client
 
 logger = logging.getLogger("processing")
 

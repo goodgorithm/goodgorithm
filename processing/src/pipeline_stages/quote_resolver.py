@@ -2,7 +2,7 @@ import logging
 
 import requests
 
-import content_filter
+from pipeline_stages import content_filter
 
 logger = logging.getLogger("processing")
 

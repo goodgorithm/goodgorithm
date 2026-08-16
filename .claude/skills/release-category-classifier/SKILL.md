@@ -5,7 +5,7 @@ description: Train, evaluate, and publish a new version of Goodgorithm's categor
 
 # Releasing a new category classifier version
 
-`processing/src/category_model.py` categorizes posts with a TF-IDF + one-vs-rest logistic regression classifier loaded from Cloudflare R2, falling back to `taxonomy.py`'s keyword matcher if no model is available. This skill covers the full loop: training a new version, deciding whether it's good enough, and making it live — without ever silently pushing an unreviewed model to production.
+`processing/src/pipeline_stages/category_model.py` categorizes posts with a TF-IDF + one-vs-rest logistic regression classifier loaded from Cloudflare R2, falling back to `taxonomy.py`'s keyword matcher if no model is available. This skill covers the full loop: training a new version, deciding whether it's good enough, and making it live — without ever silently pushing an unreviewed model to production.
 
 Read `CLAUDE.md` in the repo root first if you haven't — this skill assumes the "no LLM in the algorithm" constraint and the R2 versioning scheme it describes. Also read `.claude/skills/release-sentiment-model/SKILL.md` — this skill mirrors its structure closely; only the differences are called out in detail here.
 

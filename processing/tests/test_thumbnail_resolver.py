@@ -1,6 +1,6 @@
 import requests
 
-import thumbnail_resolver
+from pipeline_stages import thumbnail_resolver
 
 # --- _is_safe_public_url ---
 

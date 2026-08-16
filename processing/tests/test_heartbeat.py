@@ -1,6 +1,6 @@
 import requests
 
-import heartbeat
+from infra import heartbeat
 
 
 def test_ping_no_op_when_url_not_configured(monkeypatch):

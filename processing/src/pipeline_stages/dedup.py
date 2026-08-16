@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 import numpy as np
 from datasketch import MinHash
 
-import redis_client
+from infra import redis_client
 from text_normalize import normalize_text
 
 # NUM_PERM=128/NUM_BANDS=16 (ROWS_PER_BAND=8) is the empirically verified

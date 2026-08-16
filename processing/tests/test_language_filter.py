@@ -1,4 +1,4 @@
-import language_filter
+from pipeline_stages import language_filter
 
 
 def test_detect_language_returns_empty_for_blank_text():

@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import numpy as np
 
-import topicality
+from pipeline_stages import topicality
 
 
 @dataclass

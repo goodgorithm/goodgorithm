@@ -1,6 +1,6 @@
 from text_normalize import normalize_text
 
-import taxonomy
+from pipeline_stages import taxonomy
 
 
 def test_categorize_matches_single_term_via_entities_or_top_terms():

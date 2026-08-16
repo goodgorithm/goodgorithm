@@ -1,6 +1,6 @@
 import pytest
 
-import category_model
+from pipeline_stages import category_model
 
 
 @pytest.fixture(autouse=True)

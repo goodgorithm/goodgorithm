@@ -3,7 +3,7 @@ import json
 import pytest
 
 import config
-import model_store
+from infra import model_store
 
 
 class FakeBody:

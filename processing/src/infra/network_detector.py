@@ -1,6 +1,6 @@
 import logging
 
-import db
+from infra import db
 
 logger = logging.getLogger("processing")
 

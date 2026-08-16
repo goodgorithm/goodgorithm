@@ -1,4 +1,4 @@
-import context_dependency
+from pipeline_stages import context_dependency
 
 AUTHOR = "did:plc:author123"
 OTHER = "did:plc:someoneelse"

@@ -5,7 +5,7 @@ description: Train, evaluate, and publish a new version of Goodgorithm's sentime
 
 # Releasing a new sentiment CNN version
 
-`processing/src/sentiment.py` scores posts with a small CNN loaded from Cloudflare R2, falling back to VADER if no model is available. This skill covers the full loop: training a new version, deciding whether it's good enough, and making it live — without ever silently pushing an unreviewed model to production.
+`processing/src/pipeline_stages/sentiment.py` scores posts with a small CNN loaded from Cloudflare R2, falling back to VADER if no model is available. This skill covers the full loop: training a new version, deciding whether it's good enough, and making it live — without ever silently pushing an unreviewed model to production.
 
 Read `CLAUDE.md` in the repo root first if you haven't — this skill assumes the "no LLM in the algorithm" constraint and the R2 versioning scheme it describes.
 
@@ -52,7 +52,7 @@ If a live version turns out to be worse in production than its eval numbers sugg
 
 ## Guardrails this skill exists to protect
 
-- Don't hand-write a `boto3` upload/promote script inline when asked to do this — use `training/r2_release.py`, which already matches `processing/src/model_store.py`'s exact registry layout (`current`/`list`/`publish` check the same paths `sentiment.py` reads at inference time).
+- Don't hand-write a `boto3` upload/promote script inline when asked to do this — use `training/r2_release.py`, which already matches `processing/src/infra/model_store.py`'s exact registry layout (`current`/`list`/`publish` check the same paths `sentiment.py` reads at inference time).
 - Don't skip the tokenizer commit pin — training against unpinned `main` risks a silent train/inference mismatch that's very hard to debug after the fact (the model would still load and run, just score worse than its eval numbers imply).
 - Don't promote a version without checking eval output first, even under time pressure — that's the entire reason publish and promote are separate steps.
 - Don't promote via the notebook's `PUBLISH_AS_LATEST` cell alone and call it done — it flips `latest.json` but can't create the public GitHub Release, so the version would be live in production without actually being open-sourced. Always follow up with (or just use) `r2_release.py publish`.

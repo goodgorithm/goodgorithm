@@ -1,6 +1,6 @@
 import pytest
 
-import sentiment
+from pipeline_stages import sentiment
 
 
 @pytest.fixture(autouse=True)

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-import redis_client
+from infra import redis_client
 from text_normalize import normalize_text
 
 VELOCITY_WINDOW_SECONDS = 60 * 60  # 1 hour

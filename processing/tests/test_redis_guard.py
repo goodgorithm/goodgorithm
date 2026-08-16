@@ -1,5 +1,4 @@
-import redis_client
-import redis_guard
+from infra import redis_client, redis_guard
 
 
 def test_parse_used_memory_bytes_extracts_value():
