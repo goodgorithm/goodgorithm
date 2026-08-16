@@ -101,6 +101,10 @@ def run_cycle(batch_size: int) -> int:
     burst_index = topicality.RedisBurstIndex()
     topicality_results = topicality.score_topicality(kept_posts, burst_index)
 
+    # One ONNX call for the whole batch, not one per post -- see the wiki's
+    # Categorization page.
+    category_results = category_model.categorize_batch(kept_posts, topicality_results)
+
     # Batched/deduped resolve, not one call per post -- see the wiki's
     # Pipeline Internals page.
     quote_uris_by_post = {post.id: quote_resolver.extract_quote_uri(post.raw_json) for post in kept_posts}
@@ -144,7 +148,7 @@ def run_cycle(batch_size: int) -> int:
 
         # Deliberately not threaded into RankablePost/ranking.py -- see
         # CLAUDE.md's Category taxonomy section.
-        category = category_model.categorize(post.text, topic.entities, topic.top_terms)
+        category = category_results[post.id]
 
         quote_uri = quote_uris_by_post.get(post.id)
         quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None

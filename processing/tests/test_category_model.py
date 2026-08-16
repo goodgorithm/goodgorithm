@@ -1,6 +1,21 @@
+from dataclasses import dataclass
+from uuid import UUID, uuid4
+
 import pytest
 
 from pipeline_stages import category_model
+
+
+@dataclass
+class FakePost:
+    id: UUID
+    text: str
+
+
+@dataclass
+class FakeTopicalityResult:
+    entities: list[str]
+    top_terms: list[str]
 
 
 @pytest.fixture(autouse=True)
@@ -138,3 +153,62 @@ def test_load_model_uses_env_override_without_hitting_r2(fixture_category_onnx_b
     assert store.resolve_version_calls == 0
     assert category_model.CATEGORY_METHOD == "tfidf_lr_v1"
     assert all("v7-pinned" in key for key in store.requested_keys)
+
+
+def test_categorize_batch_empty_returns_empty_dict():
+    assert category_model.categorize_batch([], {}) == {}
+
+
+def test_categorize_batch_matches_per_post_categorize_with_keyword_fallback():
+    posts = [
+        FakePost(id=uuid4(), text="Just won the olympic gold medal!"),
+        FakePost(id=uuid4(), text="a totally generic political post"),
+    ]
+    topicality_results = {
+        posts[0].id: FakeTopicalityResult(entities=["athlete"], top_terms=["medal"]),
+        posts[1].id: FakeTopicalityResult(entities=["trump"], top_terms=["election"]),
+    }
+
+    results = category_model.categorize_batch(posts, topicality_results)
+
+    assert results[posts[0].id] == "sports"
+    assert results[posts[1].id] is None
+    assert category_model.CATEGORY_METHOD == "keyword_v1"
+
+
+def test_categorize_batch_uses_trained_model_after_successful_load(fixture_category_onnx_bytes):
+    store = FakeModelStore(fixture_category_onnx_bytes, _config(threshold=0.0))
+    category_model.load_model(store)
+
+    posts = [
+        FakePost(id=uuid4(), text="the team won the championship game"),
+        FakePost(id=uuid4(), text="tried a new restaurant for dinner"),
+    ]
+    # Fallback-only data -- the model path ignores this, proving results
+    # come from the batched ONNX call, not a silent taxonomy fallback.
+    topicality_results = {post.id: FakeTopicalityResult(entities=[], top_terms=[]) for post in posts}
+
+    results = category_model.categorize_batch(posts, topicality_results)
+
+    assert results[posts[0].id] == "sports"
+    assert results[posts[1].id] == "food_dining"
+
+
+def test_categorize_batch_matches_single_post_categorize_call_for_call(fixture_category_onnx_bytes):
+    # The batched ONNX call must produce identical per-post results to the
+    # single-post path -- proves batching is a pure performance change.
+    store = FakeModelStore(fixture_category_onnx_bytes, _config(threshold=0.0))
+    category_model.load_model(store)
+
+    texts = [
+        "the team won the championship game",
+        "tried a new restaurant for dinner",
+        "our team scored a goal in the match",
+    ]
+    posts = [FakePost(id=uuid4(), text=text) for text in texts]
+    topicality_results = {post.id: FakeTopicalityResult(entities=[], top_terms=[]) for post in posts}
+
+    batch_results = category_model.categorize_batch(posts, topicality_results)
+    individual_results = {post.id: category_model.categorize(post.text, [], []) for post in posts}
+
+    assert batch_results == individual_results

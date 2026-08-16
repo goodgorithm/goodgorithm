@@ -62,22 +62,61 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     logger.info("loaded category classifier %s", version)
 
 
-def _categorize_with_model(text: str) -> str | None:
-    normalized = normalize_text(text)
-    outputs = _session.run(["probabilities"], {"input": np.array([[normalized]], dtype=object)})
-    probs = outputs[0][0]
-    best_idx = int(np.argmax(probs))
-    return _labels[best_idx] if probs[best_idx] >= _threshold else None
-
-
-def categorize(text: str, entities: list[str], top_terms: list[str]) -> str | None:
-    """Category for a post: the trained classifier if loaded, taxonomy.py's
-    keyword matcher otherwise. Same lazy-load-once discipline as
-    sentiment.py's score_sentiment(). See the wiki's Categorization page."""
+def _ensure_loaded() -> None:
     global _load_attempted
     if not _load_attempted:
         _load_attempted = True
         load_model()
+
+
+def _categorize_with_model_batch(texts: list[str]) -> list[str | None]:
+    """One ONNX call for the whole batch -- viable because the classifier's
+    exported graph has a dynamic batch dimension (StringTensorType([None,
+    1])), unlike sentiment.py's CNN which is fixed at batch=1. See the
+    wiki's Categorization page."""
+    normalized = [normalize_text(t) for t in texts]
+    outputs = _session.run(["probabilities"], {"input": np.array([[t] for t in normalized], dtype=object)})
+    probs = outputs[0]
+    results = []
+    for row in probs:
+        best_idx = int(np.argmax(row))
+        results.append(_labels[best_idx] if row[best_idx] >= _threshold else None)
+    return results
+
+
+def _categorize_with_model(text: str) -> str | None:
+    return _categorize_with_model_batch([text])[0]
+
+
+def categorize_batch(posts: list, topicality_results: dict) -> dict:
+    """Batched form of categorize() -- run_cycle calls this once per cycle
+    instead of categorize() in a per-post loop. See the wiki's
+    Categorization page."""
+    if not posts:
+        return {}
+
+    _ensure_loaded()
+
+    if _session is not None:
+        categories = _categorize_with_model_batch([post.text for post in posts])
+        return {post.id: category for post, category in zip(posts, categories)}
+
+    return {
+        post.id: taxonomy.categorize(
+            topicality_results[post.id].entities,
+            topicality_results[post.id].top_terms,
+            normalize_text(post.text),
+        )
+        for post in posts
+    }
+
+
+def categorize(text: str, entities: list[str], top_terms: list[str]) -> str | None:
+    """Category for a post: the trained classifier if loaded, taxonomy.py's
+    keyword matcher otherwise. Single-post convenience wrapper -- run_cycle
+    uses categorize_batch() directly. Same lazy-load-once discipline as
+    sentiment.py's score_sentiment(). See the wiki's Categorization page."""
+    _ensure_loaded()
 
     if _session is not None:
         return _categorize_with_model(text)
