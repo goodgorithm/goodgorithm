@@ -1,31 +1,12 @@
 """Rule-based category assignment -- classical lookup-table matching, no LLM,
 per CLAUDE.md's no-LLM-in-the-algorithm constraint.
 
-As of the trained category classifier (issue #34), this module is no longer
-the primary categorization mechanism -- it's the whole-process fallback for
-when the classifier can't load (R2 unconfigured, network failure, etc.),
-the direct parallel to VADER's role for the sentiment CNN. It covers the
-same 8-category set the classifier does, not a superset -- animals,
-kindness_community, and environment_nature were deliberately dropped from
-the taxonomy entirely rather than kept alive here at very low volume (see
-CLAUDE.md's Category filtering section).
-
-Two matching modes, not one, because of a real limitation found during the
-original research pass: the pipeline's TF-IDF terms are unigrams only
-(changing that would touch the live topicality/ranking signal, out of scope
-here), so a phrase like "farmers market" can never appear whole in
-`top_terms` -- only "farmers" and "market" separately, which is too broad on
-its own. CATEGORY_TERMS matches single words/entities via set intersection;
-CATEGORY_PHRASES matches multi-word phrases via substring against the post's
-normalized text directly.
-
-Known, accepted limitation, same "precision over recall, iterate later"
-spirit as content_filter.py: this doesn't attempt span-level entity
-disambiguation, and being a fallback path only (not the primary mechanism
-anymore), it hasn't had the same depth of production-sample research the
-original 8-category version got -- it only needs to be a reasonable safety
-net, not the main event.
-"""
+The whole-process fallback for when category_model.py's trained classifier
+can't load, the direct parallel to VADER's role for the sentiment CNN --
+same 8-category set the classifier uses, not a superset. See CLAUDE.md's
+Category filtering section for why these 8 and not others, and the wiki's
+Categorization page for this module's matching mechanics (why two matching
+modes, known limitations)."""
 
 CATEGORY_TERMS: dict[str, set[str]] = {
     "science_technology": {
@@ -179,10 +160,9 @@ CATEGORY_PHRASES: dict[str, set[str]] = {
     },
 }
 
-# Tie-break order when a post scores equally across categories. No
-# dedicated production-sample research pass behind this ordering (unlike
-# the original 8, which had one) -- this module is a fallback now, not the
-# primary path, so a reasonable order is enough.
+# Tie-break order when a post scores equally across categories -- a
+# reasonable order is enough for a fallback path. See the wiki's
+# Categorization page.
 CATEGORY_PRIORITY: list[str] = [
     "science_technology",
     "health_fitness",
@@ -197,9 +177,8 @@ CATEGORY_PRIORITY: list[str] = [
 
 def categorize(entities: list[str], top_terms: list[str], normalized_text: str) -> str | None:
     """Highest-scoring category by (term hits + phrase hits), CATEGORY_PRIORITY
-    as tie-break. None means nothing matched -- expected for a large share of
-    posts, same as the primary classifier's own confidence-threshold "none of
-    these" case."""
+    as tie-break. None means nothing matched. See the wiki's Categorization
+    page."""
     candidate_terms = set(entities) | set(top_terms)
 
     scores: dict[str, int] = {}
