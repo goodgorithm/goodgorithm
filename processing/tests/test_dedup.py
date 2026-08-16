@@ -74,7 +74,7 @@ def test_deserialize_minhash_rejects_stale_num_perm():
     # (e.g. still-live data from before a deploy) -- must be treated as no
     # usable signature, not raise, or a single stale candidate crashes the
     # whole dedup_posts cycle.
-    short = np.arange(dedup.NUM_PERM // 2, dtype=np.uint32)
+    short = np.arange(dedup.DEDUP_NUM_PERM // 2, dtype=np.uint32)
     stale_data = base64.b64encode(short.tobytes()).decode("ascii")
     assert dedup.deserialize_minhash(stale_data) is None
 
@@ -84,7 +84,7 @@ def test_deserialize_minhash_rejects_old_csv_format():
     # comma-separated-decimal encoding, during the up-to-24h window after a
     # deploy switches to base64 -- must be treated as no usable signature,
     # not raise.
-    old_format_data = ",".join(str(v) for v in range(dedup.NUM_PERM))
+    old_format_data = ",".join(str(v) for v in range(dedup.DEDUP_NUM_PERM))
     assert dedup.deserialize_minhash(old_format_data) is None
 
 

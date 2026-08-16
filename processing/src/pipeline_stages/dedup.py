@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import os
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID, uuid4
@@ -10,23 +11,29 @@ from datasketch import MinHash
 from infra import redis_client
 from text_normalize import normalize_text
 
-# NUM_PERM=128/NUM_BANDS=16 (ROWS_PER_BAND=8) is the empirically verified
-# config -- it catches a real near-duplicate pair (0.773 Jaccard) that a
-# coarser ROWS_PER_BAND misses, since match probability depends
-# exponentially on rows-per-band, not linearly on band count. This was
-# temporarily halved (NUM_PERM=64/NUM_BANDS=8, same ROWS_PER_BAND=8) to cut
-# Redis command volume under the old hard-capped free tier; restored now
-# that Upstash is on a rate-limited (not hard-capped) plan.
-NUM_PERM = 128
-NUM_BANDS = 16
-ROWS_PER_BAND = NUM_PERM // NUM_BANDS
-SHINGLE_SIZE = 4
-JACCARD_THRESHOLD = 0.7
-# matches RETENTION_HOURS (pipeline.py) -- no point deduplicating against a
-# post whose row will already have been deleted from Postgres.
-BAND_TTL_SECONDS = 24 * 60 * 60
+# MinHash + LSH near-duplicate detection -- see the wiki's Deduplication
+# page for how this works and what each of these controls. Defaults are
+# an empirically-validated configuration (they catch a real near-duplicate
+# pair a coarser ROWS_PER_BAND misses); treat any change as unvalidated
+# until re-checked against real near-duplicate pairs.
+DEDUP_NUM_PERM = int(os.environ.get("DEDUP_NUM_PERM", "128"))
+DEDUP_NUM_BANDS = int(os.environ.get("DEDUP_NUM_BANDS", "16"))
+if DEDUP_NUM_PERM % DEDUP_NUM_BANDS != 0:
+    raise ValueError(
+        f"DEDUP_NUM_PERM ({DEDUP_NUM_PERM}) must be evenly divisible by "
+        f"DEDUP_NUM_BANDS ({DEDUP_NUM_BANDS})"
+    )
+ROWS_PER_BAND = DEDUP_NUM_PERM // DEDUP_NUM_BANDS  # derived, not independently configurable
+DEDUP_SHINGLE_SIZE = int(os.environ.get("DEDUP_SHINGLE_SIZE", "4"))
+DEDUP_JACCARD_THRESHOLD = float(os.environ.get("DEDUP_JACCARD_THRESHOLD", "0.7"))
+# Matches processing/'s data-retention window by convention, not a shared
+# constant -- keep in sync if you change either. See the wiki's
+# Deduplication page for why a mismatch (this shorter than retention) is a
+# real correctness risk, not just a tidiness one.
+DEDUP_BAND_TTL_SECONDS = int(os.environ.get("DEDUP_BAND_TTL_SECONDS", str(24 * 60 * 60)))
 
-def shingles(text: str, k: int = SHINGLE_SIZE) -> set[str]:
+
+def shingles(text: str, k: int = DEDUP_SHINGLE_SIZE) -> set[str]:
     words = text.split()
     if len(words) == 0:
         return set()
@@ -36,7 +43,7 @@ def shingles(text: str, k: int = SHINGLE_SIZE) -> set[str]:
 
 
 def compute_minhash(text: str) -> MinHash:
-    mh = MinHash(num_perm=NUM_PERM)
+    mh = MinHash(num_perm=DEDUP_NUM_PERM)
     for shingle in shingles(normalize_text(text)):
         mh.update(shingle.encode("utf8"))
     return mh
@@ -45,7 +52,7 @@ def compute_minhash(text: str) -> MinHash:
 def band_hashes(mh: MinHash) -> list[str]:
     hv = mh.hashvalues
     hashes = []
-    for band in range(NUM_BANDS):
+    for band in range(DEDUP_NUM_BANDS):
         start = band * ROWS_PER_BAND
         chunk = hv[start : start + ROWS_PER_BAND]
         digest = hashlib.sha1(chunk.tobytes()).hexdigest()
@@ -54,30 +61,29 @@ def band_hashes(mh: MinHash) -> list[str]:
 
 
 def serialize_minhash(mh: MinHash) -> str:
-    # Base64 of the raw uint32 bytes rather than a comma-separated decimal
-    # string -- ~1.3KB down to ~700 bytes per signature (2026-08-12: this is
-    # the single largest per-key Redis payload in the pipeline, written on
-    # every processed post). Native byte order is fine since the same
-    # container image both writes and reads it.
+    # Base64 of the raw uint32 bytes, not a comma-separated decimal string --
+    # roughly half the size, and this is the largest per-key Redis payload
+    # in the pipeline, written on every processed post. Native byte order
+    # is fine since the same container image both writes and reads it.
     return base64.b64encode(mh.hashvalues.astype(np.uint32).tobytes()).decode("ascii")
 
 
 def deserialize_minhash(data: str) -> MinHash | None:
     """Returns None (treated by callers the same as no signature at all) for
     a signature that isn't decodable as a current-format MinHash -- e.g.
-    still-live Redis data written under a since-changed NUM_PERM, or (as of
-    2026-08-12) the older comma-separated-decimal encoding, both of which
-    naturally age out within BAND_TTL_SECONDS of a format change deploying.
-    Without this check, comparing it against a freshly computed MinHash
-    raises inside datasketch's jaccard(), crashing the whole cycle rather
-    than just skipping one stale candidate."""
+    still-live Redis data written under a since-changed DEDUP_NUM_PERM, or
+    an older serialization format, both of which naturally age out within
+    DEDUP_BAND_TTL_SECONDS of the format changing. Without this check,
+    comparing it against a freshly computed MinHash raises inside
+    datasketch's jaccard(), crashing the whole cycle rather than just
+    skipping one stale candidate. See the wiki's Deduplication page."""
     try:
         raw = base64.b64decode(data, validate=True)
     except (ValueError, TypeError):
         return None
-    if len(raw) != NUM_PERM * 4:
+    if len(raw) != DEDUP_NUM_PERM * 4:
         return None
-    mh = MinHash(num_perm=NUM_PERM)
+    mh = MinHash(num_perm=DEDUP_NUM_PERM)
     mh.hashvalues = np.frombuffer(raw, dtype=np.uint32).copy()
     return mh
 
@@ -91,7 +97,8 @@ class DedupIndex(Protocol):
 
 class RedisDedupIndex:
     """LSH band membership + MinHash signatures + cluster lookups, stored in
-    Upstash Redis. All ephemeral (TTL'd) — Postgres holds the durable result."""
+    Upstash Redis. All ephemeral (TTL'd) — Postgres holds the durable result.
+    See the wiki's Deduplication page."""
 
     def __init__(self) -> None:
         self.client = redis_client.get_client()
@@ -127,14 +134,11 @@ class RedisDedupIndex:
         for h in hashes:
             key = f"lsh:band:{h}"
             pipe.sadd(key, post_id)
-            # nx=True: only the band's first member sets the TTL. Without
-            # this, a "hot" band (a widely-copied post/meme/spam wave that
-            # keeps landing in the same band bucket) had its 24h TTL pushed
-            # forward on every single hit, letting it live indefinitely
-            # instead of on a fixed 24h window (2026-08-12 incident).
-            pipe.expire(key, BAND_TTL_SECONDS, nx=True)
-        pipe.set(f"mh:{post_id}", serialize_minhash(mh), ex=BAND_TTL_SECONDS)
-        pipe.set(f"dedup:cluster:{post_id}", cluster_id, ex=BAND_TTL_SECONDS)
+            # nx=True: only the band's first member sets the TTL -- see the
+            # wiki's Deduplication page for why a rolling TTL here is unsafe.
+            pipe.expire(key, DEDUP_BAND_TTL_SECONDS, nx=True)
+        pipe.set(f"mh:{post_id}", serialize_minhash(mh), ex=DEDUP_BAND_TTL_SECONDS)
+        pipe.set(f"dedup:cluster:{post_id}", cluster_id, ex=DEDUP_BAND_TTL_SECONDS)
         pipe.exec()
 
 
@@ -145,13 +149,14 @@ class DedupResult:
 
 
 def dedup_posts(
-    posts: list, index: DedupIndex, jaccard_threshold: float = JACCARD_THRESHOLD
+    posts: list, index: DedupIndex, jaccard_threshold: float = DEDUP_JACCARD_THRESHOLD
 ) -> dict[UUID, DedupResult]:
     """Assigns each post to a dedup cluster. The first post seen for a cluster
     is canonical; later near-duplicates (Jaccard >= threshold, confirmed via
     the full MinHash signature after an LSH band match) join that cluster as
     non-canonical. Mutates `index` as it goes, so posts within the same batch
-    can match each other, not just posts from prior cycles."""
+    can match each other, not just posts from prior cycles. See the wiki's
+    Deduplication page."""
     results: dict[UUID, DedupResult] = {}
 
     for post in posts:

@@ -143,10 +143,10 @@ def test_score_bot_different_authors_same_cluster_not_self_duplicate():
 
 # --- template_skeleton / template_component (issue #40) ---
 
-# Real reported posts (issue #40) -- whole-text Jaccard between these is
-# ~0.01-0.13 via dedup.compute_minhash, nowhere near dedup's
-# JACCARD_THRESHOLD=0.7, since the fixed template is short relative to the
-# variable song/artist middle. template_skeleton catches it directly.
+# Real reported posts -- whole-text Jaccard between these is ~0.01-0.13 via
+# dedup.compute_minhash, nowhere near dedup's DEDUP_JACCARD_THRESHOLD=0.7,
+# since the fixed template is short relative to the variable song/artist
+# middle. template_skeleton catches it directly.
 MIXIFY_A = "Now playing on Mixify Evergreen Hits: Hum To Tere Aashiq by Mukesh, Lata Mangeshkar! Tune in now: https://mixify.in"
 MIXIFY_B = "Now playing on Mixify Bangla Hits: Nohe Nohe Prio by Asha Bhosle! Tune in now: https://mixify.in"
 DFM_A = "Now playing on DFM: Unwritten by Natasha Bedingfield! Tune in now: https://a12.asurahosting.com/public/dfm"

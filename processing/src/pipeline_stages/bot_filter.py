@@ -16,9 +16,9 @@ HASHTAG_DENSITY_CAP = 0.4
 CAPS_RATIO_CAP = 0.6
 
 # Skeleton window: first TEMPLATE_PREFIX_WORDS + last TEMPLATE_SUFFIX_WORDS
-# words of the normalized text. See the wiki's Pipeline Internals page
-# (bot filter's Template repetition section) for why these specific
-# widths, and why cross-account skeleton collisions aren't a risk.
+# words of the normalized text. See the wiki's Bot Filter page (Template
+# repetition section) for why these specific widths, and why cross-account
+# skeleton collisions aren't a risk.
 TEMPLATE_PREFIX_WORDS = 3
 TEMPLATE_SUFFIX_WORDS = 2
 # Rolling window like self-dup's TTL, not velocity's -- see the wiki.
@@ -77,10 +77,10 @@ def template_skeleton(text: str) -> str:
     """A structural fingerprint -- the first TEMPLATE_PREFIX_WORDS and last
     TEMPLATE_SUFFIX_WORDS words of the normalized text. Catches a fixed
     template wrapped around long variable content (e.g. "Now playing on
-    X: SONG by ARTIST! Tune in now: URL") that dedup.py's whole-text
+    X: SONG by ARTIST! Tune in now: URL") that dedup's whole-text
     MinHash/Jaccard is blind to, since a short fixed template diluted by
-    a long variable middle never crosses JACCARD_THRESHOLD. See the
-    wiki's Pipeline Internals page."""
+    a long variable middle never crosses the Jaccard threshold (see the
+    wiki's Deduplication page). See the wiki's Bot Filter page."""
     words = normalize_text(text).split()
     prefix = words[:TEMPLATE_PREFIX_WORDS]
     suffix = words[-TEMPLATE_SUFFIX_WORDS:] if len(words) > TEMPLATE_PREFIX_WORDS else []
@@ -98,7 +98,7 @@ class RedisBotFilterIndex:
     Redis. Ephemeral/TTL'd, like dedup's LSH state — Postgres holds the
     durable is_bot/bot_score result. Each method batches its read/write
     pair into one pipelined round trip rather than issuing them
-    separately -- see the wiki's Pipeline Internals page."""
+    separately -- see the wiki's Bot Filter page."""
 
     def __init__(self) -> None:
         self.client = redis_client.get_client()
@@ -124,7 +124,7 @@ class RedisBotFilterIndex:
         # cluster, exactly what this check exists to catch) could keep
         # pushing the TTL forward on every new member, growing the set
         # unbounded instead of clearing on a fixed window. See the wiki's
-        # Pipeline Internals page.
+        # Bot Filter page.
         pipe.expire(key, SELF_DUP_TTL_SECONDS, nx=True)
         results = pipe.exec()
         added = results[0]
@@ -140,8 +140,8 @@ class RedisBotFilterIndex:
         pipe.incr(key)
         # Rolling TTL, refreshed on every hit -- deliberately not the
         # NX-only-on-first-hit pattern the two methods above use. See the
-        # wiki's Pipeline Internals page for why this key needs the
-        # opposite TTL shape.
+        # wiki's Bot Filter page for why this key needs the opposite TTL
+        # shape.
         pipe.expire(key, TEMPLATE_REPEAT_TTL_SECONDS)
         results = pipe.exec()
         return results[0]
@@ -162,7 +162,7 @@ def score_bot(author_id: str, text: str, cluster_id: UUID, index: BotFilterIndex
     rate (via dedup cluster membership), lexical spam patterns, and
     template repetition. Never reads likes/reposts/replies/follower
     counts. Defensive-only: this produces a filter flag, never a ranking
-    boost. See the wiki's Pipeline Internals page."""
+    boost. See the wiki's Bot Filter page."""
     velocity_count = index.bump_velocity(author_id)
     velocity_component = min(1.0, velocity_count / VELOCITY_THRESHOLD)
 
