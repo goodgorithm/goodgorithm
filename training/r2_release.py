@@ -47,7 +47,7 @@ MODEL_REGISTRY below) under their plain names, e.g. `model.onnx`,
 
 Requires the same R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY /
 R2_BUCKET_NAME env vars processing/ uses -- see .env.example in the repo
-root. Mirrors processing/src/model_store.py's registry layout exactly:
+root. Mirrors processing/src/infra/model_store.py's registry layout exactly:
 <prefix>/<version>/{artifacts...}, plus a single mutable
 <prefix>/latest.json pointer, per model type.
 """

@@ -1,6 +1,6 @@
 import type { FeedPost } from "../api/types";
 
-// Mirrors processing/src/ranking.py's POSITIVITY_THRESHOLD -- only posts
+// Mirrors processing/src/pipeline_stages/ranking.py's POSITIVITY_THRESHOLD -- only posts
 // scoring at or above this are ever ranking-eligible, so it's the real
 // floor of what reaches /feed. Scaling to [POSITIVITY_THRESHOLD, 1] instead
 // of the theoretical [-1, 1] is what makes the sentiment bar actually use

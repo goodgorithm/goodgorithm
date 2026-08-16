@@ -10,7 +10,7 @@ const BLUESKY_RECONNECT_MAX_MS = parseNumberEnv("BLUESKY_RECONNECT_MAX_MS", 6000
 
 // Bluesky's own global label values -- see the wiki's Bluesky Protocol
 // page. Env-overridable so a new label value can be added without a
-// redeploy; processing/src/content_filter.py hand-mirrors this same set
+// redeploy; processing/src/pipeline_stages/content_filter.py hand-mirrors this same set
 // for a separate check and won't pick up a non-default value here
 // automatically -- see the wiki's Configuration page.
 const BLUESKY_ADULT_LABEL_VALUES = new Set(
