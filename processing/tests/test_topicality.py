@@ -103,7 +103,7 @@ def test_score_topicality_result_includes_top_terms():
 def test_score_topicality_burst_upweights_matching_entity():
     index = InMemoryBurstIndex()
     # pre-seed the burst counter so "nasa" already looks like it's spiking
-    for _ in range(topicality.BURST_THRESHOLD):
+    for _ in range(topicality.TOPICALITY_BURST_THRESHOLD):
         index.bump_entities(["nasa"])
 
     posts = [
@@ -164,7 +164,7 @@ def test_score_topicality_emoji_spam_score_is_unchanged_by_length_discount():
     normalized = [topicality.normalize_text(t) for t in batch]
     vectorizer = topicality.TfidfVectorizer(stop_words="english", min_df=1, norm=None, sublinear_tf=True)
     matrix = vectorizer.fit_transform(normalized)
-    old_score = float(np.mean(np.sort(matrix.getrow(0).data)[::-1][: topicality.TFIDF_TOP_K]))
+    old_score = float(np.mean(np.sort(matrix.getrow(0).data)[::-1][: topicality.TOPICALITY_TFIDF_TOP_K]))
 
     assert new_score == old_score
 
@@ -188,7 +188,7 @@ def test_score_topicality_length_parity_narrows_vs_undiscounted_formula():
     vectorizer = topicality.TfidfVectorizer(stop_words="english", min_df=1, norm=None, sublinear_tf=True)
     matrix = vectorizer.fit_transform(normalized)
     old_scores = [
-        float(np.mean(np.sort(matrix.getrow(i).data)[::-1][: topicality.TFIDF_TOP_K]))
+        float(np.mean(np.sort(matrix.getrow(i).data)[::-1][: topicality.TOPICALITY_TFIDF_TOP_K]))
         for i in range(matrix.shape[0])
     ]
 
@@ -209,6 +209,6 @@ def test_score_topicality_first_mention_has_minimal_burst_boost():
     results = topicality.score_topicality(posts, index)
 
     result = results[posts[0].id]
-    assert result.burst_component == 1 / topicality.BURST_THRESHOLD
+    assert result.burst_component == 1 / topicality.TOPICALITY_BURST_THRESHOLD
     assert result.entities == ["nasa"]
     assert result.score > result.tfidf_component

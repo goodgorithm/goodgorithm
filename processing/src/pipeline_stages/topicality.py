@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass, field
 from typing import Protocol
 from uuid import UUID
@@ -9,38 +10,35 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from infra import redis_client
 from text_normalize import normalize_text
 
-TFIDF_TOP_K = 3
-# Discounts _top_k_mean's raw score by nnz (a doc's distinct-term count) **
-# LENGTH_NORM_ALPHA. A longer post has more terms competing for "top-3", so
-# it has more chances one lands in the corpus's high-IDF tail regardless of
-# whether the post is actually more topical -- confirmed 2026-08-13 against
-# production: topicality_score rose near-monotonically with raw text length
-# across both sources combined, structurally disadvantaging Bluesky's
-# 300-char cap vs Mastodon's ~500-char posts in ranking (issue #23). nnz==1
-# is deliberately a no-op (1 ** ALPHA == 1) so this doesn't reopen the
-# emoji/single-word-spam bug norm=None was chosen to fix below -- a genuine
-# 1-term post's score still depends entirely on that term's real rarity.
-#
-# Value chosen by replaying a random 4,000-post production sample (Supabase,
-# read-only) through both formulas at the real PROCESSING_BATCH_SIZE default
-# (500, per-batch TF-IDF fit, matching how score_topicality is actually
-# called): the pre-fix formula gave Mastodon a 13.6% average topicality edge
-# over Bluesky (ratio 1.136); 0.3 lands just past parity (ratio 0.986) rather
-# than leaving a residual Mastodon-favoring gap. 0.2-0.25 undershot to 1.03-1.01.
-LENGTH_NORM_ALPHA = 0.3
-BURST_THRESHOLD = 5  # mentions within the window to reach a "fully bursting" entity
-BURST_BOOST_WEIGHT = 1.0  # a fully-bursting entity can double a post's topicality score
-BURST_TTL_SECONDS = 3 * 60 * 60  # 3 hours — "spiking now", not a durable count
-# Caps the burst:entity:* Redis key name length. Entity text comes straight
-# from spaCy NER (WORK_OF_ART/ORG/EVENT labels can be long multi-word
-# phrases) with no upper bound otherwise -- an unbounded-cardinality,
-# unbounded-length key pattern (2026-08-12 Redis capacity review). Doesn't
-# affect the `entities` field persisted per post, only the burst-count key.
-ENTITY_KEY_MAX_LEN = 100
+# TF-IDF salience + entity-burst detection -- see the wiki's Topicality
+# page for how this works and what each of these controls. Defaults are
+# an empirically-validated configuration; treat any change as unvalidated
+# until re-checked against a real production sample.
+TOPICALITY_TFIDF_TOP_K = int(os.environ.get("TOPICALITY_TFIDF_TOP_K", "3"))
+if TOPICALITY_TFIDF_TOP_K < 1:
+    raise ValueError(f"TOPICALITY_TFIDF_TOP_K ({TOPICALITY_TFIDF_TOP_K}) must be at least 1")
+TOPICALITY_LENGTH_NORM_ALPHA = float(os.environ.get("TOPICALITY_LENGTH_NORM_ALPHA", "0.3"))
+TOPICALITY_BURST_THRESHOLD = int(os.environ.get("TOPICALITY_BURST_THRESHOLD", "5"))
+if TOPICALITY_BURST_THRESHOLD < 1:
+    raise ValueError(f"TOPICALITY_BURST_THRESHOLD ({TOPICALITY_BURST_THRESHOLD}) must be at least 1")
+TOPICALITY_BURST_BOOST_WEIGHT = float(os.environ.get("TOPICALITY_BURST_BOOST_WEIGHT", "1.0"))
+TOPICALITY_BURST_TTL_SECONDS = int(os.environ.get("TOPICALITY_BURST_TTL_SECONDS", str(3 * 60 * 60)))
+# Caps the burst:entity:* Redis key name length -- entity text comes
+# straight from spaCy NER with no upper bound otherwise. Doesn't affect
+# the `entities` field persisted per post, only the burst-count key. See
+# the wiki's Configuration page's Redis capacity section.
+TOPICALITY_ENTITY_KEY_MAX_LEN = int(os.environ.get("TOPICALITY_ENTITY_KEY_MAX_LEN", "100"))
 
 # Entity types that plausibly signal a topic/newsworthy subject, not just
-# calendar/quantity noise (DATE, CARDINAL, MONEY, PERCENT, etc. excluded).
-RELEVANT_ENTITY_LABELS = {"PERSON", "ORG", "GPE", "LOC", "FAC", "EVENT", "NORP", "WORK_OF_ART"}
+# calendar/quantity noise (DATE, CARDINAL, MONEY, PERCENT, etc. excluded
+# by default). See the wiki's Topicality page for the full spaCy label set.
+TOPICALITY_RELEVANT_ENTITY_LABELS = frozenset(
+    v.strip()
+    for v in os.environ.get(
+        "TOPICALITY_RELEVANT_ENTITY_LABELS", "PERSON,ORG,GPE,LOC,FAC,EVENT,NORP,WORK_OF_ART"
+    ).split(",")
+    if v.strip()
+)
 
 _nlp: spacy.language.Language | None = None
 
@@ -60,14 +58,12 @@ def _get_nlp() -> spacy.language.Language:
 def extract_entities_typed(text: str) -> list[tuple[str, str]]:
     """(entity text, spaCy label) pairs, deduped by text (first-seen label
     wins). The typed form everything else is built on -- extract_entities()
-    below just strips the label for callers that only need text, and
-    taxonomy.categorize() uses RELEVANT_ENTITY_LABELS-filtered entity text
-    the same way (see pipeline.py) rather than re-checking type at that
-    layer -- the filtering already happened here."""
+    below just strips the label for callers that only need text. See the
+    wiki's Topicality page."""
     doc = _get_nlp()(text)
     seen: dict[str, str] = {}
     for ent in doc.ents:
-        if ent.label_ not in RELEVANT_ENTITY_LABELS:
+        if ent.label_ not in TOPICALITY_RELEVANT_ENTITY_LABELS:
             continue
         normalized = ent.text.strip().lower()
         if normalized and normalized not in seen:
@@ -80,11 +76,14 @@ def extract_entities(text: str) -> list[str]:
 
 
 def _top_k_mean(values: np.ndarray, k: int) -> float:
+    """Length-discounted mean of a doc's top-k TF-IDF weights -- see the
+    wiki's Topicality page for why the discount exists and how
+    TOPICALITY_LENGTH_NORM_ALPHA was chosen."""
     if values.size == 0:
         return 0.0
     top = np.sort(values)[::-1][:k]
     raw_mean = float(np.mean(top))
-    return raw_mean / (values.size**LENGTH_NORM_ALPHA)
+    return raw_mean / (values.size**TOPICALITY_LENGTH_NORM_ALPHA)
 
 
 def _top_k_terms(indices: np.ndarray, values: np.ndarray, feature_names: np.ndarray, k: int) -> list[str]:
@@ -102,17 +101,9 @@ def _compute_tfidf(texts: list[str]) -> tuple[list[float], list[list[str]]]:
     pure waste."""
     normalized = [normalize_text(t) for t in texts]
     try:
-        # norm=None: sklearn's default L2 row-normalization concentrates a
-        # short doc's entire weight onto its handful of terms (a 1-term doc
-        # gets that term at weight 1.0), which made single-word/emoji posts
-        # systematically outscore substantive ones. Raw (unnormalized)
-        # weights compare terms by genuine corpus-wide rarity instead of
-        # doc sparsity. sublinear_tf dampens repeated-word spam within a doc.
-        #
-        # no max_df cutoff: every term is "100% of the batch" when the batch
-        # is small (even a single post), so a <1.0 cutoff can silently drop
-        # the entire vocabulary on quiet cycles. English stopword removal
-        # already handles the truly generic filler words.
+        # norm=None/sublinear_tf/no max_df -- deliberate deviations from
+        # TfidfVectorizer's defaults. See the wiki's Topicality page for why
+        # each one matters here.
         vectorizer = TfidfVectorizer(stop_words="english", min_df=1, norm=None, sublinear_tf=True)
         matrix = vectorizer.fit_transform(normalized)
     except ValueError:
@@ -124,8 +115,8 @@ def _compute_tfidf(texts: list[str]) -> tuple[list[float], list[list[str]]]:
     top_terms: list[list[str]] = []
     for i in range(matrix.shape[0]):
         row = matrix.getrow(i)
-        scores.append(_top_k_mean(row.data, TFIDF_TOP_K))
-        top_terms.append(_top_k_terms(row.indices, row.data, feature_names, TFIDF_TOP_K))
+        scores.append(_top_k_mean(row.data, TOPICALITY_TFIDF_TOP_K))
+        top_terms.append(_top_k_terms(row.indices, row.data, feature_names, TOPICALITY_TFIDF_TOP_K))
     return scores, top_terms
 
 
@@ -142,7 +133,8 @@ class BurstIndex(Protocol):
 
 class RedisBurstIndex:
     """Recent entity-mention counts, in Upstash Redis. Short TTL by design —
-    this is a "spiking right now" signal, not a durable count."""
+    this is a "spiking right now" signal, not a durable count. See the
+    wiki's Topicality page."""
 
     def __init__(self) -> None:
         self.client = redis_client.get_client()
@@ -152,9 +144,9 @@ class RedisBurstIndex:
             return {}
         pipe = self.client.pipeline()
         for entity in entities:
-            key = f"burst:entity:{entity[:ENTITY_KEY_MAX_LEN]}"
+            key = f"burst:entity:{entity[:TOPICALITY_ENTITY_KEY_MAX_LEN]}"
             pipe.incr(key)
-            pipe.expire(key, BURST_TTL_SECONDS)
+            pipe.expire(key, TOPICALITY_BURST_TTL_SECONDS)
         results = pipe.exec()
         counts = results[0::2]  # incr, expire, incr, expire, ...
         return dict(zip(entities, counts))
@@ -174,7 +166,7 @@ def score_topicality(posts: list, index: BurstIndex) -> dict[UUID, TopicalityRes
     signal: posts mentioning entities that are currently spiking (per Redis)
     get their TF-IDF score upweighted, since burst is what actually captures
     "trending now" — TF-IDF alone only measures rarity within a single
-    batch, which isn't the same thing."""
+    batch, which isn't the same thing. See the wiki's Topicality page."""
     tfidf_scores, tfidf_top_terms = _compute_tfidf([post.text for post in posts])
 
     results: dict[UUID, TopicalityResult] = {}
@@ -182,9 +174,9 @@ def score_topicality(posts: list, index: BurstIndex) -> dict[UUID, TopicalityRes
         entities = extract_entities(post.text)
         entity_counts = index.bump_entities(entities)
         max_count = max(entity_counts.values(), default=0)
-        burst_component = min(1.0, max_count / BURST_THRESHOLD)
+        burst_component = min(1.0, max_count / TOPICALITY_BURST_THRESHOLD)
 
-        score = tfidf_component * (1.0 + BURST_BOOST_WEIGHT * burst_component)
+        score = tfidf_component * (1.0 + TOPICALITY_BURST_BOOST_WEIGHT * burst_component)
 
         results[post.id] = TopicalityResult(
             score=score,
