@@ -2,7 +2,10 @@ import postgres from "postgres";
 
 import type { Cursor } from "./pagination";
 
-const sql = postgres(process.env.DATABASE_URL!, { max: 5 });
+// See the wiki's Configuration page.
+const DB_POOL_MAX_SIZE = Number(process.env.DB_POOL_MAX_SIZE ?? 5);
+
+const sql = postgres(process.env.DATABASE_URL!, { max: DB_POOL_MAX_SIZE });
 
 // The raw DB row shape this query returns - distinct from types.ts's
 // FeedPost (the public /feed response shape), which is assembled from this
@@ -71,8 +74,8 @@ export async function fetchFeed(
 // Explicitly bounded: an unreachable DB should fail this check quickly, not
 // hang for postgres.js's default ~30s connect_timeout - a health check that
 // takes half a minute to say "unhealthy" is nearly as useless as one that
-// never answers.
-const HEALTH_CHECK_TIMEOUT_MS = 3000;
+// never answers. See the wiki's Configuration page.
+const HEALTH_CHECK_TIMEOUT_MS = Number(process.env.HEALTH_CHECK_TIMEOUT_MS ?? 3000);
 
 export async function checkDatabaseConnection(): Promise<boolean> {
   try {
