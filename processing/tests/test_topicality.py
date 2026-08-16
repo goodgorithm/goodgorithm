@@ -18,12 +18,15 @@ class InMemoryBurstIndex:
     def __init__(self) -> None:
         self.counts: dict[str, int] = {}
 
-    def bump_entities(self, entities: list[str]) -> dict[str, int]:
-        result = {}
-        for entity in entities:
-            self.counts[entity] = self.counts.get(entity, 0) + 1
-            result[entity] = self.counts[entity]
-        return result
+    def bump_entities(self, entities_by_post: list[list[str]]) -> list[dict[str, int]]:
+        results = []
+        for entities in entities_by_post:
+            result = {}
+            for entity in entities:
+                self.counts[entity] = self.counts.get(entity, 0) + 1
+                result[entity] = self.counts[entity]
+            results.append(result)
+        return results
 
 
 def test_extract_entities_finds_relevant_types_only():
@@ -104,7 +107,7 @@ def test_score_topicality_burst_upweights_matching_entity():
     index = InMemoryBurstIndex()
     # pre-seed the burst counter so "nasa" already looks like it's spiking
     for _ in range(topicality.TOPICALITY_BURST_THRESHOLD):
-        index.bump_entities(["nasa"])
+        index.bump_entities([["nasa"]])
 
     posts = [
         FakePost(id=uuid4(), text="Scientists at NASA confirmed the new mission timeline today"),

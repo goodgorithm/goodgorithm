@@ -55,12 +55,7 @@ def _get_nlp() -> spacy.language.Language:
     return _nlp
 
 
-def extract_entities_typed(text: str) -> list[tuple[str, str]]:
-    """(entity text, spaCy label) pairs, deduped by text (first-seen label
-    wins). The typed form everything else is built on -- extract_entities()
-    below just strips the label for callers that only need text. See the
-    wiki's Topicality page."""
-    doc = _get_nlp()(text)
+def _entities_from_doc(doc: spacy.tokens.Doc) -> list[tuple[str, str]]:
     seen: dict[str, str] = {}
     for ent in doc.ents:
         if ent.label_ not in TOPICALITY_RELEVANT_ENTITY_LABELS:
@@ -71,8 +66,31 @@ def extract_entities_typed(text: str) -> list[tuple[str, str]]:
     return list(seen.items())
 
 
+def extract_entities_typed_batch(texts: list[str]) -> list[list[tuple[str, str]]]:
+    """(entity text, spaCy label) pairs per text, deduped within each text
+    (first-seen label wins). Runs the whole batch through nlp.pipe() in one
+    call rather than once per text -- score_topicality uses this, not the
+    single-text extract_entities_typed below, for exactly that reason. See
+    the wiki's Topicality page."""
+    return [_entities_from_doc(doc) for doc in _get_nlp().pipe(texts)]
+
+
+def extract_entities_typed(text: str) -> list[tuple[str, str]]:
+    """Single-text convenience wrapper around extract_entities_typed_batch --
+    see there for the batch-processing path score_topicality actually uses.
+    The typed form everything else is built on -- extract_entities() below
+    just strips the label for callers that only need text."""
+    return extract_entities_typed_batch([text])[0]
+
+
 def extract_entities(text: str) -> list[str]:
     return [entity_text for entity_text, _label in extract_entities_typed(text)]
+
+
+def extract_entities_batch(texts: list[str]) -> list[list[str]]:
+    return [
+        [entity_text for entity_text, _label in typed] for typed in extract_entities_typed_batch(texts)
+    ]
 
 
 def _top_k_mean(values: np.ndarray, k: int) -> float:
@@ -128,7 +146,7 @@ def compute_tfidf_scores(texts: list[str]) -> list[float]:
 
 
 class BurstIndex(Protocol):
-    def bump_entities(self, entities: list[str]) -> dict[str, int]: ...
+    def bump_entities(self, entities_by_post: list[list[str]]) -> list[dict[str, int]]: ...
 
 
 class RedisBurstIndex:
@@ -139,17 +157,30 @@ class RedisBurstIndex:
     def __init__(self) -> None:
         self.client = redis_client.get_client()
 
-    def bump_entities(self, entities: list[str]) -> dict[str, int]:
-        if not entities:
-            return {}
+    def bump_entities(self, entities_by_post: list[list[str]]) -> list[dict[str, int]]:
+        """One pipelined round trip for every post's entity bumps in the
+        batch, not one round trip per post -- Redis executes a pipeline's
+        commands strictly in order, so this produces the exact same
+        per-post counts as bumping post by post, just faster. See the
+        wiki's Topicality page."""
+        flat_entities = [entity for entities in entities_by_post for entity in entities]
+        if not flat_entities:
+            return [{} for _ in entities_by_post]
+
         pipe = self.client.pipeline()
-        for entity in entities:
+        for entity in flat_entities:
             key = f"burst:entity:{entity[:TOPICALITY_ENTITY_KEY_MAX_LEN]}"
             pipe.incr(key)
             pipe.expire(key, TOPICALITY_BURST_TTL_SECONDS)
         results = pipe.exec()
-        counts = results[0::2]  # incr, expire, incr, expire, ...
-        return dict(zip(entities, counts))
+        counts_flat = results[0::2]  # incr, expire, incr, expire, ...
+
+        counts_by_post: list[dict[str, int]] = []
+        i = 0
+        for entities in entities_by_post:
+            counts_by_post.append({entity: counts_flat[i + j] for j, entity in enumerate(entities)})
+            i += len(entities)
+        return counts_by_post
 
 
 @dataclass
@@ -166,13 +197,18 @@ def score_topicality(posts: list, index: BurstIndex) -> dict[UUID, TopicalityRes
     signal: posts mentioning entities that are currently spiking (per Redis)
     get their TF-IDF score upweighted, since burst is what actually captures
     "trending now" — TF-IDF alone only measures rarity within a single
-    batch, which isn't the same thing. See the wiki's Topicality page."""
-    tfidf_scores, tfidf_top_terms = _compute_tfidf([post.text for post in posts])
+    batch, which isn't the same thing. Both the spaCy NER pass and the
+    Redis burst-bump run once for the whole batch, not once per post. See
+    the wiki's Topicality page."""
+    texts = [post.text for post in posts]
+    tfidf_scores, tfidf_top_terms = _compute_tfidf(texts)
+    entities_by_post = extract_entities_batch(texts)
+    entity_counts_by_post = index.bump_entities(entities_by_post)
 
     results: dict[UUID, TopicalityResult] = {}
-    for post, tfidf_component, top_terms in zip(posts, tfidf_scores, tfidf_top_terms):
-        entities = extract_entities(post.text)
-        entity_counts = index.bump_entities(entities)
+    for post, tfidf_component, top_terms, entities, entity_counts in zip(
+        posts, tfidf_scores, tfidf_top_terms, entities_by_post, entity_counts_by_post
+    ):
         max_count = max(entity_counts.values(), default=0)
         burst_component = min(1.0, max_count / TOPICALITY_BURST_THRESHOLD)
 
