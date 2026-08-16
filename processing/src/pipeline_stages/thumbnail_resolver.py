@@ -1,6 +1,7 @@
 import html
 import ipaddress
 import logging
+import os
 import re
 import socket
 from urllib.parse import urljoin, urlparse
@@ -9,8 +10,8 @@ import requests
 
 logger = logging.getLogger("processing")
 
-# Issue #43: fills in a link-card thumbnail when the source platform didn't
-# capture one (a poster's Bluesky client with no OG-fetch of its own, or a
+# Fills in a link-card thumbnail when the source platform didn't capture
+# one (a poster's Bluesky client with no OG-fetch of its own, or a
 # Mastodon server whose own card-fetch failed) -- the same og:image
 # mechanism Mastodon's server already uses for the cards that do work.
 #
@@ -18,10 +19,19 @@ logger = logging.getLogger("processing")
 # this fetches arbitrary URLs a random poster put in their post -- a real
 # SSRF surface. _is_safe_public_url is the required gate, not an optional
 # extra: without it a malicious post could point at a cloud metadata
-# endpoint or an internal service and have this dutifully fetch it.
-REQUEST_TIMEOUT_SECONDS = 10
-MAX_REDIRECTS = 3
-MAX_RESPONSE_BYTES = 2 * 1024 * 1024  # og/twitter tags are always in <head>, no legitimate page needs more
+# endpoint or an internal service and have this dutifully fetch it. See
+# the wiki's Thumbnail Resolution page.
+THUMBNAIL_RESOLVER_REQUEST_TIMEOUT_SECONDS = int(
+    os.environ.get("THUMBNAIL_RESOLVER_REQUEST_TIMEOUT_SECONDS", "10")
+)
+THUMBNAIL_RESOLVER_MAX_REDIRECTS = int(os.environ.get("THUMBNAIL_RESOLVER_MAX_REDIRECTS", "3"))
+# og/twitter tags are always in <head>, no legitimate page needs more.
+THUMBNAIL_RESOLVER_MAX_RESPONSE_BYTES = int(
+    os.environ.get("THUMBNAIL_RESOLVER_MAX_RESPONSE_BYTES", str(2 * 1024 * 1024))
+)
+# A project identity string sent to third-party servers, not an operator
+# tunable -- not an env var, same reasoning as quote_resolver.py's
+# APPVIEW_BASE.
 USER_AGENT = "Goodgorithm/0.1 (+https://github.com/goodgorithm/goodgorithm)"
 
 # og:image and twitter:image are matched by two separate regex pairs, not
@@ -72,13 +82,13 @@ def _fetch_html(url: str, depth: int = 0) -> str | None:
     allow_redirects=True, so each hop can be re-validated with
     _is_safe_public_url before following it -- a URL could pass the
     initial check and still redirect to an internal address."""
-    if depth > MAX_REDIRECTS or not _is_safe_public_url(url):
+    if depth > THUMBNAIL_RESOLVER_MAX_REDIRECTS or not _is_safe_public_url(url):
         return None
 
     try:
         response = requests.get(
             url,
-            timeout=REQUEST_TIMEOUT_SECONDS,
+            timeout=THUMBNAIL_RESOLVER_REQUEST_TIMEOUT_SECONDS,
             headers={"User-Agent": USER_AGENT},
             stream=True,
             allow_redirects=False,
@@ -98,7 +108,7 @@ def _fetch_html(url: str, depth: int = 0) -> str | None:
             return None
 
         try:
-            raw = response.raw.read(MAX_RESPONSE_BYTES, decode_content=True)
+            raw = response.raw.read(THUMBNAIL_RESOLVER_MAX_RESPONSE_BYTES, decode_content=True)
             return raw.decode(response.encoding or "utf-8", errors="ignore")
         except (requests.RequestException, UnicodeError) as err:
             logger.warning("thumbnail fetch failed reading body for %s: %s", url, err)
@@ -145,10 +155,10 @@ _TEXT_URL_RE = re.compile(r"https?://\S+")
 def extract_link_needing_thumbnail(source: str, raw_json: dict, text: str) -> str | None:
     """The link URL that should get a generated thumbnail, or None if this
     post has no external-link embed or already has a source-provided
-    thumbnail (issue #43). Hand-mirrors api/src/attachments.ts's
-    parseBlueskyExternal/parseMastodonCard thumbnail-presence checks -- the
-    same Python<->TypeScript hand-sync CLAUDE.md documents for Attachment/
-    QuoteContent, no shared package across that boundary in this repo."""
+    thumbnail. Hand-mirrors api/src/attachments.ts's parseBlueskyExternal/
+    parseMastodonCard thumbnail-presence checks -- the same Python<->
+    TypeScript hand-sync CLAUDE.md documents for Attachment/QuoteContent,
+    no shared package across that boundary in this repo."""
     if source == "bluesky":
         record = (raw_json or {}).get("commit", {}).get("record", {})
         embed = record.get("embed") if isinstance(record, dict) else None
@@ -169,14 +179,13 @@ def extract_link_needing_thumbnail(source: str, raw_json: dict, text: str) -> st
             if isinstance(url, str):
                 return url
 
-        # No usable card.url, confirmed live in production to be common,
-        # not an edge case: Mastodon's own card generation is async per-
-        # instance, and isn't always done by the time we poll a post --
-        # the *identical* post relayed through a different instance can
-        # have a full card while this one has card: null entirely. Falls
-        # back to the first URL in the post's own text, which already has
-        # any truncated-link href resolved into it at ingestion time
-        # (issue #42's stripHtml fix), rather than giving up.
+        # No usable card.url is common, not an edge case: Mastodon's own
+        # card generation is async per-instance, and isn't always done by
+        # the time we poll a post -- the *identical* post relayed through
+        # a different instance can have a full card while this one has
+        # card: null entirely. Falls back to the first URL in the post's
+        # own text, which already has any truncated-link href resolved
+        # into it at ingestion time, rather than giving up.
         match = _TEXT_URL_RE.search(text)
         return match.group(0) if match else None
 

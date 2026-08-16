@@ -170,7 +170,7 @@ def test_resolve_thumbnail_gives_up_after_max_redirects(monkeypatch):
     monkeypatch.setattr(requests, "get", fake_get)
 
     assert thumbnail_resolver.resolve_thumbnail("https://8.8.8.8/loop") is None
-    assert len(calls) == thumbnail_resolver.MAX_REDIRECTS + 1
+    assert len(calls) == thumbnail_resolver.THUMBNAIL_RESOLVER_MAX_REDIRECTS + 1
 
 
 # --- resolve_thumbnails ---
@@ -259,13 +259,6 @@ def test_extract_link_needing_thumbnail_mastodon_already_has_image():
 
 
 def test_extract_link_needing_thumbnail_mastodon_no_card_falls_back_to_text_url():
-    # Confirmed live in production (issue #43 follow-up): Mastodon's own
-    # card generation is async per-instance and isn't always populated by
-    # the time we poll a post -- the identical post relayed through a
-    # different instance can have a full card while this one has
-    # card: null entirely. The real URL is still in the post's own text
-    # (already resolved by issue #42's stripHtml fix), so this should
-    # fall back to it rather than giving up.
     text = "Reminder: check this out https://example.com/article Posted into Travel"
     assert thumbnail_resolver.extract_link_needing_thumbnail("mastodon", {"card": None}, text) == (
         "https://example.com/article"
