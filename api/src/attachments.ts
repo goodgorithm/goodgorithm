@@ -20,13 +20,15 @@ export interface AttachmentResult {
   sensitive: boolean;
 }
 
+// Bluesky's own CDN endpoints -- external protocol facts, not something
+// an operator would tune, so not env vars (same treatment processing/
+// gives its own Bluesky AppView URL). See the wiki's API Internals page.
 const BLUESKY_CDN_BASE = "https://cdn.bsky.app/img";
 const BLUESKY_VIDEO_CDN_BASE = "https://video.bsky.app/watch";
 
-// Verified directly against production data: both feed_thumbnail and
-// feed_fullsize resolve for real did+cid pairs from both post images and
-// link-card thumbnails (different embed fields, same blob-storage
-// mechanism), no auth needed.
+// Both resolve for real did+cid pairs from post images and link-card
+// thumbnails alike (different embed fields, same blob-storage mechanism),
+// no auth needed. See the wiki's API Internals page.
 function blueskyImageUrls(did: string, cid: string): { thumbnailUrl: string; fullUrl: string } {
   return {
     thumbnailUrl: `${BLUESKY_CDN_BASE}/feed_thumbnail/plain/${did}/${cid}@jpeg`,
@@ -93,9 +95,10 @@ function parseBlueskyExternal(did: string, external: unknown, generatedThumbnail
 
   const cid = ext.thumb?.ref?.$link;
   const sourceThumbnailUrl = typeof cid === "string" ? blueskyImageUrls(did, cid).thumbnailUrl : null;
-  // issue #43: fall back to processing/'s own og:image fetch
-  // (thumbnail_resolver.py) when the poster's own client didn't capture
-  // one - never overrides a real source thumbnail when one exists.
+  // Falls back to processing/'s own og:image fetch (thumbnail_resolver.py)
+  // when the poster's own client didn't capture one - never overrides a
+  // real source thumbnail when one exists. See the wiki's Thumbnail
+  // Resolution page.
   const thumbnailUrl = sourceThumbnailUrl ?? (isHttpUrl(generatedThumbnailUrl) ? generatedThumbnailUrl : null);
 
   return {
@@ -116,11 +119,11 @@ interface BlueskyVideoEmbed {
 
 // The raw record (what Jetstream relays, all we ever store) only has a
 // blob ref - no ready-to-play URL. The playlist URL is deterministically
-// constructable client-side from did+videoCid, confirmed against several
-// independent open-source Bluesky client implementations - same pattern
-// as blueskyImageUrls above, no AppView call needed. thumbnailUrl is only
+// constructable client-side from did+videoCid, same pattern as
+// blueskyImageUrls above, no AppView call needed. thumbnailUrl is only
 // available via the AppView's hydrated view shape, not the raw record -
 // not worth a network call just for a poster frame, ships null for now.
+// See the wiki's API Internals page.
 function parseBlueskyVideo(did: string, embed: unknown): Attachment | null {
   if (typeof embed !== "object" || embed === null) return null;
   const typed = embed as BlueskyVideoEmbed;
@@ -234,8 +237,9 @@ function parseBlueskyEmbed(
     }
 
     case "app.bsky.embed.recordWithMedia": {
-      // Nesting confirmed against a real row: the quote is at
-      // embed.record.record, not embed.record directly.
+      // The quote is at embed.record.record, not embed.record directly --
+      // same nesting processing/'s quote_resolver.py extracts on the
+      // Python side. See the wiki's API Internals page.
       const media = parseBlueskyMediaUnion(did, typed.media, generatedThumbnailUrl);
       const recordWrapper = typed.record as { record?: unknown } | null | undefined;
       const quote = parseBlueskyQuote(recordWrapper?.record, quoteContent);
@@ -308,9 +312,10 @@ function parseMastodonCard(card: unknown, generatedThumbnailUrl: string | null):
   const c = card as MastodonCard;
   if (!isHttpUrl(c.url)) return null;
 
-  // issue #43: fall back to processing/'s own og:image fetch
-  // (thumbnail_resolver.py) when Mastodon's own server-side card-fetch
-  // didn't capture one - never overrides a real source thumbnail.
+  // Falls back to processing/'s own og:image fetch (thumbnail_resolver.py)
+  // when Mastodon's own server-side card-fetch didn't capture one - never
+  // overrides a real source thumbnail. See the wiki's Thumbnail
+  // Resolution page.
   const thumbnailUrl = isHttpUrl(c.image)
     ? c.image
     : isHttpUrl(generatedThumbnailUrl)

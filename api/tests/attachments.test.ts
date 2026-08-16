@@ -139,7 +139,7 @@ test("bluesky external embed with empty description", () => {
   ]);
 });
 
-test("bluesky external embed falls back to the generated thumbnail when no source thumb exists (issue #43)", () => {
+test("bluesky external embed falls back to the generated thumbnail when no source thumb exists", () => {
   const { attachments } = buildAttachments(
     bskyRow(
       {
@@ -515,7 +515,7 @@ test("mastodon card with image: null (confirmed real, ~13% of cards)", () => {
   }
 });
 
-test("mastodon card falls back to the generated thumbnail when card.image is absent (issue #43)", () => {
+test("mastodon card falls back to the generated thumbnail when card.image is absent", () => {
   const { attachments } = buildAttachments(
     mastodonRow(
       null,
