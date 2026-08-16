@@ -46,7 +46,7 @@ def enforce_redis_capacity() -> None:
     dedup/bot-filter/topicality writes happen with headroom already
     reclaimed, rather than discovering the cap mid-write. See the wiki's
     Configuration page."""
-    redis_guard.enforce(config.REDIS_MAX_BYTES)
+    redis_guard.enforce(config.REDIS_MAX_BYTES, config.REDIS_SOFT_LIMIT_RATIO)
 
 
 def run_cycle(batch_size: int) -> int:

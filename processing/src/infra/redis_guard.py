@@ -1,20 +1,16 @@
 import logging
+import os
 
 from infra import redis_client
 
 logger = logging.getLogger("processing")
 
-# Upstash's current plan cap on both staging and production (2026-08-12).
-# Runtime-configurable via config.REDIS_MAX_BYTES (REDIS_MAX_BYTES env var)
-# since the cap is an account/plan fact, not something derivable from code,
-# and can change independently of a deploy.
+# Fallback defaults for a bare enforce() call (tests, a REPL) -- the real
+# production values are config.REDIS_MAX_BYTES/REDIS_SOFT_LIMIT_RATIO,
+# threaded through from pipeline.py's enforce_redis_capacity(). See the
+# wiki's Configuration page for why the account/plan-fact cap lives in
+# config.py rather than as a local env var here.
 DEFAULT_MAX_BYTES = 1024 * 1024 * 1024  # 1GB
-
-# Start proactively clearing expendable data once usage crosses this
-# fraction of max_bytes, instead of writing blind until Upstash starts
-# rejecting commands outright and crashing the process -- exactly what
-# happened 2026-08-12: production crash-looped for hours once usage reached
-# the 1GB cap, with zero prior visibility into how close it was.
 DEFAULT_SOFT_LIMIT_RATIO = 0.85
 
 # Cleared, in this order, when the soft limit is hit. Deliberately excludes
@@ -26,10 +22,11 @@ DEFAULT_SOFT_LIMIT_RATIO = 0.85
 # early. cluster:*:authors is bot_filter's secondary self-dup signal --
 # clearing it early just resets self-dup detection for clusters currently in
 # flight; botvel:* (fixed-window velocity) is untouched, so bot filtering
-# doesn't fully blind itself.
+# doesn't fully blind itself. A curated safety decision, not a simple
+# tunable -- deliberately not an env var. See the wiki's Configuration page.
 EXPENDABLE_KEY_PATTERNS = ("burst:entity:*", "cluster:*:authors")
 
-_SCAN_COUNT = 500
+REDIS_GUARD_SCAN_COUNT = int(os.environ.get("REDIS_GUARD_SCAN_COUNT", "500"))
 
 
 def parse_used_memory_bytes(info_output: str) -> int | None:
@@ -63,7 +60,7 @@ def _scan_delete(client, pattern: str) -> int:
     deleted = 0
     cursor = 0
     while True:
-        cursor, keys = client.scan(cursor, match=pattern, count=_SCAN_COUNT)
+        cursor, keys = client.scan(cursor, match=pattern, count=REDIS_GUARD_SCAN_COUNT)
         if keys:
             deleted += client.delete(*keys)
         if cursor == 0:
