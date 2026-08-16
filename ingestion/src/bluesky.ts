@@ -7,8 +7,8 @@ const JETSTREAM_URL =
   "wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=app.bsky.feed.post";
 
 // Shared with blueskyLabels.ts's connection to the labels stream.
-const RECONNECT_BASE_MS = Number(process.env.BLUESKY_RECONNECT_BASE_MS ?? "5000");
-const RECONNECT_MAX_MS = Number(process.env.BLUESKY_RECONNECT_MAX_MS ?? "60000");
+const BLUESKY_RECONNECT_BASE_MS = Number(process.env.BLUESKY_RECONNECT_BASE_MS ?? "5000");
+const BLUESKY_RECONNECT_MAX_MS = Number(process.env.BLUESKY_RECONNECT_MAX_MS ?? "60000");
 
 // Keeps ingestion volume from outrunning processing/'s throughput. See the
 // wiki's Configuration page for tuning guidance.
@@ -78,14 +78,14 @@ export function resolveFacetLinks(text: string, facets: unknown): string {
 }
 
 export function startBlueskyIngestion(): void {
-  let delay = RECONNECT_BASE_MS;
+  let delay = BLUESKY_RECONNECT_BASE_MS;
 
   function connect() {
     const ws = new WebSocket(JETSTREAM_URL);
 
     ws.on("open", () => {
       console.log("[bluesky] connected to Jetstream");
-      delay = RECONNECT_BASE_MS;
+      delay = BLUESKY_RECONNECT_BASE_MS;
     });
 
     ws.on("message", async (data) => {
@@ -135,7 +135,7 @@ export function startBlueskyIngestion(): void {
     ws.on("close", () => {
       console.log(`[bluesky] disconnected — reconnecting in ${delay / 1000}s`);
       setTimeout(() => {
-        delay = Math.min(delay * 2, RECONNECT_MAX_MS);
+        delay = Math.min(delay * 2, BLUESKY_RECONNECT_MAX_MS);
         connect();
       }, delay);
     });

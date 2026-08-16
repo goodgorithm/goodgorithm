@@ -4,15 +4,15 @@ import { blockAuthor, deleteBySourceId } from "./db";
 const MOD_BSKY_LABELS_URL = "wss://mod.bsky.app/xrpc/com.atproto.label.subscribeLabels";
 
 // Shared with bluesky.ts's connection to the Jetstream firehose.
-const RECONNECT_BASE_MS = Number(process.env.BLUESKY_RECONNECT_BASE_MS ?? "5000");
-const RECONNECT_MAX_MS = Number(process.env.BLUESKY_RECONNECT_MAX_MS ?? "60000");
+const BLUESKY_RECONNECT_BASE_MS = Number(process.env.BLUESKY_RECONNECT_BASE_MS ?? "5000");
+const BLUESKY_RECONNECT_MAX_MS = Number(process.env.BLUESKY_RECONNECT_MAX_MS ?? "60000");
 
 // Bluesky's own global label values -- see the wiki's Bluesky Protocol
 // page. Env-overridable so a new label value can be added without a
 // redeploy; processing/src/content_filter.py hand-mirrors this same set
 // for a separate check and won't pick up a non-default value here
 // automatically -- see the wiki's Configuration page.
-const ADULT_LABEL_VALUES = new Set(
+const BLUESKY_ADULT_LABEL_VALUES = new Set(
   (process.env.BLUESKY_ADULT_LABEL_VALUES ?? "porn,sexual,graphic-media,nudity")
     .split(",")
     .map((v) => v.trim())
@@ -23,7 +23,7 @@ const ADULT_LABEL_VALUES = new Set(
 // Bluesky Protocol page. Targets the account, not a post, so it's routed
 // into blocked_authors (parseAccountTarget/blockAuthor below) rather than
 // a one-off post deletion.
-const BOT_LABEL_VALUE = process.env.BLUESKY_BOT_LABEL_VALUE ?? "bot";
+const BLUESKY_BOT_LABEL_VALUE = process.env.BLUESKY_BOT_LABEL_VALUE ?? "bot";
 
 interface Label {
   src: string;
@@ -62,11 +62,11 @@ export function parsePostTarget(uri: string): { did: string; rkey: string } | nu
 // Retractions (neg: true) are deliberately ignored -- once excluded, stays
 // excluded; there's no row left to "undo."
 export function isExcludedLabel(label: Label): boolean {
-  return !label.neg && ADULT_LABEL_VALUES.has(label.val);
+  return !label.neg && BLUESKY_ADULT_LABEL_VALUES.has(label.val);
 }
 
 export function isBotLabel(label: Label): boolean {
-  return !label.neg && label.val === BOT_LABEL_VALUE;
+  return !label.neg && label.val === BLUESKY_BOT_LABEL_VALUE;
 }
 
 // at://{did} -> did; null for anything else. An account-level label's uri
@@ -88,7 +88,7 @@ export function startBlueskyLabelIngestion(): void {
     return;
   }
 
-  let delay = RECONNECT_BASE_MS;
+  let delay = BLUESKY_RECONNECT_BASE_MS;
   let lastSeq: number | undefined;
   // @atcute/cbor is ESM-only; ingestion/ compiles to CommonJS, and tsc
   // downlevels a plain `import()` into a require() that can't load ESM.
@@ -109,7 +109,7 @@ export function startBlueskyLabelIngestion(): void {
 
     ws.on("open", () => {
       console.log("[bluesky-labels] connected to labels stream");
-      delay = RECONNECT_BASE_MS;
+      delay = BLUESKY_RECONNECT_BASE_MS;
     });
 
     ws.on("message", async (data) => {
@@ -173,7 +173,7 @@ export function startBlueskyLabelIngestion(): void {
     ws.on("close", () => {
       console.log(`[bluesky-labels] disconnected — reconnecting in ${delay / 1000}s`);
       setTimeout(() => {
-        delay = Math.min(delay * 2, RECONNECT_MAX_MS);
+        delay = Math.min(delay * 2, BLUESKY_RECONNECT_MAX_MS);
         void safeConnect();
       }, delay);
     });

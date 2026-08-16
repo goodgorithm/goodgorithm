@@ -18,8 +18,8 @@ const MASTODON_INSTANCES = (process.env.MASTODON_INSTANCES ?? DEFAULT_INSTANCES.
   .map((v) => v.trim())
   .filter(Boolean);
 
-const POLL_INTERVAL_MS = Number(process.env.MASTODON_POLL_INTERVAL_MS ?? "30000");
-const REQUEST_TIMEOUT_MS = Number(process.env.MASTODON_REQUEST_TIMEOUT_MS ?? "10000");
+const MASTODON_POLL_INTERVAL_MS = Number(process.env.MASTODON_POLL_INTERVAL_MS ?? "30000");
+const MASTODON_REQUEST_TIMEOUT_MS = Number(process.env.MASTODON_REQUEST_TIMEOUT_MS ?? "10000");
 const USER_AGENT = "Goodgorithm/0.1 (https://github.com/goodgorithm)";
 
 interface MastodonStatus {
@@ -102,7 +102,7 @@ async function pollInstance(
   try {
     response = await fetch(url.toString(), {
       headers: { "User-Agent": USER_AGENT },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(MASTODON_REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
     console.error(`[mastodon:${instance}] fetch error:`, (err as Error).message);
@@ -163,5 +163,5 @@ export function startMastodonIngestion(): void {
   }
 
   poll();
-  setInterval(poll, POLL_INTERVAL_MS);
+  setInterval(poll, MASTODON_POLL_INTERVAL_MS);
 }

@@ -6,7 +6,7 @@
 // zero inserts is exactly the failure mode this exists to catch (e.g. the
 // Jetstream WebSocket died without reconnecting, or both sources stalled).
 
-const DEFAULT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS ?? "300000");
+const HEARTBEAT_INTERVAL_MS = Number(process.env.HEARTBEAT_INTERVAL_MS ?? "300000");
 
 let insertsSinceLastCheck = 0;
 
@@ -27,7 +27,7 @@ export async function checkAndPing(url: string): Promise<void> {
   }
 }
 
-export function startHeartbeat(url: string | undefined, intervalMs = DEFAULT_INTERVAL_MS): void {
+export function startHeartbeat(url: string | undefined, intervalMs = HEARTBEAT_INTERVAL_MS): void {
   if (!url) return;
   setInterval(() => {
     void checkAndPing(url);
