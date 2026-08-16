@@ -30,8 +30,8 @@ class InMemoryDedupIndex:
     def get_signatures(self, post_ids: set[str]) -> dict[str, dedup.MinHash | None]:
         return {post_id: self.signatures.get(post_id) for post_id in post_ids}
 
-    def get_cluster(self, post_id: str) -> str | None:
-        return self.clusters.get(post_id)
+    def get_clusters(self, post_ids: list[str]) -> dict[str, str | None]:
+        return {post_id: self.clusters.get(post_id) for post_id in post_ids}
 
     def record(self, post_id: str, mh: dedup.MinHash, hashes: list[str], cluster_id: str) -> None:
         for h in hashes:

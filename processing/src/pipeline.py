@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 import config
@@ -22,7 +23,17 @@ logger = logging.getLogger("processing")
 # Alpha-stage cap, not a correctness requirement. See CLAUDE.md's Data
 # retention section -- includes why ranking.MMR_WINDOW_HOURS (72h) is left
 # looking inconsistent with this on purpose.
-RETENTION_HOURS = 24
+RETENTION_HOURS = int(os.environ.get("RETENTION_HOURS", "24"))
+
+# dedup's Redis state must outlive the posts it covers, or a still-live
+# post can silently lose its dedup eligibility before it's actually
+# deleted -- see the wiki's Deduplication page. Checked at startup, not
+# left as a convention to remember.
+if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
+    raise ValueError(
+        f"DEDUP_BAND_TTL_SECONDS ({dedup.DEDUP_BAND_TTL_SECONDS}) must be at least "
+        f"RETENTION_HOURS in seconds ({RETENTION_HOURS * 3600})"
+    )
 
 # Bump when a change to any scoring stage (dedup/bot/topicality/sentiment/
 # ranking) would make two posts' base_score/rank_score not directly

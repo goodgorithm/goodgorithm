@@ -91,7 +91,7 @@ def deserialize_minhash(data: str) -> MinHash | None:
 class DedupIndex(Protocol):
     def find_candidates(self, hashes: list[str]) -> set[str]: ...
     def get_signatures(self, post_ids: set[str]) -> dict[str, MinHash | None]: ...
-    def get_cluster(self, post_id: str) -> str | None: ...
+    def get_clusters(self, post_ids: list[str]) -> dict[str, str | None]: ...
     def record(self, post_id: str, mh: MinHash, hashes: list[str], cluster_id: str) -> None: ...
 
 
@@ -126,8 +126,14 @@ class RedisDedupIndex:
             for post_id, data in zip(ids, results)
         }
 
-    def get_cluster(self, post_id: str) -> str | None:
-        return self.client.get(f"dedup:cluster:{post_id}")
+    def get_clusters(self, post_ids: list[str]) -> dict[str, str | None]:
+        if not post_ids:
+            return {}
+        pipe = self.client.pipeline()
+        for post_id in post_ids:
+            pipe.get(f"dedup:cluster:{post_id}")
+        results = pipe.exec()
+        return dict(zip(post_ids, results))
 
     def record(self, post_id: str, mh: MinHash, hashes: list[str], cluster_id: str) -> None:
         pipe = self.client.pipeline()
@@ -165,14 +171,18 @@ def dedup_posts(
         candidate_ids = index.find_candidates(hashes) - {str(post.id)}
         candidate_signatures = index.get_signatures(candidate_ids)
 
-        matched_cluster: str | None = None
-        for candidate_id, candidate_mh in candidate_signatures.items():
-            if candidate_mh is None:
-                continue
-            if mh.jaccard(candidate_mh) >= jaccard_threshold:
-                matched_cluster = index.get_cluster(candidate_id)
-                if matched_cluster:
-                    break
+        # Cluster lookups for every Jaccard-matching candidate are batched
+        # into one round trip, not fetched one at a time as each match is
+        # found -- the LSH/Jaccard steps above only narrow candidates down,
+        # they don't rank them, so there's no ordering benefit to checking
+        # clusters one by one.
+        matching_ids = [
+            candidate_id
+            for candidate_id, candidate_mh in candidate_signatures.items()
+            if candidate_mh is not None and mh.jaccard(candidate_mh) >= jaccard_threshold
+        ]
+        clusters = index.get_clusters(matching_ids)
+        matched_cluster = next((clusters[cid] for cid in matching_ids if clusters.get(cid)), None)
 
         if matched_cluster:
             cluster_id = UUID(matched_cluster)
