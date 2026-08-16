@@ -1,4 +1,5 @@
 import logging
+import os
 
 import requests
 
@@ -6,23 +7,24 @@ from pipeline_stages import content_filter
 
 logger = logging.getLogger("processing")
 
-# Public, unauthenticated, generously-rate-limited per Bluesky's own docs
-# ("cached... intended for public web use cases") -- api/'s architecture
-# stays untouched (stateless DB-in/JSON-out); this is processing/'s first
-# outbound network dependency, deliberately kept there rather than in
-# api/ so quoted content can be content-filtered before it's ever exposed.
+# Bluesky's own public, unauthenticated AppView instance -- not something
+# an operator would tune, so it's not an env var, same as ingestion/'s
+# Jetstream URL. See the wiki's Bluesky Protocol page.
 APPVIEW_BASE = "https://public.api.bsky.app/xrpc"
-GET_POSTS_MAX_URIS = 25  # app.bsky.feed.getPosts' documented max per call
-REQUEST_TIMEOUT_SECONDS = 10
+# app.bsky.feed.getPosts' documented max URIs per call -- an external API
+# limit, not a tunable; raising this would just make oversized batches
+# fail against Bluesky's own enforcement.
+GET_POSTS_MAX_URIS = 25
+QUOTE_RESOLVER_REQUEST_TIMEOUT_SECONDS = int(os.environ.get("QUOTE_RESOLVER_REQUEST_TIMEOUT_SECONDS", "10"))
 
 
 def extract_quote_uri(raw_json: dict) -> str | None:
     """Pulls the quoted post's AT-URI out of a Bluesky commit's embed, if
-    any -- mirrors api/src/attachments.ts's parseBlueskyQuote/recordWithMedia
-    nesting exactly (direct quote: embed.record.uri; recordWithMedia: one
-    level deeper at embed.record.record.uri, confirmed against a real row
-    during the original attachments work). Only returns URIs that point at
-    an actual post, not a list/starter-pack/feed-generator quote."""
+    any -- mirrors api/src/attachments.ts's embed-nesting exactly (direct
+    quote: embed.record.uri; recordWithMedia: one level deeper at
+    embed.record.record.uri). Only returns URIs that point at an actual
+    post, not a list/starter-pack/feed-generator quote. See the wiki's
+    Pipeline Internals page."""
     record = (raw_json or {}).get("commit", {}).get("record", {})
     if not isinstance(record, dict):
         return None
@@ -55,8 +57,8 @@ def _map_post_view(post_view: dict, suppressed_terms: frozenset[str]) -> dict:
     """Maps a hydrated postView into the exact display shape api/ serves
     verbatim. Never reads likeCount/repostCount/replyCount/quoteCount/
     bookmarkCount even though they're required/standard fields on
-    postView -- deliberate (Decisions Log: no engagement signals anywhere
-    in the product, not just ranking), not an oversight."""
+    postView -- deliberate, not an oversight. See CLAUDE.md's Post
+    attachments & embeds section."""
     author = post_view.get("author")
     record = post_view.get("record")
     text = record.get("text") if isinstance(record, dict) else None
@@ -66,7 +68,7 @@ def _map_post_view(post_view: dict, suppressed_terms: frozenset[str]) -> dict:
     # Same checks a regular post gets before it's ever stored, applied
     # here to the quoted post's own text/self-labels -- a quoted post
     # carries its own moderation status independent of the outer post
-    # quoting it (Decisions Log: precision over recall).
+    # quoting it.
     if content_filter.is_content_excluded(text, {"commit": {"record": record}}, suppressed_terms):
         return {"status": "unavailable", "reason": "filtered"}
 
@@ -99,21 +101,13 @@ def _map_post_view(post_view: dict, suppressed_terms: frozenset[str]) -> dict:
 
 
 def resolve_quotes(uris: list[str], suppressed_terms: frozenset[str]) -> dict[str, dict]:
-    """Batches into groups of 25 (getPosts' documented max), calls
-    Bluesky's public getPosts endpoint. Never crashes the calling cycle --
-    a failed batch (network error, non-200, timeout) just omits those URIs
-    from the returned dict entirely, which pipeline.py treats as
-    quote_content staying null for those posts this cycle, same as any
-    other not-yet-resolved case. No retry-next-cycle: each raw_post is
-    scored exactly once, so a miss here permanently falls back to the
-    plain quote-link card for that post -- acceptable given the endpoint's
-    documented high availability and generous rate limits.
-
-    A URI genuinely absent from a *successful* response (deleted, blocked,
-    or detached -- getPosts doesn't distinguish which) maps to an explicit
-    {"status": "unavailable", "reason": "not_found"}, distinct from a
-    network failure: this is a real, known answer, not a missing one.
-    """
+    """Batches into groups of GET_POSTS_MAX_URIS, calls Bluesky's public
+    getPosts endpoint. Never crashes the calling cycle -- a failed batch
+    just omits those URIs from the returned dict entirely; a URI absent
+    from a *successful* response maps to an explicit not_found status
+    instead. See CLAUDE.md's Post attachments & embeds section for why
+    (no retry, not_found vs. null semantics) and the wiki's Pipeline
+    Internals page for the batching/failure-isolation mechanics."""
     results: dict[str, dict] = {}
     unique_uris = list(dict.fromkeys(uris))  # de-dupe, preserve order
 
@@ -122,7 +116,7 @@ def resolve_quotes(uris: list[str], suppressed_terms: frozenset[str]) -> dict[st
             response = requests.get(
                 f"{APPVIEW_BASE}/app.bsky.feed.getPosts",
                 params=[("uris", uri) for uri in batch],
-                timeout=REQUEST_TIMEOUT_SECONDS,
+                timeout=QUOTE_RESOLVER_REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
             payload = response.json()

@@ -22,8 +22,7 @@ def test_extract_quote_uri_direct_quote():
 
 
 def test_extract_quote_uri_record_with_media_nesting():
-    # Nesting confirmed against a real row during the original attachments
-    # work: the quote is at embed.record.record, not embed.record directly.
+    # The quote is at embed.record.record, not embed.record directly.
     raw_json = {
         "commit": {
             "record": {
