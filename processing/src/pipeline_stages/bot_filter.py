@@ -1,4 +1,5 @@
 import hashlib
+import os
 import re
 from dataclasses import dataclass
 from typing import Protocol
@@ -7,29 +8,60 @@ from uuid import UUID
 from infra import redis_client
 from text_normalize import normalize_text
 
-VELOCITY_WINDOW_SECONDS = 60 * 60  # 1 hour
-VELOCITY_THRESHOLD = 15  # posts/hour at which the velocity component maxes out
-SELF_DUP_TTL_SECONDS = 24 * 60 * 60  # matches dedup's cluster-membership TTL
+# Bot/spam scoring -- see the wiki's Bot Filter page for how this works
+# and what each of these controls. Defaults are an empirically-validated
+# configuration; treat any change as unvalidated until re-checked against
+# real production data.
+BOT_FILTER_VELOCITY_WINDOW_SECONDS = int(os.environ.get("BOT_FILTER_VELOCITY_WINDOW_SECONDS", str(60 * 60)))
+BOT_FILTER_VELOCITY_THRESHOLD = int(os.environ.get("BOT_FILTER_VELOCITY_THRESHOLD", "15"))
+if BOT_FILTER_VELOCITY_THRESHOLD < 1:
+    raise ValueError(f"BOT_FILTER_VELOCITY_THRESHOLD ({BOT_FILTER_VELOCITY_THRESHOLD}) must be at least 1")
+# Matches dedup's cluster-membership TTL by convention, not a shared
+# constant -- see the wiki's Deduplication page for the equivalent
+# retention-window relationship (this one carries no correctness
+# requirement the way that one does, just a "spiritually the same
+# lifetime" choice).
+BOT_FILTER_SELF_DUP_TTL_SECONDS = int(os.environ.get("BOT_FILTER_SELF_DUP_TTL_SECONDS", str(24 * 60 * 60)))
 
-URL_DENSITY_CAP = 0.3
-HASHTAG_DENSITY_CAP = 0.4
-CAPS_RATIO_CAP = 0.6
+# Each used as a divisor in lexical_score -- must be > 0, or scoring a
+# post with zero of that signal (0.0 / cap) raises ZeroDivisionError.
+BOT_FILTER_URL_DENSITY_CAP = float(os.environ.get("BOT_FILTER_URL_DENSITY_CAP", "0.3"))
+if BOT_FILTER_URL_DENSITY_CAP <= 0:
+    raise ValueError(f"BOT_FILTER_URL_DENSITY_CAP ({BOT_FILTER_URL_DENSITY_CAP}) must be greater than 0")
+BOT_FILTER_HASHTAG_DENSITY_CAP = float(os.environ.get("BOT_FILTER_HASHTAG_DENSITY_CAP", "0.4"))
+if BOT_FILTER_HASHTAG_DENSITY_CAP <= 0:
+    raise ValueError(
+        f"BOT_FILTER_HASHTAG_DENSITY_CAP ({BOT_FILTER_HASHTAG_DENSITY_CAP}) must be greater than 0"
+    )
+BOT_FILTER_CAPS_RATIO_CAP = float(os.environ.get("BOT_FILTER_CAPS_RATIO_CAP", "0.6"))
+if BOT_FILTER_CAPS_RATIO_CAP <= 0:
+    raise ValueError(f"BOT_FILTER_CAPS_RATIO_CAP ({BOT_FILTER_CAPS_RATIO_CAP}) must be greater than 0")
 
-# Skeleton window: first TEMPLATE_PREFIX_WORDS + last TEMPLATE_SUFFIX_WORDS
-# words of the normalized text. See the wiki's Bot Filter page (Template
-# repetition section) for why these specific widths, and why cross-account
-# skeleton collisions aren't a risk.
-TEMPLATE_PREFIX_WORDS = 3
-TEMPLATE_SUFFIX_WORDS = 2
-# Rolling window like self-dup's TTL, not velocity's -- see the wiki.
-TEMPLATE_REPEAT_TTL_SECONDS = SELF_DUP_TTL_SECONDS
-TEMPLATE_REPEAT_THRESHOLD = 5  # same-skeleton repeats from one author before this maxes out
+# Skeleton window: first BOT_FILTER_TEMPLATE_PREFIX_WORDS + last
+# BOT_FILTER_TEMPLATE_SUFFIX_WORDS words of the normalized text. See the
+# wiki's Bot Filter page (Template repetition section) for why these
+# specific widths, and why cross-account skeleton collisions aren't a risk.
+BOT_FILTER_TEMPLATE_PREFIX_WORDS = int(os.environ.get("BOT_FILTER_TEMPLATE_PREFIX_WORDS", "3"))
+BOT_FILTER_TEMPLATE_SUFFIX_WORDS = int(os.environ.get("BOT_FILTER_TEMPLATE_SUFFIX_WORDS", "2"))
+# Rolling window like self-dup's TTL, not velocity's -- see the wiki. A
+# separate env var, not derived from BOT_FILTER_SELF_DUP_TTL_SECONDS, so
+# the two can be tuned independently even though they share a default.
+BOT_FILTER_TEMPLATE_REPEAT_TTL_SECONDS = int(
+    os.environ.get("BOT_FILTER_TEMPLATE_REPEAT_TTL_SECONDS", str(24 * 60 * 60))
+)
+# Same-skeleton repeats from one author before this maxes out -- used as a
+# divisor, must be at least 1.
+BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD = int(os.environ.get("BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD", "5"))
+if BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD < 1:
+    raise ValueError(
+        f"BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD ({BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD}) must be at least 1"
+    )
 
-VELOCITY_WEIGHT = 0.30
-SELF_DUP_WEIGHT = 0.25
-LEXICAL_WEIGHT = 0.20
-TEMPLATE_WEIGHT = 0.25
-BOT_SCORE_THRESHOLD = 0.5
+BOT_FILTER_VELOCITY_WEIGHT = float(os.environ.get("BOT_FILTER_VELOCITY_WEIGHT", "0.30"))
+BOT_FILTER_SELF_DUP_WEIGHT = float(os.environ.get("BOT_FILTER_SELF_DUP_WEIGHT", "0.25"))
+BOT_FILTER_LEXICAL_WEIGHT = float(os.environ.get("BOT_FILTER_LEXICAL_WEIGHT", "0.20"))
+BOT_FILTER_TEMPLATE_WEIGHT = float(os.environ.get("BOT_FILTER_TEMPLATE_WEIGHT", "0.25"))
+BOT_FILTER_BOT_SCORE_THRESHOLD = float(os.environ.get("BOT_FILTER_BOT_SCORE_THRESHOLD", "0.5"))
 
 # Also matches bare www.-prefixed links with no scheme, not just
 # http(s)://. Deliberately not extended to fully bare domains with
@@ -67,23 +99,23 @@ def lexical_score(text: str) -> float:
     shouting) is enough on its own — so this takes the max of the three
     normalized components rather than averaging, which would dilute a
     post that's clean except for one loud signal."""
-    url_component = min(1.0, url_density(text) / URL_DENSITY_CAP)
-    hashtag_component = min(1.0, hashtag_density(text) / HASHTAG_DENSITY_CAP)
-    caps_component = min(1.0, caps_ratio(text) / CAPS_RATIO_CAP)
+    url_component = min(1.0, url_density(text) / BOT_FILTER_URL_DENSITY_CAP)
+    hashtag_component = min(1.0, hashtag_density(text) / BOT_FILTER_HASHTAG_DENSITY_CAP)
+    caps_component = min(1.0, caps_ratio(text) / BOT_FILTER_CAPS_RATIO_CAP)
     return max(url_component, hashtag_component, caps_component)
 
 
 def template_skeleton(text: str) -> str:
-    """A structural fingerprint -- the first TEMPLATE_PREFIX_WORDS and last
-    TEMPLATE_SUFFIX_WORDS words of the normalized text. Catches a fixed
-    template wrapped around long variable content (e.g. "Now playing on
-    X: SONG by ARTIST! Tune in now: URL") that dedup's whole-text
-    MinHash/Jaccard is blind to, since a short fixed template diluted by
-    a long variable middle never crosses the Jaccard threshold (see the
-    wiki's Deduplication page). See the wiki's Bot Filter page."""
+    """A structural fingerprint -- the first BOT_FILTER_TEMPLATE_PREFIX_WORDS
+    and last BOT_FILTER_TEMPLATE_SUFFIX_WORDS words of the normalized text.
+    Catches a fixed template wrapped around long variable content (e.g.
+    "Now playing on X: SONG by ARTIST! Tune in now: URL") that dedup's
+    whole-text MinHash/Jaccard is blind to, since a short fixed template
+    diluted by a long variable middle never crosses the Jaccard threshold
+    (see the wiki's Deduplication page). See the wiki's Bot Filter page."""
     words = normalize_text(text).split()
-    prefix = words[:TEMPLATE_PREFIX_WORDS]
-    suffix = words[-TEMPLATE_SUFFIX_WORDS:] if len(words) > TEMPLATE_PREFIX_WORDS else []
+    prefix = words[:BOT_FILTER_TEMPLATE_PREFIX_WORDS]
+    suffix = words[-BOT_FILTER_TEMPLATE_SUFFIX_WORDS:] if len(words) > BOT_FILTER_TEMPLATE_PREFIX_WORDS else []
     return "|".join(prefix) + "||" + "|".join(suffix)
 
 
@@ -109,9 +141,9 @@ class RedisBotFilterIndex:
         pipe.incr(key)
         # nx=True: only sets a fresh TTL on this key's first write in the
         # window, so the window is fixed (resets exactly
-        # VELOCITY_WINDOW_SECONDS after the first post) rather than
-        # extending with continued activity.
-        pipe.expire(key, VELOCITY_WINDOW_SECONDS, nx=True)
+        # BOT_FILTER_VELOCITY_WINDOW_SECONDS after the first post) rather
+        # than extending with continued activity.
+        pipe.expire(key, BOT_FILTER_VELOCITY_WINDOW_SECONDS, nx=True)
         results = pipe.exec()
         return results[0]
 
@@ -125,7 +157,7 @@ class RedisBotFilterIndex:
         # pushing the TTL forward on every new member, growing the set
         # unbounded instead of clearing on a fixed window. See the wiki's
         # Bot Filter page.
-        pipe.expire(key, SELF_DUP_TTL_SECONDS, nx=True)
+        pipe.expire(key, BOT_FILTER_SELF_DUP_TTL_SECONDS, nx=True)
         results = pipe.exec()
         added = results[0]
         return added == 0  # already a member => this author already posted into this cluster
@@ -142,7 +174,7 @@ class RedisBotFilterIndex:
         # NX-only-on-first-hit pattern the two methods above use. See the
         # wiki's Bot Filter page for why this key needs the opposite TTL
         # shape.
-        pipe.expire(key, TEMPLATE_REPEAT_TTL_SECONDS)
+        pipe.expire(key, BOT_FILTER_TEMPLATE_REPEAT_TTL_SECONDS)
         results = pipe.exec()
         return results[0]
 
@@ -164,7 +196,7 @@ def score_bot(author_id: str, text: str, cluster_id: UUID, index: BotFilterIndex
     counts. Defensive-only: this produces a filter flag, never a ranking
     boost. See the wiki's Bot Filter page."""
     velocity_count = index.bump_velocity(author_id)
-    velocity_component = min(1.0, velocity_count / VELOCITY_THRESHOLD)
+    velocity_component = min(1.0, velocity_count / BOT_FILTER_VELOCITY_THRESHOLD)
 
     is_self_dup = index.check_and_record_self_duplicate(author_id, str(cluster_id))
     self_dup_component = 1.0 if is_self_dup else 0.0
@@ -172,18 +204,18 @@ def score_bot(author_id: str, text: str, cluster_id: UUID, index: BotFilterIndex
     lex_component = lexical_score(text)
 
     template_count = index.bump_template_repeat(author_id, template_skeleton(text))
-    template_component = min(1.0, template_count / TEMPLATE_REPEAT_THRESHOLD)
+    template_component = min(1.0, template_count / BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD)
 
     bot_score = (
-        VELOCITY_WEIGHT * velocity_component
-        + SELF_DUP_WEIGHT * self_dup_component
-        + LEXICAL_WEIGHT * lex_component
-        + TEMPLATE_WEIGHT * template_component
+        BOT_FILTER_VELOCITY_WEIGHT * velocity_component
+        + BOT_FILTER_SELF_DUP_WEIGHT * self_dup_component
+        + BOT_FILTER_LEXICAL_WEIGHT * lex_component
+        + BOT_FILTER_TEMPLATE_WEIGHT * template_component
     )
 
     return BotScore(
         bot_score=bot_score,
-        is_bot=bot_score >= BOT_SCORE_THRESHOLD,
+        is_bot=bot_score >= BOT_FILTER_BOT_SCORE_THRESHOLD,
         velocity_component=velocity_component,
         self_dup_component=self_dup_component,
         lexical_component=lex_component,

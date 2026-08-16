@@ -75,7 +75,7 @@ def test_score_bot_normal_post_is_not_flagged():
         index=index,
     )
     assert result.is_bot is False
-    assert result.bot_score < bot_filter.BOT_SCORE_THRESHOLD
+    assert result.bot_score < bot_filter.BOT_FILTER_BOT_SCORE_THRESHOLD
 
 
 def test_score_bot_rapid_fire_posting_raises_velocity_component():
