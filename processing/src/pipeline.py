@@ -37,7 +37,9 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 
 # Bump when a change to any scoring stage (dedup/bot/topicality/sentiment/
 # ranking) would make two posts' base_score/rank_score not directly
-# comparable. See CLAUDE.md's Versioning & migration section.
+# comparable. See CLAUDE.md's Versioning & migration section. Deliberately
+# not an env var -- it has to match what the deployed code actually does,
+# not be independently set per environment.
 PIPELINE_VERSION = "v3"
 
 
