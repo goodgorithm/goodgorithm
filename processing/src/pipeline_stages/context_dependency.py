@@ -1,41 +1,38 @@
 """Platform-differentiated handling for posts whose meaning depends on
-unstated context -- a reply, or Mastodon's `quote-inline` convention
-(issue #33). Resolving that context the way quote_resolver.py resolves
-Bluesky quote-posts doesn't scale here: replies run 66,000+/day across
-both platforms combined, vs. quote-resolution's much smaller footprint,
-and Mastodon replies would mean trusting arbitrary, unvetted instances.
-So each platform gets its own policy instead -- exclude outright, or
-keep the post but down-weight it in ranking.
+unstated context -- a reply, or Mastodon's `quote-inline` convention.
+Resolving that context the way quote_resolver.py resolves Bluesky
+quote-posts doesn't scale here -- replies run orders of magnitude higher
+volume than quote-resolution's footprint, and Mastodon replies would mean
+trusting arbitrary, unvetted instances. So each platform gets its own
+policy instead -- exclude outright, or keep the post but down-weight it
+in ranking. See the wiki's Pipeline Internals page for the full
+per-platform reasoning and the volume/eligibility numbers behind it.
 
 One registry keyed by source platform, not per-platform conditionals
 scattered through pipeline.py/ranking.py -- adding a new platform later
 means adding one entry here, nothing else changes.
-
-#33 investigation (2026-08-14) found the two platforms aren't remotely
-the same problem: Bluesky replies are 51.6% of Bluesky's currently-
-eligible pool with an eligibility rate almost identical to non-replies
-(volume too large, quality too close to justify a hard cut). Mastodon's
-structured replies and quote-inline are each only ~4-6% of its eligible
-pool, and structured replies specifically skew notably less positive --
-cheap to exclude outright without denting Mastodon's contribution.
 """
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Callable, Literal
 
 Action = Literal["exclude", "devalue", "none"]
 
-# Bridgy Fed marks a bridged Bluesky quote-post with `class="quote-inline"`
-# (checked below), but that's one bridging tool's implementation detail --
-# confirmed live in production (issue #33 follow-up) that a person can
-# also just type "RE: <bsky.app post URL>" themselves as their own
-# reference-a-post convention, with no such wrapper at all. Matching the
-# text pattern directly catches both, since the actual signal we care
-# about is "this post's meaning depends on an unstated quoted post," not
-# "Bridgy Fed specifically generated this." Handle-based and DID-based
-# profile URLs both confirmed live (.../profile/did:plc:xyz/post/... and
-# .../profile/someone.bsky.social/post/...).
+# base_score multiplier for a Bluesky reply to a different author -- see
+# the wiki's Pipeline Internals page.
+CONTEXT_DEPENDENCY_BLUESKY_DEVALUE_MULTIPLIER = float(
+    os.environ.get("CONTEXT_DEPENDENCY_BLUESKY_DEVALUE_MULTIPLIER", "0.4")
+)
+
+# Catches both a Bridgy-Fed-bridged quote-post (which carries a
+# quote-inline class, checked separately below) and a person manually
+# typing "RE: <bsky.app post URL>" themselves with no such wrapper --
+# matched directly since the actual signal is "this post's meaning
+# depends on an unstated quoted post," not "Bridgy Fed generated this."
+# Handle-based and DID-based profile URLs both match. See the wiki's
+# Pipeline Internals page.
 _BLUESKY_QUOTE_REFERENCE_RE = re.compile(r"\bre:\s*https://bsky\.app/profile/\S+/post/\S+", re.IGNORECASE)
 
 
@@ -45,14 +42,12 @@ def _bluesky_action(author_id: str, raw_json: dict, text: str) -> Action:
     if not isinstance(reply, dict):
         return "none"
 
-    # Self-reply-thread continuations (same author replying to their own
-    # prior post) read far more like a coherent, intended-to-stand-
-    # together post than a reply to someone else -- the reply-parent's
-    # author is embedded directly in its AT-URI
-    # (at://<did>/<collection>/<rkey>), so this is a free structural
-    # check, no resolution call needed (mirrors quote_resolver.py's own
-    # defensive AT-URI handling). Only replies to a *different* author
-    # count as context-dependent.
+    # Self-reply-thread continuations read more like one coherent post
+    # than a reply to someone else -- the reply-parent's author is
+    # embedded directly in its AT-URI (at://<did>/<collection>/<rkey>), a
+    # free structural check with no resolution call needed. Only replies
+    # to a *different* author count as context-dependent. See the wiki's
+    # Pipeline Internals page.
     parent = reply.get("parent")
     parent_uri = parent.get("uri") if isinstance(parent, dict) else None
     if isinstance(parent_uri, str):
@@ -83,7 +78,9 @@ class PlatformPolicy:
 
 
 PLATFORM_POLICIES: dict[str, PlatformPolicy] = {
-    "bluesky": PlatformPolicy(handler=_bluesky_action, devalue_multiplier=0.4),
+    "bluesky": PlatformPolicy(
+        handler=_bluesky_action, devalue_multiplier=CONTEXT_DEPENDENCY_BLUESKY_DEVALUE_MULTIPLIER
+    ),
     "mastodon": PlatformPolicy(handler=_mastodon_action),
 }
 

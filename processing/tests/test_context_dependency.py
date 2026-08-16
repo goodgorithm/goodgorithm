@@ -66,14 +66,7 @@ def test_unknown_platform_is_none():
     assert context_dependency.classify("unknown-platform", "x", {}, TEXT).action == "none"
 
 
-# --- manually-typed "RE: <bsky.app post URL>" (issue #33 follow-up) ---
-#
-# Confirmed live in production: a Bridgy-Fed-bridged quote always carries
-# the quote-inline class (already covered above), but a real Mastodon
-# user can also just type "RE: <bsky.app post URL>" themselves, with no
-# such wrapper at all -- confirmed via a real post from
-# hachyderm.io/jack@j4ck.xyz. The text pattern is matched directly so
-# both cases are caught, not just Bridgy Fed's specific implementation.
+# --- manually-typed "RE: <bsky.app post URL>", no quote-inline wrapper ---
 
 
 def test_mastodon_manually_typed_bsky_re_reference_with_did_is_excluded():
@@ -83,7 +76,6 @@ def test_mastodon_manually_typed_bsky_re_reference_with_did_is_excluded():
 
 
 def test_mastodon_manually_typed_bsky_re_reference_with_handle_is_excluded():
-    # Real example: hachyderm.io/jack@j4ck.xyz, no quote-inline class at all.
     text = (
         "crazy that wishbone is 1 year old already! great album, quite an "
         "experience listening to it all in one go! "
