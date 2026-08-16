@@ -162,12 +162,23 @@ class RedisBotFilterIndex:
         digest = hashlib.sha1(skeleton.encode("utf8")).hexdigest()
         key = f"tmpl:{author_id}:{digest}"
         count = self.client.incr(key)
-        if count == 1:
-            # NX: only the first repeat sets the TTL -- same fixed-window
-            # reasoning as bump_velocity, and the same rolling-TTL trap
-            # dedup.py's lsh:band:* and this file's cluster:*:authors keys
-            # were fixed for (2026-08-12) applied here from the start.
-            self.client.expire(key, TEMPLATE_REPEAT_TTL_SECONDS, nx=True)
+        # Rolling TTL, refreshed on every hit -- deliberately NOT the
+        # NX-only-on-first-hit pattern bump_velocity/
+        # check_and_record_self_duplicate use. Confirmed live (issue #40
+        # follow-up, 2026-08-16): with a fixed NX-only TTL, several
+        # genuinely continuous bots' counters all expired exactly 24h
+        # after the fix's first post-deploy hit and silently reset to
+        # zero, letting Mixify/DFM/QWRT/Radio Digital Malayali/Joint Radio
+        # all slip back under BOT_SCORE_THRESHOLD simultaneously -- not a
+        # new evasion, the same accounts cycling through a "ramping back
+        # up" phase on a 24h clock, forever. This key is a single
+        # fixed-size integer counter, not a growing SET like
+        # cluster:*:authors (the 2026-08-12 incident that motivated NX
+        # there) -- refreshing its own TTL doesn't risk unbounded memory
+        # growth, and "has this author established a durable pattern"
+        # should persist as long as the behavior continues, only decaying
+        # once they've genuinely stopped for a full day.
+        self.client.expire(key, TEMPLATE_REPEAT_TTL_SECONDS)
         return count
 
 
