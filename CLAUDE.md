@@ -25,7 +25,7 @@ Five services, each independently deployable:
 | `ingestion/` | TypeScript | Railway service `goodgorithm-ingestion` | Long-lived process: Bluesky Jetstream WebSocket + Mastodon polling → `raw_posts` in Postgres. |
 | `processing/` | Python | Railway service `goodgorithm-processing` | Long-lived loop: content filter → dedup → bot filter → topicality → quote resolution → sentiment → base score → MMR ranking → `processed_posts`. |
 | `api/` | TypeScript (Fastify) | Railway service `goodgorithm-api` | Stateless, read-only, unauthenticated HTTP — no outbound calls of its own (see Post attachments & embeds below). `/feed` (cursor-paginated, ordered by `rank_score`), `/health`. |
-| `web/` | TypeScript (React + Vite) | Cloudflare Workers static assets (`goodgorithm-web`, staging/production named environments) | PWA: infinite-scroll feed consuming `api/`'s `/feed`, no accounts/personalization. `VITE_API_BASE_URL` baked in at build time (static site, no server component). |
+| `web/` | TypeScript (React + Vite) | Cloudflare Workers static assets (`goodgorithm-web`, staging/production named environments) | PWA *and* Capacitor-wrapped native iOS/Android app, same codebase: infinite-scroll feed consuming `api/`'s `/feed`, no accounts/personalization. `VITE_API_BASE_URL` baked in at build time (static site, no server component). |
 | `training/` | Python (notebook) | Run manually on Colab/Kaggle, not deployed | Trains the sentiment CNN, exports to ONNX, publishes versioned artifacts to R2. |
 
 Schema lives in `supabase/migrations/` (`raw_posts`, `processed_posts`, applied via Supabase's migration tooling — don't hand-edit the schema elsewhere).

@@ -9,7 +9,8 @@ import { useEffect } from "react";
 // edge-to-edge pattern on both platforms, and the only mode
 // setBackgroundColor even claims to support), so App.module.css's
 // safe-area-inset padding, not a status bar background color, is what
-// keeps content from drawing under it. No-op entirely on web (issue #9).
+// keeps content from drawing under it. No-op entirely on web. See the
+// wiki's Web Internals page for the full native-app picture.
 export function useNativeStatusBar(): void {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;

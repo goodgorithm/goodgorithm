@@ -19,7 +19,7 @@ const queryClient = new QueryClient();
 // Static content pages reachable from the header nav. Adding a new one
 // means adding a content/*.md file and one entry here - App.tsx doesn't
 // otherwise need to change. Mission/Algorithm/Content Policy moved to the
-// GitHub Wiki (issue #31) - FAQ is the one page that stays in-app.
+// GitHub Wiki - FAQ is the one page that stays in-app.
 const CONTENT_PAGES = [{ path: "/faq", label: "FAQ", source: faqSource }];
 
 export default function App() {
@@ -41,7 +41,7 @@ export default function App() {
             native (app updates go through store review instead). Not
             rendering it is what keeps useRegisterSW (inside UpdatePrompt)
             from ever registering a service worker on native in the first
-            place -- issue #9. */}
+            place. See the wiki's Web Internals page. */}
         {!Capacitor.isNativePlatform() && <UpdatePrompt />}
         <header className={styles.header}>
           <button type="button" className={styles.logoButton} onClick={() => navigate("/")}>

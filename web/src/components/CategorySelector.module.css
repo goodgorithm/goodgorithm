@@ -1,9 +1,9 @@
-/* auto-fill + minmax keeps this a no-scroll, always-fully-visible layout
-   (issue #24, replacing the old horizontally-scrolling row + fade/chevron
-   hint that could silently overflow on narrow viewports with no visible
-   scrollbar) - column count adapts to available width with no @media
-   breakpoint needed: ~2 columns at phone widths, ~3 at the app's 640px
-   container max-width (App.module.css). */
+/* auto-fill + minmax keeps this a no-scroll, always-fully-visible layout,
+   replacing an old horizontally-scrolling row + fade/chevron hint that
+   could silently overflow on narrow viewports with no visible scrollbar -
+   column count adapts to available width with no @media breakpoint
+   needed: ~2 columns at phone widths, ~3 at the app's 640px container
+   max-width (App.module.css). */
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

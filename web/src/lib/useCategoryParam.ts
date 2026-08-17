@@ -2,16 +2,16 @@ import { useEffect, useState } from "react";
 
 import { CATEGORIES, type Category } from "../api/types";
 
-// The landing default (issue #24). Also what an absent OR unrecognized/stale
+// The landing default. Also what an absent OR unrecognized/stale
 // ?category= value falls back to - CLAUDE.md's defensive-unknown-category
-// handling. This includes the old "all"/Full feed URL value (issue #33 -
-// removed once there was enough content in every category that the risk of
-// an unfiltered, unmoderated-by-category feed no longer earned its keep) -
-// it's just another unrecognized string now, no special-case needed.
+// handling. This includes the old "all"/Full feed URL value, removed once
+// there was enough content in every category that an unfiltered,
+// unmoderated-by-category feed no longer earned its keep - it's just
+// another unrecognized string now, no special-case needed.
 // "kindness_community" was the original default but doesn't exist in the
-// trained-classifier taxonomy (issue #34) - arts_culture is the closest
-// replacement in spirit (broadly appealing, not niche) and happens to be
-// the highest-volume category too.
+// trained-classifier taxonomy (see CLAUDE.md's Category filtering section)
+// - arts_culture is the closest replacement in spirit (broadly appealing,
+// not niche) and happens to be the highest-volume category too.
 const DEFAULT_CATEGORY: Category = "arts_culture";
 
 function readCategory(): Category {

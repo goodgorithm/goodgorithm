@@ -1,11 +1,14 @@
 import type { FeedPost } from "../api/types";
 
-// Mirrors processing/src/pipeline_stages/ranking.py's POSITIVITY_THRESHOLD -- only posts
-// scoring at or above this are ever ranking-eligible, so it's the real
-// floor of what reaches /feed. Scaling to [POSITIVITY_THRESHOLD, 1] instead
-// of the theoretical [-1, 1] is what makes the sentiment bar actually use
-// its visual range, rather than every post reading as "nearly full" against
-// a range whose bottom half never appears in practice.
+// Mirrors processing/'s ranking.py RANKING_POSITIVITY_THRESHOLD -- only
+// posts scoring at or above this are ever ranking-eligible, so it's the
+// real floor of what reaches /feed. Scaling to [POSITIVITY_THRESHOLD, 1]
+// instead of the theoretical [-1, 1] is what makes the sentiment bar
+// actually use its visual range, rather than every post reading as "nearly
+// full" against a range whose bottom half never appears in practice.
+// Hand-synced, not fetched - processing/'s copy is env-configurable, so
+// this can silently drift if that's ever changed without updating this
+// too. See the wiki's Web Internals page.
 export const POSITIVITY_THRESHOLD = 0.3;
 
 export function sentimentFraction(sentiment: number): number {

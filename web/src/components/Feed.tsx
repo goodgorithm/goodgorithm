@@ -39,13 +39,13 @@ export function Feed() {
 
   // Deduped by id, keeping the first (earlier-page) occurrence - api/'s
   // rank_score-keyset pagination isn't fully airtight against the live
-  // background re-ranking that runs concurrently with pagination (issue
-  // #36: a post can shift to a lower rank_score between page fetches and
-  // satisfy the cursor comparison again). This doesn't fix the server
-  // occasionally serving the same post twice, just stops it from ever
-  // rendering twice in one continuous scroll - the fuller fix (pinning a
-  // consistent ranking snapshot for the duration of a scroll session) is
-  // tracked separately.
+  // background re-ranking that runs concurrently with pagination: a post
+  // can shift to a lower rank_score between page fetches and satisfy the
+  // cursor comparison again. This doesn't fix the server occasionally
+  // serving the same post twice, just stops it from ever rendering twice
+  // in one continuous scroll - the fuller fix (pinning a consistent
+  // ranking snapshot for the duration of a scroll session) is tracked
+  // separately. See the wiki's Web Internals page.
   const posts = useMemo(() => {
     const seen = new Set<string>();
     const deduped: FeedPost[] = [];

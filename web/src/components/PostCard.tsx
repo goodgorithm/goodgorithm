@@ -8,12 +8,11 @@ import { RelativeTime } from "./RelativeTime";
 import { ScoreDetails } from "./ScoreDetails";
 import { SourceBadge } from "./SourceBadge";
 
-// Deep-links to the moderation-report issue template (issue #7), pre-filled
-// with this post's permalink under the template's own "Post or account"
-// heading -- GitHub's standard query-param pre-fill for .md-style issue
-// templates, no backend needed. The reporter still fills in "What's wrong"
-// themselves; a moderator reviews and acts by hand (see the Content
-// Policy wiki page).
+// Deep-links to the moderation-report issue template, pre-filled with this
+// post's permalink under the template's own "Post or account" heading --
+// GitHub's standard query-param pre-fill for .md-style issue templates, no
+// backend needed. The reporter still fills in "What's wrong" themselves; a
+// moderator reviews and acts by hand (see the Content Policy wiki page).
 function reportUrl(permalink: string): string {
   const body = `## Post or account\n\n${permalink}\n\n## What's wrong\n\n`;
   const params = new URLSearchParams({
