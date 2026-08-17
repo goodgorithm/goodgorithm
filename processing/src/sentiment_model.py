@@ -11,6 +11,7 @@ PAD_TOKEN = "<pad>"
 UNK_TOKEN = "<unk>"
 URL_TOKEN = "<url>"
 USER_TOKEN = "<user>"
+NUM_TOKEN = "<num>"
 
 EMBEDDING_DIM = 100
 FILTER_SIZES = (3, 4, 5)
@@ -25,6 +26,7 @@ _TOKEN_RE = re.compile(
     |(?P<mention>@\w+)
     |(?P<hashtag>\#\w+)
     |(?P<emoticon>[:;=][\-o]?[)DdPp(\\/]|<3)
+    |(?P<num>\d+)
     |(?P<word>[a-z']+)
     |(?P<punct>[!?.]+)
     """,
@@ -38,7 +40,12 @@ def tokenize(text: str) -> list[str]:
     would otherwise bloat the vocab with one-off usernames), hashtags keep
     their word content (often carries real sentiment, e.g. "#blessed"),
     emoticons are preserved as their own tokens rather than stripped as
-    punctuation."""
+    punctuation. All-digit runs collapse to NUM_TOKEN — the specific value
+    is noise the same way a URL is, but *that a number appeared* is kept
+    (unlike anything else the regex doesn't match, which is silently
+    dropped) since numbers plausibly carry sentiment-relevant signal
+    ("married for 30 years", "won 10-0") even though the exact value
+    likely doesn't."""
     tokens: list[str] = []
     for match in _TOKEN_RE.finditer(text.lower()):
         kind = match.lastgroup
@@ -48,6 +55,8 @@ def tokenize(text: str) -> list[str]:
             tokens.append(USER_TOKEN)
         elif kind == "hashtag":
             tokens.append(match.group("hashtag")[1:])
+        elif kind == "num":
+            tokens.append(NUM_TOKEN)
         else:
             tokens.append(match.group(kind))
     return tokens

@@ -30,6 +30,26 @@ def test_tokenize_empty_string():
     assert sentiment_model.tokenize("") == []
 
 
+def test_tokenize_collapses_digits_to_num_token():
+    tokens = sentiment_model.tokenize("I have 100 dollars and it is 2024")
+    assert tokens == [
+        "i",
+        "have",
+        sentiment_model.NUM_TOKEN,
+        "dollars",
+        "and",
+        "it",
+        "is",
+        sentiment_model.NUM_TOKEN,
+    ]
+
+
+def test_tokenize_does_not_split_mentions_or_hashtags_containing_digits():
+    tokens = sentiment_model.tokenize("@user123 #win2024")
+    assert tokens == [sentiment_model.USER_TOKEN, "win2024"]
+    assert sentiment_model.NUM_TOKEN not in tokens
+
+
 def test_encode_pads_short_sequences():
     vocab = {sentiment_model.PAD_TOKEN: 0, sentiment_model.UNK_TOKEN: 1, "hello": 2}
     ids = sentiment_model.encode(["hello"], vocab)
