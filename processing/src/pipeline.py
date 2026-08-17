@@ -21,8 +21,8 @@ from pipeline_stages import (
 logger = logging.getLogger("processing")
 
 # Alpha-stage cap, not a correctness requirement. See CLAUDE.md's Data
-# retention section -- includes why ranking.MMR_WINDOW_HOURS (72h) is left
-# looking inconsistent with this on purpose.
+# retention section -- includes why ranking.RANKING_MMR_WINDOW_HOURS (72h)
+# is left looking inconsistent with this on purpose.
 RETENTION_HOURS = int(os.environ.get("RETENTION_HOURS", "24"))
 
 # dedup's Redis state must outlive the posts it covers, or a still-live
@@ -201,7 +201,7 @@ def refresh_rankings() -> int:
     with no new posts — the window's membership shifts as posts age out,
     which changes MMR's diversity trade-offs for everyone still in it. See
     the wiki's Pipeline Internals and Configuration pages."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=ranking.MMR_WINDOW_HOURS)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=ranking.RANKING_MMR_WINDOW_HOURS)
     rows = db.fetch_rankable_posts(cutoff)
 
     posts = [
