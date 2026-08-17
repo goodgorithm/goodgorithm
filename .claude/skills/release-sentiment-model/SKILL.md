@@ -13,9 +13,9 @@ Read `CLAUDE.md` in the repo root first if you haven't — this skill assumes th
 
 Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the `goodgorithm-models` R2 bucket (`model.onnx`, `vocab.json`, `config.json`) — that always happens, and it's cheap and reversible since nothing reads an unreferenced version. Separately, `sentiment-cnn/latest.json` points at whichever version `processing/` actually loads at startup. **Publishing a version and promoting it to latest are two different, deliberately separate actions.** Never conflate them — a training run finishing successfully is not the same thing as it being safe to go live.
 
-`goodgorithm-models` itself is a **private** R2 bucket (no public URL, confirmed 2026-08-12) — so on its own, uploading there does not fulfill the "we open-source model weights" commitment (the Mission/Algorithm pages on the GitHub Wiki). `training/r2_release.py`'s `publish` step closes that gap: promoting a version to live also mirrors its three artifacts to a public GitHub Release (`sentiment-cnn-<version>`, via the `gh` CLI). This only happens through `r2_release.py` — see step 6 below.
+`goodgorithm-models` itself is a **private** R2 bucket (no public URL) — so on its own, uploading there does not fulfill the "we open-source model weights" commitment (the Mission/Algorithm pages on the GitHub Wiki). `training/r2_release.py`'s `publish` step closes that gap: promoting a version to live also mirrors its three artifacts to a public GitHub Release (`sentiment-cnn-<version>`, via the `gh` CLI). This only happens through `r2_release.py` — see step 6 below.
 
-`r2_release.py` is generalized across model types (issue #34 added a `category` type alongside `sentiment`) via a required `--model` flag — every command below needs `--model sentiment` explicitly now, not just `current`/`list`/`publish` on their own.
+`r2_release.py` is generalized across model types (a `category` type exists alongside `sentiment`, added when the category classifier adopted this same release shape) via a required `--model` flag — every command below needs `--model sentiment` explicitly now, not just `current`/`list`/`publish` on their own.
 
 ## Steps
 
