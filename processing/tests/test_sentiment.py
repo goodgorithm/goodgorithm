@@ -1,6 +1,15 @@
+from dataclasses import dataclass
+from uuid import UUID, uuid4
+
 import pytest
 
 from pipeline_stages import sentiment
+
+
+@dataclass
+class FakePost:
+    id: UUID
+    text: str
 
 
 @pytest.fixture(autouse=True)
@@ -108,6 +117,55 @@ def test_score_sentiment_lazy_loads_once(monkeypatch, fixture_onnx_bytes, fixtur
 
     assert construct_count["n"] == 1
     assert sentiment.SENTIMENT_METHOD == "cnn_v1"
+
+
+def test_score_sentiment_batch_empty_returns_empty_dict():
+    assert sentiment.score_sentiment_batch([]) == {}
+
+
+def test_score_sentiment_batch_matches_per_post_score_with_vader_fallback():
+    posts = [
+        FakePost(id=uuid4(), text="I love this, it's absolutely wonderful and amazing!"),
+        FakePost(id=uuid4(), text="This is terrible, I hate it, everything is awful."),
+    ]
+
+    results = sentiment.score_sentiment_batch(posts)
+
+    assert results[posts[0].id] > 0.5
+    assert results[posts[1].id] < -0.5
+    assert sentiment.SENTIMENT_METHOD == "vader_v1"
+
+
+def test_score_sentiment_batch_uses_trained_model_after_successful_load(fixture_onnx_bytes, fixture_vocab):
+    store = FakeModelStore(fixture_onnx_bytes, fixture_vocab)
+    sentiment.load_model(store)
+
+    posts = [
+        FakePost(id=uuid4(), text="goodword"),
+        FakePost(id=uuid4(), text="okword"),
+    ]
+
+    results = sentiment.score_sentiment_batch(posts)
+
+    # "goodword" -> vocab id 1 -> fixture prob_table row 1 = [0.1, 0.2, 0.7]
+    assert results[posts[0].id] == pytest.approx(0.6, abs=1e-4)
+    # "okword" -> vocab id 2 -> fixture prob_table row 2 = [0.2, 0.6, 0.2]
+    assert results[posts[1].id] == pytest.approx(0.0, abs=1e-4)
+
+
+def test_score_sentiment_batch_matches_single_post_score_call_for_call(fixture_onnx_bytes, fixture_vocab):
+    # The batched ONNX call must produce identical per-post results to the
+    # single-post path -- proves batching is a pure performance change.
+    store = FakeModelStore(fixture_onnx_bytes, fixture_vocab)
+    sentiment.load_model(store)
+
+    texts = ["goodword", "okword", "goodword okword"]
+    posts = [FakePost(id=uuid4(), text=text) for text in texts]
+
+    batch_results = sentiment.score_sentiment_batch(posts)
+    individual_results = {post.id: sentiment.score_sentiment(post.text) for post in posts}
+
+    assert batch_results == individual_results
 
 
 def test_load_model_uses_env_override_without_hitting_r2(fixture_onnx_bytes, fixture_vocab):

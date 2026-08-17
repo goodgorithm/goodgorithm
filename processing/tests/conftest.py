@@ -10,11 +10,13 @@ def _build_fixture_graph(prob_table: np.ndarray) -> bytes:
     probability table, keyed by the first token id. No torch needed to
     build or run this — exercises sentiment.py's real plumbing (session
     creation, tensor shapes, score conversion) against a fully
-    deterministic, known model."""
+    deterministic, known model. Dynamic batch dim on both input_ids and
+    probs, matching the real model's dynamic_axes export (issue #52) —
+    exercises score_sentiment_batch()'s multi-row calls, not just batch=1."""
     _vocab_size, num_classes = prob_table.shape
 
-    input_ids = helper.make_tensor_value_info("input_ids", TensorProto.INT64, [1, None])
-    probs = helper.make_tensor_value_info("probs", TensorProto.FLOAT, [1, num_classes])
+    input_ids = helper.make_tensor_value_info("input_ids", TensorProto.INT64, [None, None])
+    probs = helper.make_tensor_value_info("probs", TensorProto.FLOAT, [None, num_classes])
 
     table_init = helper.make_tensor(
         "prob_table", TensorProto.FLOAT, prob_table.shape, prob_table.flatten().tolist()

@@ -55,28 +55,57 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     logger.info("loaded sentiment CNN %s", version)
 
 
-def _score_with_cnn(text: str) -> float:
-    # One inference call per post -- the published model's ONNX graph has
-    # a fixed batch dimension of 1, unlike topicality.py's batched spaCy
-    # pass. See the wiki's Pipeline Internals page.
-    ids = sentiment_model.encode(sentiment_model.tokenize(text), _vocab)
-    input_ids = np.array([ids], dtype=np.int64)
+def _ensure_loaded() -> None:
+    global _load_attempted
+    if not _load_attempted:
+        _load_attempted = True
+        load_model()
+
+
+def _score_with_cnn_batch(texts: list[str]) -> list[float]:
+    """One ONNX call for the whole batch -- viable because the published
+    model's ONNX graph has a dynamic batch dimension (issue #52; used to be
+    fixed at batch=1). Mirrors category_model.py's
+    _categorize_with_model_batch shape exactly. See the wiki's Pipeline
+    Internals page."""
+    encoded = [sentiment_model.encode(sentiment_model.tokenize(text), _vocab) for text in texts]
+    input_ids = np.array(encoded, dtype=np.int64)
     # label order 0=negative, 1=neutral, 2=positive — fixed by the training
     # notebook's label mapping, baked into the exported graph's output.
-    probs = _session.run(None, {"input_ids": input_ids})[0][0]
-    return float(probs[2] - probs[0])  # P(positive) - P(negative); see the wiki
+    probs = _session.run(None, {"input_ids": input_ids})[0]
+    return [float(row[2] - row[0]) for row in probs]  # P(positive) - P(negative); see the wiki
+
+
+def _score_with_cnn(text: str) -> float:
+    return _score_with_cnn_batch([text])[0]
+
+
+def score_sentiment_batch(posts: list) -> dict:
+    """Batched form of score_sentiment() -- run_cycle calls this once per
+    cycle instead of score_sentiment() in a per-post loop. Mirrors
+    category_model.py's categorize_batch() shape exactly. See the wiki's
+    Pipeline Internals page."""
+    if not posts:
+        return {}
+
+    _ensure_loaded()
+
+    if _session is not None:
+        scores = _score_with_cnn_batch([post.text for post in posts])
+        return {post.id: score for post, score in zip(posts, scores)}
+
+    analyzer = _get_analyzer()
+    return {post.id: analyzer.polarity_scores(post.text)["compound"] for post in posts}
 
 
 def score_sentiment(text: str) -> float:
     """[-1, 1]. Lazily attempts to load the trained CNN once per process on
     first call; falls back to VADER if that fails or R2 isn't configured.
     The decision is made once, not retried per call, so a single process's
-    output never mixes cnn_v1/vader_v1 labels. See the wiki's Pipeline
-    Internals page."""
-    global _load_attempted
-    if not _load_attempted:
-        _load_attempted = True
-        load_model()
+    output never mixes cnn_v1/vader_v1 labels. Single-post convenience
+    wrapper -- run_cycle uses score_sentiment_batch() directly. See the
+    wiki's Pipeline Internals page."""
+    _ensure_loaded()
 
     if _session is not None:
         return _score_with_cnn(text)

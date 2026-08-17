@@ -107,6 +107,10 @@ def run_cycle(batch_size: int) -> int:
     # Categorization page.
     category_results = category_model.categorize_batch(kept_posts, topicality_results)
 
+    # Same batched shape as category_results above -- see the wiki's
+    # Pipeline Internals page.
+    sentiment_results = sentiment.score_sentiment_batch(kept_posts)
+
     # Batched/deduped resolve, not one call per post -- see the wiki's
     # Pipeline Internals page.
     quote_uris_by_post = {post.id: quote_resolver.extract_quote_uri(post.raw_json) for post in kept_posts}
@@ -131,7 +135,7 @@ def run_cycle(batch_size: int) -> int:
         cluster = dedup_results[post.id]
         bot_score = bot_filter.score_bot(post.author_id, post.text, cluster.cluster_id, bot_index)
         topic = topicality_results[post.id]
-        sentiment_score = sentiment.score_sentiment(post.text)
+        sentiment_score = sentiment_results[post.id]
 
         context_penalty = context_classifications[post.id].devalue_multiplier
 
