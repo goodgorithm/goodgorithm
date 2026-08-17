@@ -1,6 +1,6 @@
 # Goodgorithm — project context
 
-Read this before starting work. It's the condensed version of decisions made in planning and in code; the full history lives in Notion (links at the bottom).
+Read this before starting work. It's the condensed version of decisions made in planning and in code. Deeper public-facing mechanism/policy docs live on the GitHub Wiki (see Docs at the bottom); Notion is internal-only historical archive now, not a primary reference.
 
 ## What this is
 
@@ -30,7 +30,7 @@ Five services, each independently deployable:
 
 Schema lives in `supabase/migrations/` (`raw_posts`, `processed_posts`, applied via Supabase's migration tooling — don't hand-edit the schema elsewhere).
 
-**For the exact step-by-step mechanics of every pipeline stage** (thresholds, formulas, why each one works the way it does), see the published **Algorithm** page in Notion (link at the bottom) — that's the canonical, kept-current explanation. Don't duplicate it at length here; it'll drift.
+**For the exact step-by-step mechanics of every pipeline stage** (thresholds, formulas, why each one works the way it does), see the published **Algorithm** page on the GitHub Wiki (see Docs at the bottom for the link) — that's the canonical, kept-current explanation. Don't duplicate it at length here; it'll drift.
 
 ### Data flow
 
@@ -204,7 +204,9 @@ CI (`.github/workflows/ci.yml`) runs `processing`'s pytest suite, and builds/tes
 
 This file is the condensed bridge for coding sessions. Deeper, public-facing documentation lives in the **GitHub Wiki** (issue #31, 2026-08-14), not Notion — moved there on the reasoning that a wiki is a more natural home for docs like these than either burying them in Notion (invisible to anyone without workspace access) or keeping them front-and-center in the app's own navigation (most social feed apps don't put a Mission page and an Algorithm deep-dive in the primary nav). This also condensed the in-app surface: `web/`'s header now links to a single in-app FAQ page (`web/src/content/faq.md`) plus a GitHub icon, replacing the old "Our mission"/"The algorithm" nav pills. `web/src/content/mission.md`, `algorithm.md`, and root `CONTENT_POLICY.md` were deleted from the repo as part of this move — the Wiki pages are the maintained source now, edited directly there, not generated from repo files.
 
-- **[GitHub Wiki](https://github.com/goodgorithm/goodgorithm/wiki)** — public docs: [Mission](https://github.com/goodgorithm/goodgorithm/wiki/Mission) (goals, decision-making principles, commitments), [Algorithm](https://github.com/goodgorithm/goodgorithm/wiki/Algorithm) (step-by-step pipeline mechanics — the detailed companion to the "Architecture" section above), [Infrastructure](https://github.com/goodgorithm/goodgorithm/wiki/Infrastructure) (hosting/tooling and why), and [Content Policy](https://github.com/goodgorithm/goodgorithm/wiki/Content-Policy) (what's excluded from the feed, and why). Link new user-facing docs here, not in Notion. Note: a GitHub Wiki is its own git repo (`<repo>.wiki.git`) with no content-publishing REST API — pages get edited via its web UI or a direct git push to that repo, not through the main repo's CI/PR flow.
+- **[GitHub Wiki](https://github.com/goodgorithm/goodgorithm/wiki)** — public docs: [Mission](https://github.com/goodgorithm/goodgorithm/wiki/Mission) (goals, decision-making principles, commitments), [Algorithm](https://github.com/goodgorithm/goodgorithm/wiki/Algorithm) (step-by-step pipeline mechanics — the detailed companion to the "Architecture" section above), [Infrastructure](https://github.com/goodgorithm/goodgorithm/wiki/Infrastructure) (hosting/tooling and why), [Content Policy](https://github.com/goodgorithm/goodgorithm/wiki/Content-Policy) (what's excluded from the feed, and why), and the Dev-section pages (Pipeline/API/Web Internals, Configuration, per-algorithm deep dives — see the Wiki's own Home page for the full index). Link new user-facing docs here, not in Notion.
+
+  A GitHub Wiki is its own git repo (`<repo>.wiki.git`) with no content-publishing REST API — pages get edited via its web UI or a direct git push to that repo, not through the main repo's CI/PR flow. **Before doing any non-trivial wiki reading or editing, check whether a local clone already exists** (e.g. a sibling directory next to this repo) and prefer reading/writing pages directly there over fetching each page individually over the web — much cheaper, and edits land the same way any other local change does (still needs an explicit push, same caution as this repo — never push without asking). If no local clone is found, ask where one should be set up before doing wiki-heavy work, rather than assuming a path or falling back to web-only fetches for the rest of the session.
 - **Notion — internal only now.** Decisions Log (including implementation-phase decisions and known gaps), Project Research. Private, not for external sharing. Superseded planning docs (Infrastructure Plan, MVP Setup Checklist) live under "Goodgorithm Archive" — historical reference, not kept current. Notion no longer holds any publish-safe/public content — that's the Wiki's job now.
 
 If you have the Notion MCP connector available and need more context than this file provides (exact rationale for a past decision, full pricing research, etc.), check the internal workspace first.
