@@ -19,7 +19,7 @@ Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the 
 
 ## Steps
 
-1. **Decide the tokenizer/vocab state you're training against.** `processing/src/sentiment_model.py` defines tokenization, and the notebook fetches it from a *pinned commit*, not `main` — so a later edit to that file can never silently invalidate an already-published model. If you haven't changed `sentiment_model.py`, the existing pin is fine. If you have, get the new commit's SHA (`git rev-parse HEAD` on `main` after merging) before continuing.
+1. **Decide the tokenizer/vocab state you're training against.** `processing/src/util/sentiment_model.py` defines tokenization, and the notebook fetches it from a *pinned commit*, not `main` — so a later edit to that file can never silently invalidate an already-published model. If you haven't changed `sentiment_model.py`, the existing pin is fine. If you have, get the new commit's SHA (`git rev-parse HEAD` on `main` after merging) before continuing.
 
 2. **Open `training/sentiment_cnn.ipynb` in Colab or Kaggle** (needs a GPU; this repo's sandbox/CI environments don't have one and this notebook should never be run there). Update two things near the top:
    - `SENTIMENT_MODEL_COMMIT` — the SHA from step 1.

@@ -1,4 +1,4 @@
-from text_normalize import normalize_text
+from util.text_normalize import normalize_text
 
 from pipeline_stages import taxonomy
 

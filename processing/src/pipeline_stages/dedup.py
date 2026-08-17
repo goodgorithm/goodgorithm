@@ -9,7 +9,7 @@ import numpy as np
 from datasketch import MinHash
 
 from infra import redis_client
-from text_normalize import normalize_text
+from util.text_normalize import normalize_text
 
 # MinHash + LSH near-duplicate detection -- see the wiki's Deduplication
 # page for how this works and what each of these controls. Defaults are

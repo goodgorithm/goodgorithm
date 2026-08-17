@@ -8,7 +8,7 @@ from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from text_normalize import normalize_text
+from util.text_normalize import normalize_text
 
 # See the wiki's Ranking page for what each of these controls and why the
 # defaults are what they are.

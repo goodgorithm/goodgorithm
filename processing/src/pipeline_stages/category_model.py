@@ -6,7 +6,7 @@ import onnxruntime as ort
 import config
 from infra import model_store
 from pipeline_stages import taxonomy
-from text_normalize import normalize_text
+from util.text_normalize import normalize_text
 
 logger = logging.getLogger("processing")
 

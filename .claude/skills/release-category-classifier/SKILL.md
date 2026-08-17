@@ -17,7 +17,7 @@ Every training run publishes its artifacts to `category-classifier/<version>/` i
 
 ## Steps
 
-1. **Decide the text-normalization state you're training against.** `processing/src/text_normalize.py` defines the normalization the classifier's TF-IDF vectorizer is trained against, and the notebook fetches it from a *pinned commit*, not `main` — so a later edit can never silently invalidate an already-published model. If you haven't changed `text_normalize.py`, the existing pin is fine. If you have, get the new commit's SHA (`git rev-parse HEAD` on `main` after merging) before continuing.
+1. **Decide the text-normalization state you're training against.** `processing/src/util/text_normalize.py` defines the normalization the classifier's TF-IDF vectorizer is trained against, and the notebook fetches it from a *pinned commit*, not `main` — so a later edit can never silently invalidate an already-published model. If you haven't changed `text_normalize.py`, the existing pin is fine. If you have, get the new commit's SHA (`git rev-parse HEAD` on `main` after merging) before continuing.
 
 2. **Open `training/category_classifier.ipynb`.** Unlike the sentiment notebook, **this doesn't need a GPU or Colab/Kaggle** — TF-IDF + logistic regression trains on CPU in a couple of minutes, so it can run anywhere Python + the notebook's `pip install` cell can run, including this repo's own sandbox. Kept as a notebook anyway for parity with the sentiment model's audit trail. Update two things near the top:
    - `TEXT_NORMALIZE_COMMIT` — the SHA from step 1.

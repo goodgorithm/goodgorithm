@@ -1,4 +1,4 @@
-from text_normalize import normalize_text
+from util.text_normalize import normalize_text
 
 
 def test_lowercases_text():

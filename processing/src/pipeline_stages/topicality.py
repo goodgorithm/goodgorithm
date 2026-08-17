@@ -8,7 +8,7 @@ import spacy
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from infra import redis_client
-from text_normalize import normalize_text
+from util.text_normalize import normalize_text
 
 # TF-IDF salience + entity-burst detection -- see the wiki's Topicality
 # page for how this works and what each of these controls. Defaults are

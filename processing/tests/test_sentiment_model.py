@@ -1,4 +1,4 @@
-import sentiment_model
+from util import sentiment_model
 
 
 def test_tokenize_lowercases_words():

@@ -5,8 +5,8 @@ import onnxruntime as ort
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 import config
-import sentiment_model
 from infra import model_store
+from util import sentiment_model
 
 logger = logging.getLogger("processing")
 

@@ -6,7 +6,7 @@ from typing import Protocol
 from uuid import UUID
 
 from infra import redis_client
-from text_normalize import normalize_text
+from util.text_normalize import normalize_text
 
 # Bot/spam scoring -- see the wiki's Bot Filter page for how this works
 # and what each of these controls. Defaults are an empirically-validated
