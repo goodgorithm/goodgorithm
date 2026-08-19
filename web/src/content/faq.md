@@ -8,9 +8,13 @@ An algorithmic feed of positive, uplifting public posts from [Bluesky](https://b
 
 That's the point. Mainstream feed algorithms aren't neutral — they're tuned to maximize how long you stay. Goodgorithm is the same basic kind of system, pointed at a different goal, and built openly enough that you can actually check *why* something got picked instead of taking our word for it.
 
-## Does an AI/LLM decide what shows up in my feed?
+## Does an LLM decide what shows up in my feed?
 
 No. Content selection — sentiment scoring, topic detection, ranking — runs on classical, auditable machine learning (TF-IDF, named-entity recognition, a small trained neural network for sentiment), not a large language model. That's a deliberate, non-negotiable constraint: an LLM can drift or hallucinate in ways that would undermine the whole "trust why a post got selected" premise. (LLM tools, including Claude, are used openly to help *build* the project — that's a separate question from what powers the algorithm itself.) Full mechanics: [Algorithm](https://github.com/goodgorithm/goodgorithm/wiki/Algorithm).
+
+## Why only Mastodon and Bluesky, and why only four categories?
+
+Both platforms have free, open, unauthenticated public feeds — no paid API, no login required — which keeps the project reproducible and matches where we are at this early stage. The four categories (Arts & Culture, Food & Dining, Gaming, Science & Technology) are the ones we can classify confidently and consistently; we'd rather have a handful you can trust than more where several are little better than a guess. Both the platform list and the category list are expected to grow as the project does and we have the resources to expand them properly.
 
 ## Does it use likes, reposts, or follower counts to rank posts?
 
