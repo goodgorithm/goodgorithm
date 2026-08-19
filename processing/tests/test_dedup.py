@@ -11,6 +11,8 @@ from pipeline_stages import dedup
 class FakePost:
     id: UUID
     text: str
+    source: str = "mastodon"
+    raw_json: dict | None = None
 
 
 class InMemoryDedupIndex:
@@ -18,6 +20,7 @@ class InMemoryDedupIndex:
 
     def __init__(self) -> None:
         self.bands: dict[str, set[str]] = {}
+        self.url_index: dict[str, set[str]] = {}
         self.signatures: dict[str, dedup.MinHash] = {}
         self.clusters: dict[str, str] = {}
 
@@ -27,15 +30,27 @@ class InMemoryDedupIndex:
             result |= self.bands.get(h, set())
         return result
 
+    def find_url_candidates(self, url_hash: str) -> set[str]:
+        return set(self.url_index.get(url_hash, set()))
+
     def get_signatures(self, post_ids: set[str]) -> dict[str, dedup.MinHash | None]:
         return {post_id: self.signatures.get(post_id) for post_id in post_ids}
 
     def get_clusters(self, post_ids: list[str]) -> dict[str, str | None]:
         return {post_id: self.clusters.get(post_id) for post_id in post_ids}
 
-    def record(self, post_id: str, mh: dedup.MinHash, hashes: list[str], cluster_id: str) -> None:
+    def record(
+        self,
+        post_id: str,
+        mh: dedup.MinHash,
+        hashes: list[str],
+        cluster_id: str,
+        url_hash: str | None,
+    ) -> None:
         for h in hashes:
             self.bands.setdefault(h, set()).add(post_id)
+        if url_hash is not None:
+            self.url_index.setdefault(url_hash, set()).add(post_id)
         self.signatures[post_id] = mh
         self.clusters[post_id] = cluster_id
 
@@ -142,6 +157,134 @@ def test_duplicate_via_appended_link_only():
 
     assert results[posts[1].id].is_canonical is False
     assert results[posts[0].id].cluster_id == results[posts[1].id].cluster_id
+
+
+def test_extract_dedup_url_prefers_mastodon_card_over_text():
+    post = FakePost(
+        id=uuid4(),
+        text="Check this out https://example.com/text-link",
+        source="mastodon",
+        raw_json={"card": {"url": "https://example.com/article?utm_source=flipboard"}},
+    )
+    assert dedup.extract_dedup_url(post) == "https://example.com/article"
+
+
+def test_extract_dedup_url_prefers_bluesky_embed_over_text():
+    post = FakePost(
+        id=uuid4(),
+        text="Check this out https://example.com/text-link",
+        source="bluesky",
+        raw_json={
+            "commit": {
+                "record": {
+                    "embed": {
+                        "$type": "app.bsky.embed.external",
+                        "external": {"uri": "https://example.com/article?ref=app"},
+                    }
+                }
+            }
+        },
+    )
+    assert dedup.extract_dedup_url(post) == "https://example.com/article"
+
+
+def test_extract_dedup_url_falls_back_to_text_when_no_structured_embed():
+    # Mastodon's card is generated asynchronously and is often still empty
+    # at ingestion time -- must still find the URL directly in the text.
+    post = FakePost(
+        id=uuid4(), text="Big news https://example.com/story", source="mastodon", raw_json={}
+    )
+    assert dedup.extract_dedup_url(post) == "https://example.com/story"
+
+
+def test_extract_dedup_url_strips_query_and_fragment():
+    post = FakePost(
+        id=uuid4(),
+        text="https://example.com/story?utm_source=flipboard&utm_medium=activitypub#section",
+        raw_json={},
+    )
+    assert dedup.extract_dedup_url(post) == "https://example.com/story"
+
+
+def test_extract_dedup_url_rejects_bare_domain():
+    # A generic homepage link shared by many unrelated posts shouldn't
+    # become a false-positive dedup signal.
+    post = FakePost(id=uuid4(), text="Check out https://example.com", raw_json={})
+    assert dedup.extract_dedup_url(post) is None
+
+
+def test_extract_dedup_url_returns_none_when_no_url_present():
+    post = FakePost(id=uuid4(), text="No links here, just words", raw_json={})
+    assert dedup.extract_dedup_url(post) is None
+
+
+def test_url_matched_posts_merge_below_main_threshold():
+    # Mirrors the real cross-"persona" Flipboard syndication case behind
+    # issue #53: same article URL, different attribution tail, Jaccard
+    # comfortably below DEDUP_JACCARD_THRESHOLD but above
+    # DEDUP_URL_JACCARD_THRESHOLD.
+    index = InMemoryDedupIndex()
+    url = "https://www.dutchovendaddy.com/super-nachos"
+    posts = [
+        FakePost(
+            id=uuid4(),
+            text=(
+                "The BEST Super Nacho Dip https://www.dutchovendaddy.com/super-nachos/"
+                "?utm_source=flipboard&utm_medium=activitypub Posted into "
+                "APPETIZERS FOR PARTIES AND GAME DAYS @appetizers-for-parties-and-game-days-LisaMarcAurele"
+            ),
+        ),
+        FakePost(
+            id=uuid4(),
+            text=(
+                "The BEST Super Nacho Dip https://www.dutchovendaddy.com/super-nachos/"
+                "?utm_source=flipboard&utm_medium=activitypub Posted into "
+                "EPIC Appetizers, Snacks & Treats Recipes @epic-appetizers-snacks-treats-recipes-TropRockin"
+            ),
+        ),
+    ]
+    assert dedup.extract_dedup_url(posts[0]) == url
+    assert dedup.extract_dedup_url(posts[1]) == url
+
+    results = dedup.dedup_posts(posts, index)
+
+    assert results[posts[0].id].cluster_id == results[posts[1].id].cluster_id
+    assert results[posts[1].id].is_canonical is False
+
+
+def test_url_matched_posts_with_dissimilar_commentary_stay_separate():
+    # Mirrors the real independent-commentary counter-example checked
+    # against issue #53: same article URL, genuinely different human
+    # commentary, Jaccard near zero -- must NOT merge just because the
+    # URL matches. This is the guard the two-tier threshold exists for.
+    index = InMemoryDedupIndex()
+    posts = [
+        FakePost(
+            id=uuid4(),
+            text=(
+                "Flock really is building the infrastructure for authoritarianism. "
+                "The massive pushback they are experiencing right now is because "
+                "people recognize this fact. https://www.wired.com/story/flock-safety-os-investigate/"
+            ),
+        ),
+        FakePost(
+            id=uuid4(),
+            text=(
+                "NEW: Flock has said for years that its cameras cannot track "
+                "individuals. We found the code for its new AI tool. It's preloaded "
+                "with prompts like find me witness and find relatives. "
+                "https://www.wired.com/story/flock-safety-os-investigate/"
+            ),
+        ),
+    ]
+    same_url = dedup.extract_dedup_url(posts[0])
+    assert same_url == dedup.extract_dedup_url(posts[1])
+
+    results = dedup.dedup_posts(posts, index)
+
+    assert results[posts[0].id].cluster_id != results[posts[1].id].cluster_id
+    assert results[posts[0].id].is_canonical is True
+    assert results[posts[1].id].is_canonical is True
 
 
 def test_distinct_posts_get_different_clusters():
