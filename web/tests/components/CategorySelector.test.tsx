@@ -9,7 +9,7 @@ describe("CategorySelector", () => {
 
     expect(screen.getByRole("button", { name: "Science & Technology" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Gaming" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sports" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Food & Dining" })).toBeInTheDocument();
   });
 
   it("calls onSelect with the category key when a chip is clicked", () => {
@@ -24,15 +24,6 @@ describe("CategorySelector", () => {
     render(<CategorySelector selected="arts_culture" onSelect={() => {}} />);
 
     const labels = screen.getAllByRole("button").map((button) => button.textContent);
-    expect(labels).toEqual([
-      "Arts & Culture",
-      "Food & Dining",
-      "Gaming",
-      "Health & Fitness",
-      "Learning & Education",
-      "Science & Technology",
-      "Sports",
-      "Travel & Adventure",
-    ]);
+    expect(labels).toEqual(["Arts & Culture", "Food & Dining", "Gaming", "Science & Technology"]);
   });
 });

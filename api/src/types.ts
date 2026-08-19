@@ -11,24 +11,17 @@
 
 export type Source = "bluesky" | "mastodon";
 
-// The fixed 8-category taxonomy assigned by processing/'s category_model.py
+// The fixed 4-category taxonomy assigned by processing/'s category_model.py
 // (a trained classifier, with taxonomy.py's keyword matcher as a fallback)
-// - see CLAUDE.md's Category filtering section for why these 8 and the
+// - narrowed from an original 8 (issue #37) once real production precision
+// data (not just the offline eval) showed a sharp, specific quality divide.
+// See CLAUDE.md's Category filtering section for why these 4 and the full
 // history behind them. Deliberately no DB CHECK constraint enforcing this
 // set (see processed_posts.category in supabase/migrations/0005_add_category.sql)
 // - a stricter constraint would make the taxonomy harder to extend, not
 // easier. See the wiki's API Internals page for what happens end to end
 // when this list and the DB disagree.
-export const CATEGORIES = [
-  "science_technology",
-  "sports",
-  "health_fitness",
-  "arts_culture",
-  "learning_education",
-  "food_dining",
-  "travel_adventure",
-  "gaming",
-] as const;
+export const CATEGORIES = ["science_technology", "arts_culture", "food_dining", "gaming"] as const;
 
 export type Category = (typeof CATEGORIES)[number];
 

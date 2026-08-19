@@ -74,8 +74,8 @@ def _config(labels=("sports", "food_dining"), threshold=0.5):
 
 
 def test_categorize_uses_keyword_fallback_when_r2_unconfigured():
-    category = category_model.categorize("Just won the olympic gold medal!", ["athlete"], ["medal"])
-    assert category == "sports"
+    category = category_model.categorize("Just qualified for the biggest esports tournament ever!", ["esports"], [])
+    assert category == "gaming"
     assert category_model.CATEGORY_METHOD == "keyword_v1"
 
 
@@ -110,8 +110,8 @@ def test_categorize_abstains_below_confidence_threshold(fixture_category_onnx_by
 def test_load_model_failure_falls_back_to_keyword_matcher():
     category_model.load_model(FailingModelStore())
     assert category_model.CATEGORY_METHOD == "keyword_v1"
-    category = category_model.categorize("Just won the olympic gold medal!", ["athlete"], ["medal"])
-    assert category == "sports"
+    category = category_model.categorize("Just qualified for the biggest esports tournament ever!", ["esports"], [])
+    assert category == "gaming"
 
 
 def test_load_model_rejects_label_order_mismatch(fixture_category_onnx_bytes):
@@ -161,17 +161,17 @@ def test_categorize_batch_empty_returns_empty_dict():
 
 def test_categorize_batch_matches_per_post_categorize_with_keyword_fallback():
     posts = [
-        FakePost(id=uuid4(), text="Just won the olympic gold medal!"),
+        FakePost(id=uuid4(), text="Just qualified for the biggest esports tournament ever!"),
         FakePost(id=uuid4(), text="a totally generic political post"),
     ]
     topicality_results = {
-        posts[0].id: FakeTopicalityResult(entities=["athlete"], top_terms=["medal"]),
+        posts[0].id: FakeTopicalityResult(entities=["esports"], top_terms=[]),
         posts[1].id: FakeTopicalityResult(entities=["trump"], top_terms=["election"]),
     }
 
     results = category_model.categorize_batch(posts, topicality_results)
 
-    assert results[posts[0].id] == "sports"
+    assert results[posts[0].id] == "gaming"
     assert results[posts[1].id] is None
     assert category_model.CATEGORY_METHOD == "keyword_v1"
 

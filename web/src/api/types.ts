@@ -8,11 +8,7 @@ import type { Category } from "./types.generated";
 
 export const CATEGORY_LABELS: Record<Category, string> = {
   science_technology: "Science & Technology",
-  sports: "Sports",
-  health_fitness: "Health & Fitness",
   arts_culture: "Arts & Culture",
-  learning_education: "Learning & Education",
   food_dining: "Food & Dining",
-  travel_adventure: "Travel & Adventure",
   gaming: "Gaming",
 };

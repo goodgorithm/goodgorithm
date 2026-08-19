@@ -3,10 +3,10 @@ per CLAUDE.md's no-LLM-in-the-algorithm constraint.
 
 The whole-process fallback for when category_model.py's trained classifier
 can't load, the direct parallel to VADER's role for the sentiment CNN --
-same 8-category set the classifier uses, not a superset. See CLAUDE.md's
-Category filtering section for why these 8 and not others, and the wiki's
-Categorization page for this module's matching mechanics (why two matching
-modes, known limitations)."""
+same 4-category set the classifier uses, not a superset. See CLAUDE.md's
+Category filtering section for why these 4 (narrowed from an original 8,
+issue #37) and the wiki's Categorization page for this module's matching
+mechanics (why two matching modes, known limitations)."""
 
 CATEGORY_TERMS: dict[str, set[str]] = {
     "science_technology": {
@@ -43,31 +43,6 @@ CATEGORY_TERMS: dict[str, set[str]] = {
         "observatory",
         "discovery",
     },
-    "sports": {
-        "championship",
-        "olympics",
-        "olympic",
-        "tournament",
-        "medal",
-        "athlete",
-        "athletes",
-        "marathon",
-        "coach",
-    },
-    "health_fitness": {
-        "hospital",
-        "surgery",
-        "vaccine",
-        "vaccination",
-        "diagnosis",
-        "healthcare",
-        "gym",
-        "workout",
-        "fitness",
-        "yoga",
-        "nutrition",
-        "wellness",
-    },
     "arts_culture": {
         "museum",
         "concert",
@@ -92,18 +67,6 @@ CATEGORY_TERMS: dict[str, set[str]] = {
         "movie",
         "soundtrack",
     },
-    "learning_education": {
-        "scholarship",
-        "university",
-        "professor",
-        "curriculum",
-        "classroom",
-        "literacy",
-        "tutoring",
-        "graduation",
-        "textbook",
-        "teacher",
-    },
     "food_dining": {
         "recipe",
         "restaurant",
@@ -113,16 +76,6 @@ CATEGORY_TERMS: dict[str, set[str]] = {
         "brewery",
         "culinary",
         "cookbook",
-    },
-    "travel_adventure": {
-        "backpacking",
-        "itinerary",
-        "expedition",
-        "hiking",
-        "trekking",
-        "wanderlust",
-        "passport",
-        "hostel",
     },
     "gaming": {
         "esports",
@@ -140,19 +93,9 @@ CATEGORY_TERMS: dict[str, set[str]] = {
 # Multi-word, matched as substrings of the post's normalize_text()'d text --
 # for terms that are only unambiguous as a phrase (see module docstring).
 CATEGORY_PHRASES: dict[str, set[str]] = {
-    "health_fitness": {
-        "cancer remission",
-        "in remission",
-        "medical breakthrough",
-        "successful surgery",
-        "organ transplant",
-    },
     "food_dining": {
         "farmers market",
         "food truck",
-    },
-    "travel_adventure": {
-        "road trip",
     },
     "gaming": {
         "video game",
@@ -165,13 +108,9 @@ CATEGORY_PHRASES: dict[str, set[str]] = {
 # Categorization page.
 CATEGORY_PRIORITY: list[str] = [
     "science_technology",
-    "health_fitness",
     "arts_culture",
-    "learning_education",
     "food_dining",
-    "travel_adventure",
     "gaming",
-    "sports",
 ]
 
 
