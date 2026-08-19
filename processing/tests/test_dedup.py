@@ -24,14 +24,12 @@ class InMemoryDedupIndex:
         self.signatures: dict[str, dedup.MinHash] = {}
         self.clusters: dict[str, str] = {}
 
-    def find_candidates(self, hashes: list[str]) -> set[str]:
-        result: set[str] = set()
+    def find_candidates(self, hashes: list[str], url_hash: str | None) -> tuple[set[str], set[str]]:
+        lsh_result: set[str] = set()
         for h in hashes:
-            result |= self.bands.get(h, set())
-        return result
-
-    def find_url_candidates(self, url_hash: str) -> set[str]:
-        return set(self.url_index.get(url_hash, set()))
+            lsh_result |= self.bands.get(h, set())
+        url_result = set(self.url_index.get(url_hash, set())) if url_hash else set()
+        return lsh_result, url_result
 
     def get_signatures(self, post_ids: set[str]) -> dict[str, dedup.MinHash | None]:
         return {post_id: self.signatures.get(post_id) for post_id in post_ids}

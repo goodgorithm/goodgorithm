@@ -154,8 +154,7 @@ def deserialize_minhash(data: str) -> MinHash | None:
 
 
 class DedupIndex(Protocol):
-    def find_candidates(self, hashes: list[str]) -> set[str]: ...
-    def find_url_candidates(self, url_hash: str) -> set[str]: ...
+    def find_candidates(self, hashes: list[str], url_hash: str | None) -> tuple[set[str], set[str]]: ...
     def get_signatures(self, post_ids: set[str]) -> dict[str, MinHash | None]: ...
     def get_clusters(self, post_ids: list[str]) -> dict[str, str | None]: ...
     def record(
@@ -171,19 +170,26 @@ class RedisDedupIndex:
     def __init__(self) -> None:
         self.client = redis_client.get_client()
 
-    def find_candidates(self, hashes: list[str]) -> set[str]:
+    def find_candidates(self, hashes: list[str], url_hash: str | None) -> tuple[set[str], set[str]]:
+        # Band lookups and the URL lookup are pipelined together into one
+        # round trip, not two separate ones -- same discipline as batching
+        # the band lookups themselves below.
         pipe = self.client.pipeline()
         for h in hashes:
             pipe.smembers(f"lsh:band:{h}")
+        if url_hash is not None:
+            pipe.smembers(f"dedup:url:{url_hash}")
         results = pipe.exec()
-        candidates: set[str] = set()
-        for members in results:
-            candidates.update(members or [])
-        return candidates
 
-    def find_url_candidates(self, url_hash: str) -> set[str]:
-        members = self.client.smembers(f"dedup:url:{url_hash}")
-        return set(members or [])
+        lsh_candidates: set[str] = set()
+        for members in results[: len(hashes)]:
+            lsh_candidates.update(members or [])
+
+        url_candidates: set[str] = set()
+        if url_hash is not None:
+            url_candidates.update(results[len(hashes)] or [])
+
+        return lsh_candidates, url_candidates
 
     def get_signatures(self, post_ids: set[str]) -> dict[str, MinHash | None]:
         if not post_ids:
@@ -259,8 +265,7 @@ def dedup_posts(
         url = extract_dedup_url(post)
         url_hash = hashlib.sha1(url.encode("utf8")).hexdigest() if url else None
 
-        lsh_candidate_ids = index.find_candidates(hashes)
-        url_candidate_ids = index.find_url_candidates(url_hash) if url_hash else set()
+        lsh_candidate_ids, url_candidate_ids = index.find_candidates(hashes, url_hash)
         candidate_ids = (lsh_candidate_ids | url_candidate_ids) - {str(post.id)}
         candidate_signatures = index.get_signatures(candidate_ids)
 
