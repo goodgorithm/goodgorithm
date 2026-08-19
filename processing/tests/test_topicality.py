@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 import numpy as np
+import spacy
 
 from pipeline_stages import topicality
 
@@ -50,6 +51,20 @@ def test_extract_entities_typed_includes_the_label():
 def test_extract_entities_typed_dedupes_by_text_keeping_first_label():
     typed = topicality.extract_entities_typed("NASA and NASA again announced the mission.")
     assert typed == [("nasa", "ORG")]
+
+
+def test_entities_from_doc_rejects_url_shaped_entities():
+    # issue #55: spaCy's NER occasionally mis-tags a URL span with a
+    # relevant label (ORG/GPE seen in real production data) -- forces a
+    # URL entity via doc.set_ents so this is deterministic regardless of
+    # what the real model actually predicts for this input.
+    nlp = topicality._get_nlp()
+    doc = nlp("Check out https://example.com/story for more")
+    url_token_idx = next(i for i, t in enumerate(doc) if t.text.startswith("https"))
+    span = spacy.tokens.Span(doc, url_token_idx, url_token_idx + 1, label="ORG")
+    doc.set_ents([span])
+
+    assert topicality._entities_from_doc(doc) == []
 
 
 def test_extract_entities_is_consistent_with_extract_entities_typed():

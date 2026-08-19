@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Protocol
 from uuid import UUID
@@ -40,6 +41,8 @@ TOPICALITY_RELEVANT_ENTITY_LABELS = frozenset(
     if v.strip()
 )
 
+_URL_ENTITY_RE = re.compile(r"^https?://\S+$")
+
 _nlp: spacy.language.Language | None = None
 
 
@@ -61,7 +64,11 @@ def _entities_from_doc(doc: spacy.tokens.Doc) -> list[tuple[str, str]]:
         if ent.label_ not in TOPICALITY_RELEVANT_ENTITY_LABELS:
             continue
         normalized = ent.text.strip().lower()
-        if normalized and normalized not in seen:
+        # spaCy's NER occasionally mis-tags a URL span as a relevant label
+        # (ORG/GPE are the ones seen in practice) -- a URL was never a
+        # meaningful "topicality entity", independent of the downstream
+        # rendering bug (issue #55) this happened to expose.
+        if normalized and normalized not in seen and not _URL_ENTITY_RE.match(normalized):
             seen[normalized] = ent.label_
     return list(seen.items())
 
