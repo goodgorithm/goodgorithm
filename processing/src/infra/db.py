@@ -280,26 +280,56 @@ def fetch_cluster_candidates(
     extraction across the full Mastodon population timed out in
     production. Same "promote a frequently-queried field out of raw_json
     into a real column" pattern text/lang/author_id already follow, not a
-    workaround. See the wiki's Pipeline Internals page."""
+    workaround. See the wiki's Pipeline Internals page.
+
+    author_id is `{polling_instance}/{acct}` (ingestion/src/mastodon.ts) --
+    the same real account seen via more than one of the 8 polled
+    instances' public timelines (ActivityPub federation routinely surfaces
+    one post through several instances) gets a distinct author_id per
+    polling instance, even though `acct` (and so the true identity) is
+    identical. COUNT(DISTINCT author_id)/COUNT(*) both silently multiply
+    with the number of instances a post fanned out through -- issue #56.
+    `identity` here strips the polling-instance prefix (split_part on '/')
+    so account_count and post_count are deduplicated on the real account
+    and the real post (author + text + created_at, not source_id, which
+    is itself per-polling-instance) instead. home_domain's own derivation
+    is untouched -- split_part on '@' gives the same result either way,
+    since '/' always precedes '@' in the raw string.
+
+    author_ids stays un-deduplicated (every raw, polling-instance-prefixed
+    variant, not one per identity) deliberately -- blocked_authors matches
+    against raw_posts.author_id exactly, so a moderator blocking every
+    entry in this list needs each variant to actually exclude that
+    account's posts regardless of which polled instance surfaced them."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
+            WITH normalized AS (
+                SELECT
+                    split_part(author_id, '@', 2) AS home_domain,
+                    split_part(author_id, '/', 2) AS identity,
+                    author_id,
+                    text,
+                    created_at,
+                    mastodon_account_created_at
+                FROM raw_posts
+                WHERE source = 'mastodon'
+                  AND position('@' in author_id) > 0
+                  AND mastodon_account_created_at IS NOT NULL
+            )
             SELECT
-                split_part(author_id, '@', 2) AS home_domain,
+                home_domain,
                 array_agg(DISTINCT author_id) AS author_ids,
-                COUNT(DISTINCT author_id) AS account_count,
-                COUNT(*) AS post_count,
+                COUNT(DISTINCT identity) AS account_count,
+                COUNT(DISTINCT (identity, text, created_at)) AS post_count,
                 MIN(mastodon_account_created_at) AS earliest_created,
                 MAX(mastodon_account_created_at) AS latest_created
-            FROM raw_posts
-            WHERE source = 'mastodon'
-              AND position('@' in author_id) > 0
-              AND mastodon_account_created_at IS NOT NULL
+            FROM normalized
             GROUP BY home_domain
-            HAVING COUNT(DISTINCT author_id) >= %s
+            HAVING COUNT(DISTINCT identity) >= %s
                AND MAX(mastodon_account_created_at) - MIN(mastodon_account_created_at)
                    <= (%s::text || ' days')::interval
-               AND COUNT(*) >= %s
+               AND COUNT(DISTINCT (identity, text, created_at)) >= %s
             """,
             (min_accounts, max_creation_span_days, min_post_count),
         ).fetchall()
