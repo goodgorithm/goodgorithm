@@ -53,7 +53,7 @@ def _chunk(items: list[str], size: int) -> list[list[str]]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
-def _map_post_view(post_view: dict, suppressed_terms: frozenset[str]) -> dict:
+def _map_post_view(post_view: dict, suppressed_terms: frozenset[str], suppressed_domains: frozenset[str]) -> dict:
     """Maps a hydrated postView into the exact display shape api/ serves
     verbatim. Never reads likeCount/repostCount/replyCount/quoteCount/
     bookmarkCount even though they're required/standard fields on
@@ -69,7 +69,9 @@ def _map_post_view(post_view: dict, suppressed_terms: frozenset[str]) -> dict:
     # here to the quoted post's own text/self-labels -- a quoted post
     # carries its own moderation status independent of the outer post
     # quoting it.
-    if content_filter.is_content_excluded(text, {"commit": {"record": record}}, suppressed_terms):
+    if content_filter.is_content_excluded(
+        "bluesky", text, {"commit": {"record": record}}, suppressed_terms, suppressed_domains
+    ):
         return {"status": "unavailable", "reason": "filtered"}
 
     # postView.labels are moderation labels applied by labelers (e.g.
@@ -100,7 +102,9 @@ def _map_post_view(post_view: dict, suppressed_terms: frozenset[str]) -> dict:
     }
 
 
-def resolve_quotes(uris: list[str], suppressed_terms: frozenset[str]) -> dict[str, dict]:
+def resolve_quotes(
+    uris: list[str], suppressed_terms: frozenset[str], suppressed_domains: frozenset[str]
+) -> dict[str, dict]:
     """Batches into groups of GET_POSTS_MAX_URIS, calls Bluesky's public
     getPosts endpoint. Never crashes the calling cycle -- a failed batch
     just omits those URIs from the returned dict entirely; a URI absent
@@ -132,7 +136,7 @@ def resolve_quotes(uris: list[str], suppressed_terms: frozenset[str]) -> dict[st
             if not isinstance(uri, str):
                 continue
             found_uris.add(uri)
-            results[uri] = _map_post_view(post_view, suppressed_terms)
+            results[uri] = _map_post_view(post_view, suppressed_terms, suppressed_domains)
 
         for uri in batch:
             if uri not in found_uris:

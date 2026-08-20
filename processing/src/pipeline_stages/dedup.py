@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import os
-import re
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlsplit, urlunsplit
@@ -12,6 +11,7 @@ from datasketch import MinHash
 
 from infra import redis_client
 from util.text_normalize import normalize_text
+from util.url_extract import extract_raw_url
 
 # MinHash + LSH near-duplicate detection -- see the wiki's Deduplication
 # page for how this works and what each of these controls. Defaults are
@@ -44,8 +44,6 @@ DEDUP_URL_JACCARD_THRESHOLD = float(os.environ.get("DEDUP_URL_JACCARD_THRESHOLD"
 # real correctness risk, not just a tidiness one.
 DEDUP_BAND_TTL_SECONDS = int(os.environ.get("DEDUP_BAND_TTL_SECONDS", str(24 * 60 * 60)))
 
-_TEXT_URL_RE = re.compile(r"https?://\S+")
-
 
 def shingles(text: str, k: int = DEDUP_SHINGLE_SIZE) -> set[str]:
     words = text.split()
@@ -61,24 +59,6 @@ def compute_minhash(text: str) -> MinHash:
     for shingle in shingles(normalize_text(text)):
         mh.update(shingle.encode("utf8"))
     return mh
-
-
-def _extract_raw_url(post) -> str | None:
-    raw_json = post.raw_json or {}
-    if post.source == "bluesky":
-        record = raw_json.get("commit", {}).get("record", {})
-        embed = record.get("embed") if isinstance(record, dict) else None
-        if isinstance(embed, dict) and embed.get("$type") == "app.bsky.embed.external":
-            external = embed.get("external")
-            if isinstance(external, dict) and isinstance(external.get("uri"), str):
-                return external["uri"]
-    elif post.source == "mastodon":
-        card = raw_json.get("card")
-        if isinstance(card, dict) and isinstance(card.get("url"), str):
-            return card["url"]
-
-    match = _TEXT_URL_RE.search(post.text)
-    return match.group(0) if match else None
 
 
 def extract_dedup_url(post) -> str | None:
@@ -97,7 +77,7 @@ def extract_dedup_url(post) -> str | None:
     are rejected -- a generic homepage link shared by many unrelated posts
     would otherwise become a false-positive dedup signal. See the wiki's
     Deduplication page and issue #53 for the empirical basis."""
-    raw = _extract_raw_url(post)
+    raw = extract_raw_url(post.source, post.raw_json, post.text)
     if not raw:
         return None
 

@@ -1,6 +1,8 @@
 import re
+from urllib.parse import urlsplit
 
 import config
+from util.url_extract import extract_raw_url
 
 # Bluesky's own global label values -- not moderator-curated like
 # suppressed_terms below. Sourced from config.BLUESKY_ADULT_LABEL_VALUES
@@ -47,9 +49,32 @@ def has_excluded_self_label(raw_json: dict) -> bool:
     return any(v in ADULT_LABEL_VALUES for v in extract_self_label_values(raw_json))
 
 
-def is_content_excluded(text: str, raw_json: dict, suppressed_terms: frozenset[str]) -> bool:
+def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domains: frozenset[str]) -> bool:
+    """suppressed_domains is db.fetch_suppressed_domains()'s whole-table read
+    -- same moderator-curated, loaded-fresh-per-cycle contract as
+    suppressed_terms (issue #57). Deliberately doesn't reuse dedup.py's
+    extract_dedup_url -- that rejects bare-domain URLs (no path), right for
+    dedup (a homepage link is a weak dedup signal) but wrong here (a bare
+    https://www.amazon.com link should still match). Matches a listed
+    domain exactly or as a subdomain (smile.amazon.com, www.amazon.com both
+    match an amazon.com entry) -- the natural expectation for a moderator
+    entering a bare domain."""
+    raw_url = extract_raw_url(source, raw_json, text)
+    if not raw_url:
+        return False
+    try:
+        netloc = urlsplit(raw_url).netloc.lower()
+    except ValueError:
+        return False
+    return netloc in suppressed_domains or any(netloc.endswith("." + domain) for domain in suppressed_domains)
+
+
+def is_content_excluded(
+    source: str, text: str, raw_json: dict, suppressed_terms: frozenset[str], suppressed_domains: frozenset[str]
+) -> bool:
     return (
         has_excluded_hashtag(text, suppressed_terms)
         or has_excluded_self_label(raw_json)
         or has_excluded_spoiler_text(raw_json, suppressed_terms)
+        or has_excluded_domain(source, raw_json, text, suppressed_domains)
     )

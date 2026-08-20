@@ -68,6 +68,7 @@ def run_cycle(batch_size: int) -> int:
     # why this specific order.
     blocked = db.fetch_blocked_authors()
     suppressed_terms = db.fetch_suppressed_terms()
+    suppressed_domains = db.fetch_suppressed_domains()
 
     context_classifications: dict = {}
 
@@ -76,9 +77,11 @@ def run_cycle(batch_size: int) -> int:
         if (post.source, post.author_id) in blocked:
             db.delete_raw_post(post.id)
             logger.info("moderation-blocked post %s (author %s/%s)", post.id, post.source, post.author_id)
-        elif content_filter.is_content_excluded(post.text, post.raw_json, suppressed_terms):
+        elif content_filter.is_content_excluded(
+            post.source, post.text, post.raw_json, suppressed_terms, suppressed_domains
+        ):
             db.delete_raw_post(post.id)
-            logger.info("content-filtered post %s (hashtag/self-label/spoiler-text)", post.id)
+            logger.info("content-filtered post %s (hashtag/self-label/spoiler-text/domain)", post.id)
         elif (post.lang is None or post.source == "mastodon") and language_filter.is_non_english(post.text):
             db.delete_raw_post(post.id)
             reason = "no tag" if post.lang is None else f"tagged {post.lang!r}"
@@ -117,6 +120,7 @@ def run_cycle(batch_size: int) -> int:
     quote_content_by_uri = quote_resolver.resolve_quotes(
         [uri for uri in quote_uris_by_post.values() if uri is not None],
         suppressed_terms,
+        suppressed_domains,
     )
 
     # Same batched/deduped shape as quote resolution above.

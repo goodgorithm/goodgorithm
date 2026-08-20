@@ -1,6 +1,7 @@
 from pipeline_stages import content_filter
 
 TERMS = frozenset({"nsfw"})
+DOMAINS = frozenset({"amazon.com", "etsy.com"})
 
 
 def test_has_excluded_hashtag_matches_case_insensitively():
@@ -75,13 +76,60 @@ def test_has_excluded_self_label():
     assert content_filter.has_excluded_self_label(no_labels) is False
 
 
-def test_is_content_excluded_combines_all_three_checks():
-    hashtag_only = ("free book #nsfw", {"commit": {"record": {}}})
-    label_only = ("a totally normal post", {"commit": {"record": {"labels": {"values": [{"val": "nudity"}]}}}})
-    spoiler_only = ("a totally normal post", {"spoiler_text": "nsfw"})
-    neither = ("a totally normal post", {"commit": {"record": {}}})
+def test_has_excluded_domain_matches_exact_domain():
+    raw_json = {"card": {"url": "https://amazon.com/dp/B00123"}}
+    assert content_filter.has_excluded_domain("mastodon", raw_json, "check this out", DOMAINS) is True
 
-    assert content_filter.is_content_excluded(*hashtag_only, TERMS) is True
-    assert content_filter.is_content_excluded(*label_only, TERMS) is True
-    assert content_filter.is_content_excluded(*spoiler_only, TERMS) is True
-    assert content_filter.is_content_excluded(*neither, TERMS) is False
+
+def test_has_excluded_domain_matches_subdomain():
+    raw_json = {"card": {"url": "https://www.amazon.com/dp/B00123"}}
+    assert content_filter.has_excluded_domain("mastodon", raw_json, "check this out", DOMAINS) is True
+    raw_json_smile = {"card": {"url": "https://smile.amazon.com/dp/B00123"}}
+    assert content_filter.has_excluded_domain("mastodon", raw_json_smile, "check this out", DOMAINS) is True
+
+
+def test_has_excluded_domain_matches_bare_domain_with_no_path():
+    # Deliberately unlike dedup.py's extract_dedup_url, which rejects
+    # bare-domain URLs -- a homepage-only marketplace link should still
+    # match here.
+    raw_json = {"card": {"url": "https://www.amazon.com"}}
+    assert content_filter.has_excluded_domain("mastodon", raw_json, "check this out", DOMAINS) is True
+
+
+def test_has_excluded_domain_does_not_match_unlisted_domain():
+    raw_json = {"card": {"url": "https://example.com/some-article"}}
+    assert content_filter.has_excluded_domain("mastodon", raw_json, "check this out", DOMAINS) is False
+
+
+def test_has_excluded_domain_does_not_match_lookalike_domain():
+    # "notamazon.com" ends with "amazon.com" as a raw string but isn't a
+    # subdomain of it -- the "." + domain suffix check must reject this.
+    raw_json = {"card": {"url": "https://notamazon.com/dp/B00123"}}
+    assert content_filter.has_excluded_domain("mastodon", raw_json, "check this out", DOMAINS) is False
+
+
+def test_has_excluded_domain_falls_back_to_text_url():
+    text = "great find https://etsy.com/listing/12345 highly recommend"
+    assert content_filter.has_excluded_domain("mastodon", {}, text, DOMAINS) is True
+
+
+def test_has_excluded_domain_is_defensive_about_no_url():
+    assert content_filter.has_excluded_domain("mastodon", {}, "just a normal post", DOMAINS) is False
+
+
+def test_is_content_excluded_combines_all_four_checks():
+    hashtag_only = ("mastodon", "free book #nsfw", {"commit": {"record": {}}})
+    label_only = (
+        "bluesky",
+        "a totally normal post",
+        {"commit": {"record": {"labels": {"values": [{"val": "nudity"}]}}}},
+    )
+    spoiler_only = ("mastodon", "a totally normal post", {"spoiler_text": "nsfw"})
+    domain_only = ("mastodon", "a totally normal post", {"card": {"url": "https://amazon.com/dp/B00123"}})
+    neither = ("mastodon", "a totally normal post", {"commit": {"record": {}}})
+
+    assert content_filter.is_content_excluded(*hashtag_only, TERMS, DOMAINS) is True
+    assert content_filter.is_content_excluded(*label_only, TERMS, DOMAINS) is True
+    assert content_filter.is_content_excluded(*spoiler_only, TERMS, DOMAINS) is True
+    assert content_filter.is_content_excluded(*domain_only, TERMS, DOMAINS) is True
+    assert content_filter.is_content_excluded(*neither, TERMS, DOMAINS) is False

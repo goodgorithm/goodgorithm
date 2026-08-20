@@ -234,6 +234,14 @@ def fetch_suppressed_terms() -> frozenset[str]:
     return frozenset(row[0] for row in rows)
 
 
+def fetch_suppressed_domains() -> frozenset[str]:
+    """Whole table, loaded fresh once per cycle -- same pattern as
+    fetch_suppressed_terms. See CLAUDE.md's Content moderation section."""
+    with pool.connection() as conn:
+        rows = conn.execute("SELECT domain FROM suppressed_domains").fetchall()
+    return frozenset(row[0] for row in rows)
+
+
 def purge_blocked_authors() -> int:
     """Deletes any already-ingested raw_posts (processed_posts cascades)
     for a blocklisted (source, author_id) -- run every cycle so a new
