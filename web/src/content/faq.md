@@ -46,7 +46,7 @@ Yes, MIT-licensed, on [GitHub](https://github.com/goodgorithm/goodgorithm) — i
 
 ## Can I use this on my phone?
 
-The web app is a PWA — on most browsers you can "Add to Home Screen" for an app-like experience. Native iOS and Android apps are coming soon.
+On most browsers you can "Add to Home Screen" for an app-like experience. Native iOS and Android apps are coming soon.
 
 ## Can I contribute?
 
