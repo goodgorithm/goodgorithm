@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { blockAuthor, deleteBySourceId } from "./db";
 import { parseNumberEnv } from "./env";
+import { markPendingExclusion } from "./pendingExclusions";
 
 const MOD_BSKY_LABELS_URL = "wss://mod.bsky.app/xrpc/com.atproto.label.subscribeLabels";
 
@@ -157,10 +158,16 @@ export function startBlueskyLabelIngestion(): void {
           const target = parsePostTarget(label.uri);
           if (!target) continue;
 
-          const deleted = await deleteBySourceId("bluesky", `${target.did}/${target.rkey}`);
+          const sourceId = `${target.did}/${target.rkey}`;
+          const deleted = await deleteBySourceId("bluesky", sourceId);
+          // No matching row yet doesn't mean "not ours" -- our own
+          // Jetstream-driven insert for this exact post may still be in
+          // flight and land moments later (issue #67). Remember it so
+          // bluesky.ts can catch that case instead of silently losing it.
+          if (!deleted) markPendingExclusion(sourceId);
           console.log(
             `[bluesky-labels] "${label.val}" from ${label.src} on ${label.uri}` +
-              (deleted ? " -> deleted" : " (no matching row)"),
+              (deleted ? " -> deleted" : " -> marked pending exclusion (no matching row yet)"),
           );
         }
       } catch (err) {

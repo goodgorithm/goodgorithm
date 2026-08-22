@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { insertPost } from "./db";
 import { parseNumberEnv } from "./env";
+import { consumePendingExclusion } from "./pendingExclusions";
 
 // Fixed since this connection was first added - no operational need found
 // yet to point it at a different Jetstream instance.
@@ -120,10 +121,19 @@ export function startBlueskyIngestion(): void {
       const text = resolveFacetLinks(record.text ?? "", record.facets).trim();
       if (!text) return;
 
+      const sourceId = `${event.did}/${event.commit.rkey}`;
+      // Bluesky's own moderation labeler can react faster than our own
+      // insert lands -- if blueskyLabels.ts already tried and failed to
+      // delete this exact post, don't insert it at all (issue #67).
+      if (consumePendingExclusion(sourceId)) {
+        console.log(`[bluesky] skipped insert for ${sourceId} -- pending exclusion from label stream`);
+        return;
+      }
+
       try {
         await insertPost({
           source: "bluesky",
-          source_id: `${event.did}/${event.commit.rkey}`,
+          source_id: sourceId,
           author_id: event.did,
           text,
           lang: langs[0] ?? null,
