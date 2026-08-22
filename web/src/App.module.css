@@ -14,10 +14,19 @@
 
 .header {
   margin-bottom: 1rem;
+}
+
+.headerRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.tagline {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
 }
 
 .logoButton {

@@ -44,30 +44,33 @@ export default function App() {
             place. See the wiki's Web Internals page. */}
         {!Capacitor.isNativePlatform() && <UpdatePrompt />}
         <header className={styles.header}>
-          <button type="button" className={styles.logoButton} onClick={() => navigate("/")}>
-            <Wordmark />
-          </button>
-          <nav className={styles.nav}>
-            {CONTENT_PAGES.filter((p) => p.path !== path).map((p) => (
-              <button
-                key={p.path}
-                type="button"
+          <div className={styles.headerRow}>
+            <button type="button" className={styles.logoButton} onClick={() => navigate("/")}>
+              <Wordmark />
+            </button>
+            <nav className={styles.nav}>
+              {CONTENT_PAGES.filter((p) => p.path !== path).map((p) => (
+                <button
+                  key={p.path}
+                  type="button"
+                  className={styles.navLink}
+                  onClick={() => navigate(p.path)}
+                >
+                  {p.label}
+                </button>
+              ))}
+              <a
                 className={styles.navLink}
-                onClick={() => navigate(p.path)}
+                href="https://github.com/goodgorithm/goodgorithm"
+                target="_blank"
+                rel="noreferrer noopener"
+                aria-label="GitHub"
               >
-                {p.label}
-              </button>
-            ))}
-            <a
-              className={styles.navLink}
-              href="https://github.com/goodgorithm/goodgorithm"
-              target="_blank"
-              rel="noreferrer noopener"
-              aria-label="GitHub"
-            >
-              <GitHubIcon />
-            </a>
-          </nav>
+                <GitHubIcon />
+              </a>
+            </nav>
+          </div>
+          <p className={styles.tagline}>Uplifting posts, honestly ranked.</p>
         </header>
         {/* key={path}: remounts (and so resets) the boundary on navigation,
             so a crash on one page doesn't stay stuck forever - navigating
