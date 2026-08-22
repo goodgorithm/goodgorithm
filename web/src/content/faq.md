@@ -14,7 +14,7 @@ No. Content selection — sentiment scoring, topic detection, ranking — runs o
 
 ## Why only Mastodon and Bluesky, and why only four categories?
 
-Both platforms have free, open, unauthenticated public feeds — no paid API, no login required — which keeps the project reproducible and matches where we are at this early stage. The four categories (Arts & Culture, Food & Dining, Gaming, Science & Technology) are the ones we can classify confidently and consistently; we'd rather have a handful you can trust than more where several are little better than a guess. Both the platform list and the category list are expected to grow as the project does and we have the resources to expand them properly.
+Both platforms have free, open, unauthenticated public feeds — no paid API, no login required — which keeps the project reproducible and matches where we are at this early stage. The four categories (Arts & Culture, Daily Life, Food & Dining, Science & Technology) are the ones we can classify confidently and consistently; we'd rather have a handful you can trust than more where several are little better than a guess. Both the platform list and the category list are expected to grow as the project does and we have the resources to expand them properly.
 
 ## Does it use likes, reposts, or follower counts to rank posts?
 

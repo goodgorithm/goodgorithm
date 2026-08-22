@@ -10,5 +10,5 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   science_technology: "Science & Technology",
   arts_culture: "Arts & Culture",
   food_dining: "Food & Dining",
-  gaming: "Gaming",
+  diaries_daily_life: "Daily Life",
 };

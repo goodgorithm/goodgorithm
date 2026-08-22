@@ -19,11 +19,11 @@ describe("useCategoryParam", () => {
   });
 
   it("reads a valid ?category= param on mount", () => {
-    window.history.pushState(null, "", "/?category=gaming");
+    window.history.pushState(null, "", "/?category=diaries_daily_life");
 
     const { result } = renderHook(() => useCategoryParam());
 
-    expect(result.current[0]).toBe("gaming");
+    expect(result.current[0]).toBe("diaries_daily_life");
   });
 
   it("falls back to the default for the old ?category=all (Full feed, removed - issue #33)", () => {

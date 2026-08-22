@@ -21,8 +21,8 @@ describe("FeedError", () => {
 
 describe("FeedEmpty", () => {
   it("shows a message naming the empty category", () => {
-    render(<FeedEmpty category="gaming" />);
-    expect(screen.getByText(/no posts in gaming yet/i)).toBeInTheDocument();
+    render(<FeedEmpty category="diaries_daily_life" />);
+    expect(screen.getByText(/no posts in daily life yet/i)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

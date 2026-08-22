@@ -89,7 +89,7 @@ describe("useFeed", () => {
     // frozen, so switching category would silently resume using whatever
     // cursor was loaded for the category the hook happened to start on.
     saveCursor("science_technology", "tech-cursor");
-    saveCursor("gaming", "gaming-cursor");
+    saveCursor("diaries_daily_life", "diaries_daily_life-cursor");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
     const { rerender } = renderHook(({ category }) => useFeed(category), {
@@ -100,10 +100,10 @@ describe("useFeed", () => {
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect((vi.mocked(fetch).mock.calls[0][0] as string)).toContain("cursor=tech-cursor");
 
-    rerender({ category: "gaming" as const });
+    rerender({ category: "diaries_daily_life" as const });
 
     await waitFor(() =>
-      expect(vi.mocked(fetch).mock.calls.some((call) => (call[0] as string).includes("cursor=gaming-cursor"))).toBe(
+      expect(vi.mocked(fetch).mock.calls.some((call) => (call[0] as string).includes("cursor=diaries_daily_life-cursor"))).toBe(
         true,
       ),
     );
@@ -114,7 +114,7 @@ describe("useFeed", () => {
     // resetting one category's feed would also suppress resume for the
     // next category switched to, even if that category was never reset.
     saveCursor("science_technology", "tech-cursor");
-    saveCursor("gaming", "gaming-cursor");
+    saveCursor("diaries_daily_life", "diaries_daily_life-cursor");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
     const { result, rerender } = renderHook(({ category }) => useFeed(category), {
@@ -126,7 +126,7 @@ describe("useFeed", () => {
     act(() => result.current.resetToTop());
     await waitFor(() => expect(result.current.resumed).toBe(false));
 
-    rerender({ category: "gaming" as const });
+    rerender({ category: "diaries_daily_life" as const });
     await waitFor(() => expect(result.current.resumed).toBe(true));
   });
 });

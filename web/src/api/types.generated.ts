@@ -26,13 +26,18 @@ export type Source = "bluesky" | "mastodon";
 // (a trained classifier, with taxonomy.py's keyword matcher as a fallback)
 // - narrowed from an original 8 (issue #37) once real production precision
 // data (not just the offline eval) showed a sharp, specific quality divide.
-// See CLAUDE.md's Category filtering section for why these 4 and the full
+// `gaming` was later swapped for `diaries_daily_life` (issue #62) after
+// issue #61 found it was the strongest unexplored category in the full
+// 19-label source space, never previously considered, and also resolved
+// #61's original motivating problem (sports content bleeding into gaming
+// via "game"-keyword overlap) by retiring the category that bled. See
+// CLAUDE.md's Category filtering section for why these 4 and the full
 // history behind them. Deliberately no DB CHECK constraint enforcing this
 // set (see processed_posts.category in supabase/migrations/0005_add_category.sql)
 // - a stricter constraint would make the taxonomy harder to extend, not
 // easier. See the wiki's API Internals page for what happens end to end
 // when this list and the DB disagree.
-export const CATEGORIES = ["science_technology", "arts_culture", "food_dining", "gaming"] as const;
+export const CATEGORIES = ["science_technology", "arts_culture", "food_dining", "diaries_daily_life"] as const;
 
 export type Category = (typeof CATEGORIES)[number];
 

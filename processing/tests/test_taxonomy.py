@@ -30,13 +30,18 @@ def test_categorize_matches_food_dining_term_and_phrase():
     assert taxonomy.categorize([], [], phrase) == "food_dining"
 
 
-def test_categorize_matches_gaming_term_and_phrase():
-    term = normalize_text("Local esports team just won the tournament")
-    assert taxonomy.categorize([], ["esports"], term) == "gaming"
+def test_categorize_matches_diaries_daily_life_phrase():
+    # No CATEGORY_TERMS entry for this category (see taxonomy.py's comment) --
+    # phrase-only matching.
+    phrase = normalize_text("Good morning everyone, hope you have a great day")
+    assert taxonomy.categorize([], [], phrase) == "diaries_daily_life"
 
-    phrase = normalize_text("Finally beat that video game after months of trying")
-    assert taxonomy.categorize([], [], phrase) == "gaming"
+    friday = normalize_text("Happy Friday to all my friends out there")
+    assert taxonomy.categorize([], [], friday) == "diaries_daily_life"
 
 
 def test_categorize_score_ties_break_by_priority():
-    assert taxonomy.CATEGORY_PRIORITY.index("science_technology") < taxonomy.CATEGORY_PRIORITY.index("gaming")
+    assert (
+        taxonomy.CATEGORY_PRIORITY.index("science_technology")
+        < taxonomy.CATEGORY_PRIORITY.index("diaries_daily_life")
+    )

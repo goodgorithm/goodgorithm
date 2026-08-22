@@ -77,17 +77,6 @@ CATEGORY_TERMS: dict[str, set[str]] = {
         "culinary",
         "cookbook",
     },
-    "gaming": {
-        "esports",
-        "playstation",
-        "xbox",
-        "nintendo",
-        "speedrun",
-        "multiplayer",
-        "gamer",
-        "videogame",
-        "twitch",
-    },
 }
 
 # Multi-word, matched as substrings of the post's normalize_text()'d text --
@@ -97,9 +86,17 @@ CATEGORY_PHRASES: dict[str, set[str]] = {
         "farmers market",
         "food truck",
     },
-    "gaming": {
-        "video game",
-        "video games",
+    # diaries_daily_life (issue #62) has no CATEGORY_TERMS entry at all --
+    # unlike gaming/food_dining/science_technology, its defining quality is
+    # personal daily-life narration, not topic vocabulary, so there's no
+    # small set of unambiguous single-word triggers to list. This phrase
+    # set is honestly low-recall as a result -- acceptable since this file
+    # is only the whole-process fallback for when the trained classifier
+    # can't load, not the primary mechanism.
+    "diaries_daily_life": {
+        "good morning",
+        "happy friday",
+        "my day",
     },
 }
 
@@ -110,7 +107,7 @@ CATEGORY_PRIORITY: list[str] = [
     "science_technology",
     "arts_culture",
     "food_dining",
-    "gaming",
+    "diaries_daily_life",
 ]
 
 

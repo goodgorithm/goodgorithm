@@ -11,7 +11,7 @@ const PORT = Number(process.argv[2]) || 4100;
 const PAGE_SIZE = 20;
 
 // Mirrors web/src/api/types.ts's CATEGORIES - keep in sync if that changes.
-const CATEGORIES = ["science_technology", "arts_culture", "food_dining", "gaming"];
+const CATEGORIES = ["science_technology", "arts_culture", "food_dining", "diaries_daily_life"];
 
 const LONG_TEXT =
   "Neighbors on Elm Street spent the whole weekend rebuilding the community garden after the storm knocked over half the raised beds. " +
