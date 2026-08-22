@@ -1,9 +1,33 @@
 from infra import redis_client, redis_guard
 
 
+class FakePipeline:
+    """Test double for the upstash_redis Pipeline: .execute() queues a raw
+    command and returns self (for chaining), .exec() runs them all and
+    returns results in order -- mirrors the real pipe.execute(...).exec()
+    usage in dedup.py/bot_filter.py/topicality.py."""
+
+    def __init__(self, sizes_by_key):
+        self._sizes_by_key = sizes_by_key
+        self._queued: list[list] = []
+
+    def execute(self, command):
+        self._queued.append(command)
+        return self
+
+    def exec(self):
+        results = []
+        for command in self._queued:
+            if command[:2] == ["MEMORY", "USAGE"]:
+                results.append(self._sizes_by_key[command[2]])
+            else:
+                raise AssertionError(f"unexpected command: {command}")
+        return results
+
+
 class MemorySampleClient:
-    """Test double for estimate_used_memory_bytes()'s DBSIZE + scan + MEMORY
-    USAGE sequence."""
+    """Test double for estimate_used_memory_bytes()'s DBSIZE + scan +
+    pipelined MEMORY USAGE sequence."""
 
     def __init__(self, dbsize, sample_keys, sizes_by_key, dbsize_raises=False):
         self._dbsize = dbsize
@@ -16,12 +40,13 @@ class MemorySampleClient:
             if self._dbsize_raises:
                 raise RuntimeError("network unreachable")
             return self._dbsize
-        if command[:2] == ["MEMORY", "USAGE"]:
-            return self._sizes_by_key[command[2]]
         raise AssertionError(f"unexpected command: {command}")
 
     def scan(self, cursor, match=None, count=None):
         return 0, self._sample_keys
+
+    def pipeline(self):
+        return FakePipeline(self._sizes_by_key)
 
 
 def test_estimate_used_memory_bytes_returns_none_on_dbsize_failure(monkeypatch):

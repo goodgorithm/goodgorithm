@@ -34,7 +34,17 @@ REDIS_GUARD_SCAN_COUNT = int(os.environ.get("REDIS_GUARD_SCAN_COUNT", "500"))
 # much smaller counters like botvel:*/burst:entity:*) can drift as traffic
 # composition or dedup config changes, and a stale manual constant would
 # silently degrade the same way INFO memory did. See issue #65.
-REDIS_GUARD_MEMORY_SAMPLE_SIZE = int(os.environ.get("REDIS_GUARD_MEMORY_SAMPLE_SIZE", "100"))
+#
+# 100 was the original value and turned out too small: a follow-up incident
+# showed lsh:band:* alone outnumbering mh:* 5.6:1 (611,301 vs. 109,114 keys
+# during remediation), and both are a small minority of the full keyspace
+# once botvel:*/tmpl:*/cluster:*:authors/burst:entity:* are counted -- an
+# unbiased-but-high-variance random sample that small can easily draw few or
+# no mh:* keys and badly undercount the true average on a skewed
+# distribution (many tiny counters, a numerically small population of much
+# larger dedup keys). Raised to 2000; kept cheap via pipelining (below)
+# rather than one MEMORY USAGE round trip per sampled key.
+REDIS_GUARD_MEMORY_SAMPLE_SIZE = int(os.environ.get("REDIS_GUARD_MEMORY_SAMPLE_SIZE", "2000"))
 
 
 def estimate_used_memory_bytes() -> int | None:
@@ -68,7 +78,14 @@ def estimate_used_memory_bytes() -> int | None:
         _, sample_keys = client.scan(0, count=REDIS_GUARD_MEMORY_SAMPLE_SIZE)
         if not sample_keys:
             return None
-        sizes = [client.execute(["MEMORY", "USAGE", key]) for key in sample_keys]
+        # One pipelined round trip for the whole sample, not one MEMORY USAGE
+        # call per key -- same discipline as dedup.py/bot_filter.py/
+        # topicality.py, and what makes a sample this large cheap enough to
+        # run every cycle.
+        pipe = client.pipeline()
+        for key in sample_keys:
+            pipe.execute(["MEMORY", "USAGE", key])
+        sizes = pipe.exec()
         sizes = [s for s in sizes if isinstance(s, int) and s >= 0]
         if not sizes:
             return None
