@@ -215,6 +215,56 @@ def delete_raw_post(post_id: UUID) -> bool:
         return cur.rowcount > 0
 
 
+@dataclass
+class UncheckedBlueskyPost:
+    raw_post_id: UUID
+    source_id: str
+    author_id: str
+
+
+def fetch_unchecked_bluesky_posts(batch_size: int) -> list[UncheckedBlueskyPost]:
+    """Bounded batch of already-scored Bluesky posts moderation_recheck.py
+    hasn't independently re-verified yet (issue #67's backstop against
+    ingestion/'s real-time label-stream listener racing Jetstream's own
+    insert). No time window needed -- moderation_checked_at is set exactly
+    once and never re-derived, same contract as quote_content/
+    generated_thumbnail_url."""
+    with pool.connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.raw_post_id, r.source_id, r.author_id
+            FROM processed_posts p
+            JOIN raw_posts r ON r.id = p.raw_post_id
+            WHERE r.source = 'bluesky' AND p.moderation_checked_at IS NULL
+            ORDER BY r.created_at DESC
+            LIMIT %s
+            """,
+            (batch_size,),
+        ).fetchall()
+    return [UncheckedBlueskyPost(*row) for row in rows]
+
+
+def mark_moderation_checked(raw_post_ids: list[UUID]) -> None:
+    """Bulk-writes moderation_checked_at = NOW() -- chunked multi-row
+    UPDATE, same pattern (and same DB_RANK_SCORE_UPDATE_CHUNK_SIZE) as
+    update_rank_scores, not a per-row loop."""
+    if not raw_post_ids:
+        return
+    with pool.connection() as conn:
+        for i in range(0, len(raw_post_ids), DB_RANK_SCORE_UPDATE_CHUNK_SIZE):
+            chunk = raw_post_ids[i : i + DB_RANK_SCORE_UPDATE_CHUNK_SIZE]
+            values_sql = ", ".join(["(%s::uuid)"] * len(chunk))
+            conn.execute(
+                f"""
+                UPDATE processed_posts AS p
+                SET moderation_checked_at = NOW()
+                FROM (VALUES {values_sql}) AS v(raw_post_id)
+                WHERE p.raw_post_id = v.raw_post_id
+                """,
+                chunk,
+            )
+
+
 def fetch_blocked_authors() -> set[tuple[str, str]]:
     """Whole table, loaded fresh once per cycle -- the moderation blocklist
     is small (manual entries + Bluesky bot-label auto-inserts), cheaper

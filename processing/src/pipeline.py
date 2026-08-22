@@ -11,6 +11,7 @@ from pipeline_stages import (
     context_dependency,
     dedup,
     language_filter,
+    moderation_recheck,
     quote_resolver,
     ranking,
     sentiment,
@@ -41,6 +42,10 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
 PIPELINE_VERSION = "v3"
+
+# Batch size for recheck_moderation()'s sweep -- see the wiki's
+# Configuration page.
+MODERATION_RECHECK_BATCH_SIZE = int(os.environ.get("MODERATION_RECHECK_BATCH_SIZE", "500"))
 
 
 def enforce_redis_capacity() -> None:
@@ -241,6 +246,43 @@ def purge_blocked_authors() -> int:
     purged = db.purge_blocked_authors()
     if purged:
         logger.info("purged %d posts from newly/still-blocked authors", purged)
+    return purged
+
+
+def recheck_moderation() -> int:
+    """Backstop against ingestion/'s blueskyLabels.ts real-time label-
+    stream listener racing Jetstream's own insert for the same post (issue
+    #67) -- independently re-verifies each already-scored Bluesky post's
+    own moderation labels *and* its author's profile self-label against
+    Bluesky's public AppView, mirroring quote_resolver.py's exact getPosts
+    pattern. Purges (db.delete_raw_post, cascades to processed_posts) any
+    match; marks every successfully-checked post either way via
+    moderation_checked_at so a genuinely clean post is never re-swept.
+    Throttled by the caller (main.py), unlike purge_blocked_authors --
+    this one calls an external API, so it must not compound under backlog
+    the way an unthrottled per-iteration DB-only sweep safely can. See the
+    wiki's Content Policy and Pipeline Internals pages."""
+    posts = db.fetch_unchecked_bluesky_posts(MODERATION_RECHECK_BATCH_SIZE)
+    if not posts:
+        return 0
+
+    results = moderation_recheck.check_posts(posts)
+    purged = 0
+    checked_ids = []
+    for post in posts:
+        result = results.get(post.raw_post_id)
+        if result is None:
+            continue  # batch failed -- left unchecked, retried next sweep
+        if result == "excluded":
+            db.delete_raw_post(post.raw_post_id)
+            purged += 1
+            logger.info("moderation-recheck purged post %s (label backstop)", post.raw_post_id)
+        else:
+            checked_ids.append(post.raw_post_id)
+
+    db.mark_moderation_checked(checked_ids)
+    if purged:
+        logger.info("moderation-recheck purged %d posts", purged)
     return purged
 
 

@@ -63,6 +63,17 @@ def main() -> None:
         type=int,
         default=int(os.environ.get("REDIS_GUARD_INTERVAL_SECONDS", 30)),
     )
+    # Unlike purge_blocked_authors (an unthrottled, cheap indexed DB join),
+    # this calls an external API in batches -- deliberately throttled so it
+    # can't compound under backlog the way today's earlier Redis capacity
+    # incident did. Still comfortably beats --refresh-interval's 30s floor,
+    # which is what actually gates a post becoming feed-visible. See issue
+    # #67 and the wiki's Configuration page.
+    parser.add_argument(
+        "--moderation-recheck-interval",
+        type=int,
+        default=int(os.environ.get("MODERATION_RECHECK_INTERVAL_SECONDS", 10)),
+    )
     args = parser.parse_args()
 
     config.validate()
@@ -73,6 +84,7 @@ def main() -> None:
     if args.once:
         pipeline.enforce_redis_capacity()
         pipeline.run_cycle(args.batch_size)
+        pipeline.recheck_moderation()
         pipeline.refresh_rankings()
         pipeline.cleanup_old_data()
         pipeline.purge_blocked_authors()
@@ -83,6 +95,7 @@ def main() -> None:
     last_refresh_time = 0.0
     last_network_detection_time = 0.0
     last_redis_guard_time = 0.0
+    last_moderation_recheck_time = 0.0
     while not _shutdown:
         now = time.monotonic()
         if now - last_redis_guard_time >= args.redis_guard_interval:
@@ -92,6 +105,10 @@ def main() -> None:
         processed_count = pipeline.run_cycle(args.batch_size)
 
         now = time.monotonic()
+        if now - last_moderation_recheck_time >= args.moderation_recheck_interval:
+            pipeline.recheck_moderation()
+            last_moderation_recheck_time = now
+
         if now - last_refresh_time >= args.refresh_interval:
             pipeline.refresh_rankings()
             last_refresh_time = now
