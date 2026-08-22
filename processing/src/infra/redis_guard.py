@@ -28,32 +28,56 @@ EXPENDABLE_KEY_PATTERNS = ("burst:entity:*", "cluster:*:authors")
 
 REDIS_GUARD_SCAN_COUNT = int(os.environ.get("REDIS_GUARD_SCAN_COUNT", "500"))
 
-
-def parse_used_memory_bytes(info_output: str) -> int | None:
-    """Parses `used_memory` out of a raw `INFO memory` response. A standalone
-    function so the parsing logic is unit-testable without a live Redis
-    connection."""
-    for line in info_output.splitlines():
-        line = line.strip()
-        if line.startswith("used_memory:"):
-            try:
-                return int(line.split(":", 1)[1])
-            except ValueError:
-                return None
-    return None
+# How many real keys to sample for estimate_used_memory_bytes()'s bytes-per-key
+# average. Not a hardcoded bytes/key constant -- deliberately re-sampled fresh
+# every check, since the key-size mix (mh:*'s ~700-byte MinHash signatures vs.
+# much smaller counters like botvel:*/burst:entity:*) can drift as traffic
+# composition or dedup config changes, and a stale manual constant would
+# silently degrade the same way INFO memory did. See issue #65.
+REDIS_GUARD_MEMORY_SAMPLE_SIZE = int(os.environ.get("REDIS_GUARD_MEMORY_SAMPLE_SIZE", "100"))
 
 
-def get_used_memory_bytes() -> int | None:
-    """Best-effort read of Redis's own memory accounting. Returns None (never
+def estimate_used_memory_bytes() -> int | None:
+    """Best-effort estimate of total Redis memory usage. Returns None (never
     raises) on any failure -- monitoring itself must never be able to crash
-    a processing cycle, same discipline as heartbeat.ping()."""
+    a processing cycle, same discipline as heartbeat.ping().
+
+    Deliberately does NOT use `INFO memory`'s `used_memory` field -- issue
+    #65: confirmed directly in a real incident that Upstash's REST API
+    returns wildly inconsistent values for it (three consecutive reads one
+    second apart on the same connection: 47917017, 7572913, 47917017, with
+    nothing actually changing), completely disconnected from Upstash's own
+    real capacity-quota enforcement. `DBSIZE` and `MEMORY USAGE <key>` were
+    both confirmed consistent/reliable instead during that same incident's
+    remediation, so this estimates total bytes as DBSIZE * (a fresh sampled
+    average of real MEMORY USAGE reads), rather than trusting a single
+    unreliable aggregate command."""
     try:
         client = redis_client.get_client()
-        raw = client.execute(["INFO", "memory"])
+        dbsize = client.execute(["DBSIZE"])
     except Exception:
-        logger.warning("redis_guard: INFO memory failed", exc_info=True)
+        logger.warning("redis_guard: DBSIZE failed", exc_info=True)
         return None
-    return parse_used_memory_bytes(str(raw))
+
+    if not isinstance(dbsize, int) or dbsize < 0:
+        return None
+    if dbsize == 0:
+        return 0
+
+    try:
+        _, sample_keys = client.scan(0, count=REDIS_GUARD_MEMORY_SAMPLE_SIZE)
+        if not sample_keys:
+            return None
+        sizes = [client.execute(["MEMORY", "USAGE", key]) for key in sample_keys]
+        sizes = [s for s in sizes if isinstance(s, int) and s >= 0]
+        if not sizes:
+            return None
+    except Exception:
+        logger.warning("redis_guard: MEMORY USAGE sampling failed", exc_info=True)
+        return None
+
+    avg_bytes = sum(sizes) / len(sizes)
+    return int(dbsize * avg_bytes)
 
 
 def _scan_delete(client, pattern: str) -> int:
@@ -81,7 +105,7 @@ def enforce(max_bytes: int = DEFAULT_MAX_BYTES, soft_limit_ratio: float = DEFAUL
     topicality writes. Logs current usage for visibility (there was
     previously none at all) and proactively clears expendable data once
     usage nears max_bytes, rather than finding out via a crashed write."""
-    used = get_used_memory_bytes()
+    used = estimate_used_memory_bytes()
     if used is None:
         return
 

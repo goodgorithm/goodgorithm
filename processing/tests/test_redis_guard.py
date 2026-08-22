@@ -1,34 +1,62 @@
 from infra import redis_client, redis_guard
 
 
-def test_parse_used_memory_bytes_extracts_value():
-    info = "# Memory\r\nused_memory:1073751787\r\nused_memory_human:1.02G\r\n"
-    assert redis_guard.parse_used_memory_bytes(info) == 1073751787
+class MemorySampleClient:
+    """Test double for estimate_used_memory_bytes()'s DBSIZE + scan + MEMORY
+    USAGE sequence."""
+
+    def __init__(self, dbsize, sample_keys, sizes_by_key, dbsize_raises=False):
+        self._dbsize = dbsize
+        self._sample_keys = sample_keys
+        self._sizes_by_key = sizes_by_key
+        self._dbsize_raises = dbsize_raises
+
+    def execute(self, command):
+        if command == ["DBSIZE"]:
+            if self._dbsize_raises:
+                raise RuntimeError("network unreachable")
+            return self._dbsize
+        if command[:2] == ["MEMORY", "USAGE"]:
+            return self._sizes_by_key[command[2]]
+        raise AssertionError(f"unexpected command: {command}")
+
+    def scan(self, cursor, match=None, count=None):
+        return 0, self._sample_keys
 
 
-def test_parse_used_memory_bytes_returns_none_when_absent():
-    assert redis_guard.parse_used_memory_bytes("# Memory\r\nsomething_else:1\r\n") is None
+def test_estimate_used_memory_bytes_returns_none_on_dbsize_failure(monkeypatch):
+    client = MemorySampleClient(dbsize=None, sample_keys=[], sizes_by_key={}, dbsize_raises=True)
+    monkeypatch.setattr(redis_client, "get_client", lambda: client)
+
+    assert redis_guard.estimate_used_memory_bytes() is None  # must not raise
 
 
-def test_get_used_memory_bytes_returns_none_on_client_failure(monkeypatch):
-    class RaisingClient:
-        def execute(self, command):
-            raise RuntimeError("network unreachable")
+def test_estimate_used_memory_bytes_short_circuits_on_empty_db(monkeypatch):
+    client = MemorySampleClient(dbsize=0, sample_keys=[], sizes_by_key={})
+    monkeypatch.setattr(redis_client, "get_client", lambda: client)
 
-    monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
-
-    assert redis_guard.get_used_memory_bytes() is None  # must not raise
+    assert redis_guard.estimate_used_memory_bytes() == 0
 
 
-def test_get_used_memory_bytes_parses_info_response(monkeypatch):
-    class FakeClient:
-        def execute(self, command):
-            assert command == ["INFO", "memory"]
-            return "# Memory\r\nused_memory:123456\r\n"
+def test_estimate_used_memory_bytes_returns_none_when_sample_is_empty(monkeypatch):
+    # dbsize > 0 but the scan came back with nothing -- a transient
+    # possibility, must not be treated as "0 bytes used".
+    client = MemorySampleClient(dbsize=1000, sample_keys=[], sizes_by_key={})
+    monkeypatch.setattr(redis_client, "get_client", lambda: client)
 
-    monkeypatch.setattr(redis_client, "get_client", lambda: FakeClient())
+    assert redis_guard.estimate_used_memory_bytes() is None
 
-    assert redis_guard.get_used_memory_bytes() == 123456
+
+def test_estimate_used_memory_bytes_multiplies_dbsize_by_sampled_average(monkeypatch):
+    client = MemorySampleClient(
+        dbsize=1000,
+        sample_keys=["k1", "k2"],
+        sizes_by_key={"k1": 100, "k2": 300},
+    )
+    monkeypatch.setattr(redis_client, "get_client", lambda: client)
+
+    # average sampled size (200) * dbsize (1000)
+    assert redis_guard.estimate_used_memory_bytes() == 200000
 
 
 class PagedScanClient:
@@ -103,7 +131,7 @@ def test_clear_expendable_data_never_touches_dedup_state(monkeypatch):
 
 
 def test_enforce_noop_when_usage_unknown(monkeypatch):
-    monkeypatch.setattr(redis_guard, "get_used_memory_bytes", lambda: None)
+    monkeypatch.setattr(redis_guard, "estimate_used_memory_bytes", lambda: None)
     calls = []
     monkeypatch.setattr(redis_guard, "clear_expendable_data", lambda: calls.append(1))
 
@@ -113,7 +141,7 @@ def test_enforce_noop_when_usage_unknown(monkeypatch):
 
 
 def test_enforce_noop_below_soft_limit(monkeypatch):
-    monkeypatch.setattr(redis_guard, "get_used_memory_bytes", lambda: 500)
+    monkeypatch.setattr(redis_guard, "estimate_used_memory_bytes", lambda: 500)
     calls = []
     monkeypatch.setattr(redis_guard, "clear_expendable_data", lambda: calls.append(1))
 
@@ -123,7 +151,7 @@ def test_enforce_noop_below_soft_limit(monkeypatch):
 
 
 def test_enforce_clears_at_or_above_soft_limit(monkeypatch):
-    monkeypatch.setattr(redis_guard, "get_used_memory_bytes", lambda: 900)
+    monkeypatch.setattr(redis_guard, "estimate_used_memory_bytes", lambda: 900)
     calls = []
     monkeypatch.setattr(redis_guard, "clear_expendable_data", lambda: (calls.append(1), 42)[1])
 
@@ -133,7 +161,7 @@ def test_enforce_clears_at_or_above_soft_limit(monkeypatch):
 
 
 def test_enforce_swallows_clear_expendable_data_failures(monkeypatch):
-    monkeypatch.setattr(redis_guard, "get_used_memory_bytes", lambda: 900)
+    monkeypatch.setattr(redis_guard, "estimate_used_memory_bytes", lambda: 900)
 
     def raise_error():
         raise RuntimeError("scan failed")
