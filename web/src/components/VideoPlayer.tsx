@@ -11,8 +11,16 @@ type VideoAttachment = Extract<Attachment, { kind: "video" }>;
 // it directly everywhere. Bluesky's is an HLS .m3u8 playlist: Safari plays
 // that natively too (canPlayType), but every other engine needs hls.js to
 // parse the manifest via Media Source Extensions.
+//
+// Must check for "probably" specifically, not just non-empty (issue #66) -
+// canPlayType returns "", "maybe", or "probably", and modern Chromium
+// returns "maybe" here despite not actually being able to play a real
+// multi-rendition HLS manifest natively. Treating "maybe" as supported skips
+// hls.js entirely and silently fails (network state goes straight to
+// NETWORK_NO_SOURCE, no error ever surfaces). Only Safari reliably returns
+// "probably" for this MIME type - that's the actual native-support signal.
 function isNativeHlsSupported(video: HTMLVideoElement): boolean {
-  return video.canPlayType("application/vnd.apple.mpegurl") !== "";
+  return video.canPlayType("application/vnd.apple.mpegurl") === "probably";
 }
 
 function useHlsSource(playlistUrl: string) {
@@ -30,6 +38,14 @@ function useHlsSource(playlistUrl: string) {
     if (!Hls.isSupported()) return; // no HLS path available - browser just won't play this one
 
     const hls = new Hls();
+    // hls.js failures were previously completely silent -- issue #66's
+    // actual root cause (isNativeHlsSupported wrongly treating Chromium's
+    // "maybe" canPlayType answer as real support) meant this code path
+    // wasn't even the problem, but a future real hls.js failure deserves
+    // to be visible rather than a silent black box like this one was.
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (data.fatal) console.error("[hls.js]", data.type, data.details);
+    });
     hls.loadSource(playlistUrl);
     hls.attachMedia(video);
     return () => hls.destroy();
