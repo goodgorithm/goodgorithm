@@ -231,6 +231,26 @@ describe("PostAttachments", () => {
     expect(await screen.findByRole("button", { name: /pause/i })).toBeInTheDocument();
   });
 
+  it("keeps the same video element across the reveal toggle, not a remount (issue #66)", async () => {
+    // Revealing sensitive content used to move `children` to a structurally
+    // different position in the tree, which made React unmount and remount
+    // VideoPlayer on every toggle -- for a real video that means losing its
+    // hls.js attachment entirely. Asserting the exact same DOM node persists
+    // is what catches that regression; JSDOM can't exercise real hls.js
+    // playback, but node identity is exactly what a remount would break.
+    const { container } = render(<PostAttachments post={makePost([gifVideo], true)} />);
+    const videoBefore = await waitFor(() => {
+      const el = container.querySelector("video");
+      expect(el).not.toBeNull();
+      return el as HTMLVideoElement;
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /show video/i }));
+
+    const videoAfter = container.querySelector("video");
+    expect(videoAfter).toBe(videoBefore);
+  });
+
   it("lets a sensitive image be re-hidden after being revealed", () => {
     render(<PostAttachments post={makePost([image], true)} />);
 

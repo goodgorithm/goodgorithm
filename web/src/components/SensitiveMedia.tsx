@@ -21,10 +21,19 @@ export function SensitiveMedia({
     return <>{children}</>;
   }
 
-  if (revealed) {
-    return (
-      <div className={styles.wrapper}>
-        {children}
+  // children stay in the exact same tree position across the reveal toggle
+  // -- only the blur class and which button renders change. Conditionally
+  // rendering children under a *different* wrapper per branch (as this used
+  // to do: children directly when revealed, wrapped in an extra <div> when
+  // not) makes React tear down and remount them on every toggle, which for
+  // VideoPlayer meant losing its hls.js attachment entirely and leaving the
+  // video permanently stuck with no error (found investigating issue #66).
+  const mediaClassName = revealed ? styles.mediaWrapper : `${styles.mediaWrapper} ${styles.blurred}`;
+
+  return (
+    <div className={styles.wrapper}>
+      <div className={mediaClassName}>{children}</div>
+      {revealed ? (
         <button
           type="button"
           className={styles.hideButton}
@@ -33,21 +42,16 @@ export function SensitiveMedia({
         >
           {revealLabel.replace("Show", "Hide")}
         </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className={styles.wrapper}>
-      <div className={styles.blurred}>{children}</div>
-      <button
-        type="button"
-        className={styles.revealButton}
-        aria-pressed={revealed}
-        onClick={() => setRevealed(true)}
-      >
-        {revealLabel}
-      </button>
+      ) : (
+        <button
+          type="button"
+          className={styles.revealButton}
+          aria-pressed={revealed}
+          onClick={() => setRevealed(true)}
+        >
+          {revealLabel}
+        </button>
+      )}
     </div>
   );
 }
