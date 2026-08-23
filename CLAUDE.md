@@ -202,7 +202,7 @@ Env var names are documented in `.env.example` at the repo root — never commit
 Each service is independent — install/run/test from within its own directory.
 
 - **`ingestion/`, `api/`** (Node/TypeScript): `npm install`, `npm run dev` (watch mode via `tsx`), `npm run build` (type-check + compile), `npm test` (`api/` only, uses Node's built-in test runner).
-- **`web/`** (Node/TypeScript, React + Vite): `npm install`, `npm run dev` (Vite dev server), `npm run build` (type-check + build, also generates the PWA manifest/service worker), `npm test` (Vitest), `npm run lint` (oxlint). Needs `VITE_API_BASE_URL` set (see `web/.env.example`) — points at a running `api/` instance.
+- **`web/`** (Node/TypeScript, React + Vite): `npm install`, `npm run dev` (Vite dev server), `npm run build` (type-check + build, also generates the PWA manifest/service worker), `npm test` (Vitest), `npm run lint` (oxlint), `npm run test:e2e` (Playwright, Chromium/Firefox/WebKit — see CONTRIBUTING.md; a documented pre-push/pre-merge check, not a CI gate, per issue #69). Needs `VITE_API_BASE_URL` set (see `web/.env.example`) — points at a running `api/` instance.
 - **`processing/`** (Python, managed with `uv`): `uv sync`, `uv run python src/main.py --once` (single cycle, for local testing) or without `--once` for the long-lived loop, `uv run pytest` (unit tests — many run without any real DB/Redis/R2 credentials, since `config.validate()` is only called explicitly from entrypoints, not at import time).
 - **`training/sentiment_cnn.ipynb`**: not run locally — needs a GPU. Open in Colab or Kaggle. See the `release-sentiment-model` skill before touching this.
 

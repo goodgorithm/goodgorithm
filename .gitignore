@@ -31,6 +31,8 @@ build/
 .turbo/
 coverage/
 .wrangler/
+web/test-results/
+web/playwright-report/
 
 # ML artifacts (models/datasets are large and versioned separately, not in git)
 *.ckpt

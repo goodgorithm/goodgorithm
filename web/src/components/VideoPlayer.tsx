@@ -8,17 +8,20 @@ import { SensitiveMedia } from "./SensitiveMedia";
 type VideoAttachment = Extract<Attachment, { kind: "video" }>;
 
 // Mastodon's playlistUrl is already a plain MP4 - native <video src> plays
-// it directly everywhere. Bluesky's is an HLS .m3u8 playlist: Safari plays
-// that natively too (canPlayType), but every other engine needs hls.js to
-// parse the manifest via Media Source Extensions.
+// it directly everywhere. Bluesky's is an HLS .m3u8 playlist, needing
+// hls.js's Media Source Extensions parsing on most engines.
 //
 // Must check for "probably" specifically, not just non-empty (issue #66) -
-// canPlayType returns "", "maybe", or "probably", and modern Chromium
-// returns "maybe" here despite not actually being able to play a real
-// multi-rendition HLS manifest natively. Treating "maybe" as supported skips
-// hls.js entirely and silently fails (network state goes straight to
-// NETWORK_NO_SOURCE, no error ever surfaces). Only Safari reliably returns
-// "probably" for this MIME type - that's the actual native-support signal.
+// canPlayType returns "", "maybe", or "probably". Modern Chromium *and*
+// Playwright's WebKit build both return "maybe" here despite not actually
+// being able to play a real multi-rendition HLS manifest natively (verified
+// directly, issue #69) - treating "maybe" as supported skips hls.js
+// entirely and silently fails (network state goes straight to
+// NETWORK_NO_SOURCE, no error ever surfaces). "probably" is the only value
+// actually worth trusting; in practice that routes every engine through
+// hls.js today, which is fine - hls.js works on any MSE-capable browser.
+// See e2e/video.spec.ts, which runs this exact check against real
+// Chromium/Firefox/WebKit on every change.
 function isNativeHlsSupported(video: HTMLVideoElement): boolean {
   return video.canPlayType("application/vnd.apple.mpegurl") === "probably";
 }

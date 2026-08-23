@@ -32,14 +32,14 @@ not already done.
 
 `api/` needs a real Postgres (`DATABASE_URL`) to run, which isn't
 available here - so for driving `web/` alone, point it at the bundled
-mock instead of a real `api/` instance. The mock serves 60 posts (one
+mock instead of a real `api/` instance. The mock serves 105 posts (one
 deliberately long, to exercise post auto-collapse) with working cursor
 pagination, matching `web/src/api/types.ts`'s `FeedResponse`/`FeedPost`
 shape.
 
 ```bash
 # from web/
-node .claude/skills/run-web/mock-api.mjs 4100 > /tmp/mock-api.log 2>&1 &
+node e2e/mock-api.mjs 4100 > /tmp/mock-api.log 2>&1 &
 disown
 
 VITE_API_BASE_URL=http://localhost:4100 npm run dev > /tmp/vite-dev.log 2>&1 &
@@ -111,16 +111,22 @@ npm run lint  # oxlint
 
 ## Gotchas
 
-- **`playwright` isn't a `web/` devDependency.** It's only needed for
-  this driver, not for the app or its own test suite, so it's isolated
-  in `.claude/skills/run-web/package.json` instead of polluting
-  `web/`'s real dependencies. Don't `npm install playwright` at `web/`
-  root for this - `cd` into the skill dir first.
+- **Bare `playwright` (this driver) isn't a `web/` devDependency, but
+  `@playwright/test` (the real E2E suite, `web/e2e/*.spec.ts`) is.**
+  Different use cases: this driver is for interactive, agent-led
+  one-off debugging (this file), kept isolated in
+  `.claude/skills/run-web/package.json` since it's not something a
+  human contributor runs; `@playwright/test` is the documented,
+  contributor-facing pre-push/pre-merge multi-browser check (see
+  CONTRIBUTING.md), so it lives in `web/package.json` like any other
+  real dev dependency. Don't `npm install playwright` at `web/` root
+  for *this* driver - `cd` into the skill dir first.
 - **`api/` can't run here without a real Postgres.** Don't try to spin
-  up `api/` for frontend verification - use `mock-api.mjs`, which
-  matches the response shape closely enough for the feed, infinite
-  scroll, auto-collapse, and anti-repeat/cursor-persistence features to
-  all render and behave correctly against it.
+  up `api/` for frontend verification - use `e2e/mock-api.mjs` (shared
+  with the Playwright E2E suite), which matches the response shape
+  closely enough for the feed, infinite scroll, auto-collapse, and
+  anti-repeat/cursor-persistence features to all render and behave
+  correctly against it.
 - **No `timeout` binary on this machine (macOS).** The dev-server
   readiness check above uses a polling `for` loop instead of
   `timeout 30 bash -c '...'` - if adapting this on Linux, either works.
