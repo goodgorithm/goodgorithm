@@ -1,11 +1,19 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CollapsiblePostText } from "../../src/components/CollapsiblePostText";
 
 const shortText = "A genuinely nice thing happened today.";
 const longText = "This is a very long post. ".repeat(20); // well over the threshold
 const permalink = "https://bsky.app/profile/did:plc:abc123/post/xyz";
+
+// JSDOM doesn't implement scrollIntoView at all (throws unless stubbed) or
+// real layout (getBoundingClientRect always returns zeros) - both are
+// stubbed per test below to simulate "scrolled out of view" vs. "still
+// visible" without a real browser.
+beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 describe("CollapsiblePostText", () => {
   it("renders short posts with no toggle", () => {
@@ -29,6 +37,29 @@ describe("CollapsiblePostText", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Show less" }));
     expect(screen.getByRole("button", { name: "Show more" })).toBeInTheDocument();
+  });
+
+  it("scrolls the post back into view when collapsing pushes it above the viewport (issue #60)", () => {
+    const { container } = render(<CollapsiblePostText text={longText} source="bluesky" permalink={permalink} />);
+    // Simulates the post's top having scrolled above the viewport as a
+    // result of the collapse shrinking its height.
+    container.querySelector("div")!.getBoundingClientRect = () => ({ top: -200 }) as DOMRect;
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+  });
+
+  it("does not scroll on collapse when the post is still in view", () => {
+    const { container } = render(<CollapsiblePostText text={longText} source="bluesky" permalink={permalink} />);
+    container.querySelector("div")!.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("renders a URL in the text as a real link", () => {
