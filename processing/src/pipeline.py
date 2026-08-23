@@ -86,7 +86,10 @@ def run_cycle(batch_size: int) -> int:
             post.source, post.text, post.raw_json, suppressed_terms, suppressed_domains
         ):
             db.delete_raw_post(post.id)
-            logger.info("content-filtered post %s (hashtag/self-label/spoiler-text/domain/sensitive-media)", post.id)
+            logger.info(
+                "content-filtered post %s (hashtag/self-label/spoiler-text/domain/sensitive-media/home-instance)",
+                post.id,
+            )
         elif (post.lang is None or post.source == "mastodon") and language_filter.is_non_english(post.text):
             db.delete_raw_post(post.id)
             reason = "no tag" if post.lang is None else f"tagged {post.lang!r}"

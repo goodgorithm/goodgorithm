@@ -2,6 +2,7 @@ from pipeline_stages import content_filter
 
 TERMS = frozenset({"nsfw"})
 DOMAINS = frozenset({"amazon.com", "etsy.com"})
+INSTANCE_DOMAINS = frozenset({"mastodon-sex.com"})
 
 
 def test_has_excluded_hashtag_matches_case_insensitively():
@@ -160,7 +161,45 @@ def test_has_excluded_sensitive_media_is_defensive_about_malformed_shapes():
     assert content_filter.has_excluded_sensitive_media({"sensitive": True, "media_attachments": "not-a-list"}) is False
 
 
-def test_is_content_excluded_combines_all_five_checks():
+def test_has_excluded_home_instance_matches_remote_account_on_a_listed_instance():
+    # issue #72: an account federated in from a fully dedicated adult
+    # instance -- distinct from has_excluded_domain, which only looks at a
+    # link inside the post itself, not the poster's own server.
+    raw_json = {"account": {"acct": "someuser@mastodon-sex.com"}}
+    assert content_filter.has_excluded_home_instance(raw_json, INSTANCE_DOMAINS) is True
+
+
+def test_has_excluded_home_instance_matches_subdomain():
+    raw_json = {"account": {"acct": "someuser@sub.mastodon-sex.com"}}
+    assert content_filter.has_excluded_home_instance(raw_json, INSTANCE_DOMAINS) is True
+
+
+def test_has_excluded_home_instance_does_not_match_local_account():
+    # A local account's acct has no "@host" suffix -- nothing to check, and
+    # none of our own polled instances are on the suppressed list anyway.
+    raw_json = {"account": {"acct": "someuser"}}
+    assert content_filter.has_excluded_home_instance(raw_json, INSTANCE_DOMAINS) is False
+
+
+def test_has_excluded_home_instance_does_not_match_unlisted_instance():
+    raw_json = {"account": {"acct": "someuser@mastodon.social"}}
+    assert content_filter.has_excluded_home_instance(raw_json, INSTANCE_DOMAINS) is False
+
+
+def test_has_excluded_home_instance_returns_false_for_bluesky_rows():
+    # Bluesky raw_json has no "account" key in this shape at all.
+    assert content_filter.has_excluded_home_instance({"commit": {"record": {}}}, INSTANCE_DOMAINS) is False
+
+
+def test_has_excluded_home_instance_is_defensive_about_malformed_shapes():
+    assert content_filter.has_excluded_home_instance({}, INSTANCE_DOMAINS) is False
+    assert content_filter.has_excluded_home_instance(None, INSTANCE_DOMAINS) is False
+    assert content_filter.has_excluded_home_instance({"account": "not-a-dict"}, INSTANCE_DOMAINS) is False
+    assert content_filter.has_excluded_home_instance({"account": {"acct": None}}, INSTANCE_DOMAINS) is False
+
+
+def test_is_content_excluded_combines_all_six_checks():
+    combined_domains = DOMAINS | INSTANCE_DOMAINS
     hashtag_only = ("mastodon", "free book #nsfw", {"commit": {"record": {}}})
     label_only = (
         "bluesky",
@@ -174,11 +213,17 @@ def test_is_content_excluded_combines_all_five_checks():
         "good morning everyone",
         {"sensitive": True, "spoiler_text": "", "media_attachments": [{"type": "image"}]},
     )
+    home_instance_only = (
+        "mastodon",
+        "a totally normal post",
+        {"account": {"acct": "someuser@mastodon-sex.com"}},
+    )
     neither = ("mastodon", "a totally normal post", {"commit": {"record": {}}})
 
-    assert content_filter.is_content_excluded(*hashtag_only, TERMS, DOMAINS) is True
-    assert content_filter.is_content_excluded(*label_only, TERMS, DOMAINS) is True
-    assert content_filter.is_content_excluded(*spoiler_only, TERMS, DOMAINS) is True
-    assert content_filter.is_content_excluded(*domain_only, TERMS, DOMAINS) is True
-    assert content_filter.is_content_excluded(*sensitive_media_only, TERMS, DOMAINS) is True
-    assert content_filter.is_content_excluded(*neither, TERMS, DOMAINS) is False
+    assert content_filter.is_content_excluded(*hashtag_only, TERMS, combined_domains) is True
+    assert content_filter.is_content_excluded(*label_only, TERMS, combined_domains) is True
+    assert content_filter.is_content_excluded(*spoiler_only, TERMS, combined_domains) is True
+    assert content_filter.is_content_excluded(*domain_only, TERMS, combined_domains) is True
+    assert content_filter.is_content_excluded(*sensitive_media_only, TERMS, combined_domains) is True
+    assert content_filter.is_content_excluded(*home_instance_only, TERMS, combined_domains) is True
+    assert content_filter.is_content_excluded(*neither, TERMS, combined_domains) is False

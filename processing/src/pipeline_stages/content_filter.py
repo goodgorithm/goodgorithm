@@ -74,16 +74,22 @@ def has_excluded_sensitive_media(raw_json: dict) -> bool:
     return not raw_json.get("spoiler_text")
 
 
+def _matches_suppressed_domain(candidate: str, suppressed_domains: frozenset[str]) -> bool:
+    """Exact or subdomain match (smile.amazon.com, www.amazon.com both
+    match an amazon.com entry) -- shared by has_excluded_domain (a post's
+    linked URL) and has_excluded_home_instance (a Mastodon account's home
+    server) below, since both are "does this domain match a moderator's
+    entry" checks over the same suppressed_domains set."""
+    return candidate in suppressed_domains or any(candidate.endswith("." + domain) for domain in suppressed_domains)
+
+
 def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domains: frozenset[str]) -> bool:
     """suppressed_domains is db.fetch_suppressed_domains()'s whole-table read
     -- same moderator-curated, loaded-fresh-per-cycle contract as
     suppressed_terms (issue #57). Deliberately doesn't reuse dedup.py's
     extract_dedup_url -- that rejects bare-domain URLs (no path), right for
     dedup (a homepage link is a weak dedup signal) but wrong here (a bare
-    https://www.amazon.com link should still match). Matches a listed
-    domain exactly or as a subdomain (smile.amazon.com, www.amazon.com both
-    match an amazon.com entry) -- the natural expectation for a moderator
-    entering a bare domain."""
+    https://www.amazon.com link should still match)."""
     raw_url = extract_raw_url(source, raw_json, text)
     if not raw_url:
         return False
@@ -91,7 +97,32 @@ def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domai
         netloc = urlsplit(raw_url).netloc.lower()
     except ValueError:
         return False
-    return netloc in suppressed_domains or any(netloc.endswith("." + domain) for domain in suppressed_domains)
+    return _matches_suppressed_domain(netloc, suppressed_domains)
+
+
+def has_excluded_home_instance(raw_json: dict, suppressed_domains: frozenset[str]) -> bool:
+    """Mastodon-only (issue #72): excludes every post from an account whose
+    own home instance is a listed domain -- distinct from has_excluded_domain
+    above, which only matches a link *inside* the post body/card. Many
+    adult-content posts carry no outbound link at all (native image posts),
+    so a link-domain check alone can't catch a post that merely originates
+    from a fully dedicated adult instance (mastodon-sex.com, fedinsfw.app --
+    confirmed by real sampling to be ~100% adult content, unlike a general-
+    purpose instance any account might be on). Reuses suppressed_domains
+    rather than a separate table: a moderator adding a domain there
+    reasonably expects both "links to this domain" and "accounts hosted on
+    this domain" to be covered, with identical exact/subdomain matching.
+    Mastodon's account.acct is "user" for a local account or "user@host"
+    for a remote one (federated into one of our polled instances' public
+    timelines) -- only the "@host" form has a home instance to check.
+    Bluesky has no per-instance federation concept, so raw_json here always
+    lacks an "account" key in this shape and this naturally returns False."""
+    account = (raw_json or {}).get("account")
+    acct = account.get("acct") if isinstance(account, dict) else None
+    if not isinstance(acct, str) or "@" not in acct:
+        return False
+    home_instance = acct.rsplit("@", 1)[-1].lower()
+    return _matches_suppressed_domain(home_instance, suppressed_domains)
 
 
 def is_content_excluded(
@@ -103,4 +134,5 @@ def is_content_excluded(
         or has_excluded_spoiler_text(raw_json, suppressed_terms)
         or has_excluded_domain(source, raw_json, text, suppressed_domains)
         or has_excluded_sensitive_media(raw_json)
+        or has_excluded_home_instance(raw_json, suppressed_domains)
     )
