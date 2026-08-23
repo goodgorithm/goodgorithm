@@ -117,7 +117,50 @@ def test_has_excluded_domain_is_defensive_about_no_url():
     assert content_filter.has_excluded_domain("mastodon", {}, "just a normal post", DOMAINS) is False
 
 
-def test_is_content_excluded_combines_all_four_checks():
+def test_has_excluded_sensitive_media_matches_media_with_no_spoiler_text():
+    # issue #72: the one sub-case a real production sample confirmed
+    # high-precision for adult content.
+    raw_json = {"sensitive": True, "spoiler_text": "", "media_attachments": [{"type": "image"}]}
+    assert content_filter.has_excluded_sensitive_media(raw_json) is True
+
+
+def test_has_excluded_sensitive_media_does_not_match_without_media():
+    # No media -- confirmed by real sampling to be mostly ordinary
+    # CW-culture text (spoilers, mental-health disclosure), not adult
+    # content, even when sensitive=true.
+    raw_json = {"sensitive": True, "spoiler_text": "", "media_attachments": []}
+    assert content_filter.has_excluded_sensitive_media(raw_json) is False
+    assert content_filter.has_excluded_sensitive_media({"sensitive": True, "spoiler_text": ""}) is False
+
+
+def test_has_excluded_sensitive_media_does_not_match_with_spoiler_text():
+    # Media + an actual spoiler_text turned out mixed in the real sample
+    # (news/political images, courtesy "eye contact" selfie tags, artistic
+    # content, alongside genuine adult posts) -- deliberately not included
+    # in the hard-exclude scope, unlike the no-spoiler-text case above.
+    raw_json = {"sensitive": True, "spoiler_text": "eye contact", "media_attachments": [{"type": "image"}]}
+    assert content_filter.has_excluded_sensitive_media(raw_json) is False
+
+
+def test_has_excluded_sensitive_media_does_not_match_when_not_flagged_sensitive():
+    raw_json = {"sensitive": False, "spoiler_text": "", "media_attachments": [{"type": "image"}]}
+    assert content_filter.has_excluded_sensitive_media(raw_json) is False
+
+
+def test_has_excluded_sensitive_media_returns_false_for_bluesky_rows():
+    # Bluesky raw_json has no top-level "sensitive"/"media_attachments"
+    # keys at all -- its adult content is already hard-excluded via
+    # has_excluded_self_label instead.
+    assert content_filter.has_excluded_sensitive_media({"commit": {"record": {}}}) is False
+
+
+def test_has_excluded_sensitive_media_is_defensive_about_malformed_shapes():
+    assert content_filter.has_excluded_sensitive_media({}) is False
+    assert content_filter.has_excluded_sensitive_media(None) is False
+    assert content_filter.has_excluded_sensitive_media({"sensitive": True, "media_attachments": "not-a-list"}) is False
+
+
+def test_is_content_excluded_combines_all_five_checks():
     hashtag_only = ("mastodon", "free book #nsfw", {"commit": {"record": {}}})
     label_only = (
         "bluesky",
@@ -126,10 +169,16 @@ def test_is_content_excluded_combines_all_four_checks():
     )
     spoiler_only = ("mastodon", "a totally normal post", {"spoiler_text": "nsfw"})
     domain_only = ("mastodon", "a totally normal post", {"card": {"url": "https://amazon.com/dp/B00123"}})
+    sensitive_media_only = (
+        "mastodon",
+        "good morning everyone",
+        {"sensitive": True, "spoiler_text": "", "media_attachments": [{"type": "image"}]},
+    )
     neither = ("mastodon", "a totally normal post", {"commit": {"record": {}}})
 
     assert content_filter.is_content_excluded(*hashtag_only, TERMS, DOMAINS) is True
     assert content_filter.is_content_excluded(*label_only, TERMS, DOMAINS) is True
     assert content_filter.is_content_excluded(*spoiler_only, TERMS, DOMAINS) is True
     assert content_filter.is_content_excluded(*domain_only, TERMS, DOMAINS) is True
+    assert content_filter.is_content_excluded(*sensitive_media_only, TERMS, DOMAINS) is True
     assert content_filter.is_content_excluded(*neither, TERMS, DOMAINS) is False

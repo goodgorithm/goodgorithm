@@ -49,6 +49,31 @@ def has_excluded_self_label(raw_json: dict) -> bool:
     return any(v in ADULT_LABEL_VALUES for v in extract_self_label_values(raw_json))
 
 
+def has_excluded_sensitive_media(raw_json: dict) -> bool:
+    """Mastodon's sensitive flag (issue #72), narrowed to the one sub-case a
+    real production sample confirmed high-precision for adult content:
+    media attached AND no spoiler_text. The flag alone is too blunt to
+    hard-exclude on -- most sensitive-flagged posts with no media (or with
+    a spoiler_text) turned out to be ordinary CW-culture use (movie/game
+    spoilers, political discussion, mental-health disclosure, courtesy
+    "eye contact" selfie tags), not adult content, and would be wrongly
+    excluded, including genuinely positive content (a rescued-animal story
+    flagged sensitive for a predator scene, seen in the sample). A diverse
+    20-account sample of the media+no-spoiler-text combination, by
+    contrast, was effectively 100% genuine adult content. Bluesky rows
+    have no top-level "sensitive"/"media_attachments" keys at all (its
+    adult content is already hard-excluded via has_excluded_self_label
+    above), so this naturally returns False for them. See CLAUDE.md's
+    Content moderation section."""
+    raw_json = raw_json or {}
+    if raw_json.get("sensitive") is not True:
+        return False
+    media_attachments = raw_json.get("media_attachments")
+    if not isinstance(media_attachments, list) or not media_attachments:
+        return False
+    return not raw_json.get("spoiler_text")
+
+
 def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domains: frozenset[str]) -> bool:
     """suppressed_domains is db.fetch_suppressed_domains()'s whole-table read
     -- same moderator-curated, loaded-fresh-per-cycle contract as
@@ -77,4 +102,5 @@ def is_content_excluded(
         or has_excluded_self_label(raw_json)
         or has_excluded_spoiler_text(raw_json, suppressed_terms)
         or has_excluded_domain(source, raw_json, text, suppressed_domains)
+        or has_excluded_sensitive_media(raw_json)
     )
