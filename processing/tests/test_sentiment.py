@@ -168,6 +168,18 @@ def test_score_sentiment_batch_matches_single_post_score_call_for_call(fixture_o
     assert batch_results == individual_results
 
 
+def test_load_model_rejects_wrong_output_width(fixture_onnx_bytes_wrong_width, fixture_vocab):
+    # issue #74: mirrors category_model.py's label-order-mismatch test --
+    # a model whose real output width doesn't match EXPECTED_NUM_CLASSES
+    # must be treated as a load failure, not loaded "successfully" with a
+    # silently wrong score shape.
+    store = FakeModelStore(fixture_onnx_bytes_wrong_width, fixture_vocab)
+    sentiment.load_model(store)
+    assert sentiment.SENTIMENT_METHOD == "vader_v1"
+    score = sentiment.score_sentiment("great")
+    assert -1.0 <= score <= 1.0
+
+
 def test_load_model_uses_env_override_without_hitting_r2(fixture_onnx_bytes, fixture_vocab):
     # SENTIMENT_MODEL_VERSION set -> resolve_version() (the network call)
     # should never be reached at all, not just its result ignored.

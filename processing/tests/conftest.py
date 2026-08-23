@@ -62,6 +62,22 @@ def fixture_vocab() -> dict:
 
 
 @pytest.fixture
+def fixture_onnx_bytes_wrong_width() -> bytes:
+    """Same shape as fixture_onnx_bytes but with 2 output classes instead
+    of 3 -- exercises sentiment.py's load-time width-check smoke test
+    (issue #74), mirroring fixture_category_onnx_bytes's sibling use for
+    category_model.py's own label-order-mismatch test."""
+    prob_table = np.array(
+        [
+            [0.7, 0.3],
+            [0.1, 0.9],
+        ],
+        dtype=np.float32,
+    )
+    return _build_fixture_graph(prob_table)
+
+
+@pytest.fixture
 def fixture_category_onnx_bytes() -> bytes:
     """A real, tiny TF-IDF + one-vs-rest LogisticRegression pipeline,
     trained on trivial synthetic data and exported via skl2onnx exactly

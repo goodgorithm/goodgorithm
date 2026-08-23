@@ -14,6 +14,13 @@ logger = logging.getLogger("processing")
 # score so vader_v1/cnn_v1 results are distinguishable in processed_posts.
 SENTIMENT_METHOD = "vader_v1"
 
+# negative/neutral/positive -- architecturally fixed by sentiment_model.py's
+# final nn.Linear(..., 3) layer, not something that varies by version the
+# way category_model.py's label list can, so this is a hardcoded constant
+# rather than a config.json field. Used only by load_model()'s smoke test
+# below.
+EXPECTED_NUM_CLASSES = 3
+
 _analyzer: SentimentIntensityAnalyzer | None = None
 _session: ort.InferenceSession | None = None
 _vocab: dict | None = None
@@ -45,6 +52,19 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
         version = config.SENTIMENT_MODEL_VERSION or store.resolve_version()
         model_bytes, vocab, _model_config = store.fetch(version)
         session = ort.InferenceSession(model_bytes, providers=["CPUExecutionProvider"])
+
+        # Smoke-test probe, mirroring category_model.py's label-order-
+        # mismatch check -- catches a corrupted/mismatched export producing
+        # a different-width output, a silent-wrong-answer failure a shape
+        # check alone wouldn't otherwise catch until scores looked "off."
+        # Only verifies width, not label order -- order-safety comes from
+        # the training notebook's own export-time parity assertion, a
+        # training-time guarantee between versions, not a runtime one
+        # (the same limitation category_model.py's own width-only check has).
+        probe_ids = np.zeros((1, sentiment_model.MAX_SEQ_LEN), dtype=np.int64)
+        probe_width = session.run(None, {"input_ids": probe_ids})[0].shape[-1]
+        if probe_width != EXPECTED_NUM_CLASSES:
+            raise ValueError(f"ONNX output width {probe_width} != expected {EXPECTED_NUM_CLASSES} classes")
     except Exception:
         logger.exception("failed to load sentiment CNN from R2 — using VADER")
         return
