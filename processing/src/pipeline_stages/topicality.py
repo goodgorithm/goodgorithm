@@ -9,7 +9,7 @@ import spacy
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from infra import redis_client
-from util.text_normalize import normalize_text
+from util.text_normalize import normalize_text, split_camel_hashtags
 
 # TF-IDF salience + entity-burst detection -- see the wiki's Topicality
 # page for how this works and what each of these controls. Defaults are
@@ -209,7 +209,10 @@ def score_topicality(posts: list, index: BurstIndex) -> dict[UUID, TopicalityRes
     the wiki's Topicality page."""
     texts = [post.text for post in posts]
     tfidf_scores, tfidf_top_terms = _compute_tfidf(texts)
-    entities_by_post = extract_entities_batch(texts)
+    # split_camel_hashtags only, not normalize_text -- NER needs original
+    # casing (normalize_text lowercases), see issue #70. _compute_tfidf
+    # above already gets this via its own normalize_text() call.
+    entities_by_post = extract_entities_batch([split_camel_hashtags(t) for t in texts])
     entity_counts_by_post = index.bump_entities(entities_by_post)
 
     results: dict[UUID, TopicalityResult] = {}

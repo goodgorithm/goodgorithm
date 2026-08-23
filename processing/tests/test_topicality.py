@@ -215,6 +215,21 @@ def test_score_topicality_length_parity_narrows_vs_undiscounted_formula():
     assert new_ratio > old_ratio
 
 
+def test_score_topicality_splits_adjacent_camel_case_hashtags_into_separate_entities():
+    # issue #70: score_topicality's NER call site applies split_camel_hashtags
+    # (not the full normalize_text, which would lowercase and destroy the
+    # case-boundary signal camelCase splitting depends on) before extraction.
+    # Without it, adjacent glued hashtags confuse spaCy's NER into merging or
+    # dropping entities -- confirmed here: the raw glued form only recovers
+    # one of three names, while the split form recovers all three as
+    # separate entities.
+    index = InMemoryBurstIndex()
+    post = FakePost(id=uuid4(), text="Great cast announcement #TomHanks #MerylStreep #DenzelWashington")
+    result = topicality.score_topicality([post], index)[post.id]
+
+    assert result.entities == ["tom hanks", "meryl streep", "denzel washington"]
+
+
 def test_score_topicality_first_mention_has_minimal_burst_boost():
     # bump_entities counts the current mention too, so a first sighting
     # isn't literally zero — it's 1-of-BURST_THRESHOLD, a small nudge that
