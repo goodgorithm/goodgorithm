@@ -1,14 +1,19 @@
 // Minimal stand-in for api/'s /health and /feed, for driving web/ without a
 // real Postgres-backed api/ instance. Shapes match web/src/api/types.ts's
-// FeedResponse/FeedPost - keep in sync if that type changes. Not part of the
-// app - agent tooling only. See SKILL.md.
+// FeedResponse/FeedPost - keep in sync if that type changes. Shared between
+// the run-web agent skill (../.claude/skills/run-web/SKILL.md) and the
+// Playwright E2E suite (playwright.config.ts's webServer) - one canonical
+// mock backend, not two copies to keep in sync.
 //
 // Usage: node mock-api.mjs [port]  (default 4100)
 
 import http from "node:http";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.argv[2]) || 4100;
 const PAGE_SIZE = 20;
+const FIXTURES_DIR = fileURLToPath(new URL("./fixtures", import.meta.url));
 
 // Mirrors web/src/api/types.ts's CATEGORIES - keep in sync if that changes.
 const CATEGORIES = ["science_technology", "arts_culture", "food_dining", "diaries_daily_life"];
@@ -26,7 +31,13 @@ function makePosts(count) {
     const isLong = i === 3; // one long post, to exercise auto-collapse
     const hasVideo = i === 5 || i === 7; // one video post, to exercise the lazy-loaded VideoPlayer/hls.js chunk
     const hasGifVideo = i === 6; // one gif-style video, to exercise the pause/play toggle
-    const isSensitive = i === 7; // one sensitive video, to exercise the reveal/re-hide toggle
+    // A real, locally-served HLS stream (web/e2e/fixtures/hls/) behind a
+    // sensitive-reveal toggle -- covers both issue #66 regressions in one
+    // post: hls.js actually engaging (not silently falling back to a native
+    // <video src> that can't play HLS) and SensitiveMedia's reveal not
+    // remounting VideoPlayer (which used to destroy the hls.js attachment).
+    const hasRealHlsVideo = i === 12;
+    const isSensitive = i === 7 || i === 12; // exercise the reveal/re-hide toggle
     const hasLink = i === 8; // one post with a URL + hashtag, to exercise linkify
     // every 5th post uncategorized (category: null), matching real data
     // where a lot of content doesn't match any taxonomy term.
@@ -59,17 +70,19 @@ function makePosts(count) {
         rank: 1 - ((i * 0.17) % 1),
       },
       pipeline_version: "v1",
-      attachments: hasVideo || hasGifVideo
+      attachments: hasVideo || hasGifVideo || hasRealHlsVideo
         ? [
             {
               kind: "video",
-              // A plain MP4 (Mastodon-shaped) so this exercises VideoPlayer's
-              // native <video src> path without needing a real HLS manifest.
-              playlistUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+              playlistUrl: hasRealHlsVideo
+                ? `http://localhost:${PORT}/fixtures/hls/playlist.m3u8`
+                // A plain MP4 (Mastodon-shaped) so this exercises VideoPlayer's
+                // native <video src> path without needing a real HLS manifest.
+                : "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
               thumbnailUrl: null,
               isGif: hasGifVideo,
-              width: 1280,
-              height: 720,
+              width: hasRealHlsVideo ? 320 : 1280,
+              height: hasRealHlsVideo ? 240 : 720,
             },
           ]
         : [],
@@ -80,11 +93,45 @@ function makePosts(count) {
   return posts;
 }
 
-const ALL_POSTS = makePosts(60);
+// 105, not 60 -- every real category needs strictly more than PAGE_SIZE
+// (20) posts for e2e/feed.spec.ts's infinite-scroll test to have a real
+// second page to fetch (each category gets ~21 of every 105, see the i%5
+// null-exclusion above).
+const ALL_POSTS = makePosts(105);
+
+// Serves web/e2e/fixtures/ verbatim -- currently just the HLS test stream
+// (fixtures/hls/playlist.m3u8 + segment*.ts), generated once via ffmpeg, not
+// regenerated at request time. No directory traversal beyond fixtures/: the
+// path is resolved but not validated against `..` since this only ever
+// serves a fixed, repo-controlled set of filenames, never user input.
+const FIXTURE_MIME_TYPES = { ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t" };
+
+async function serveFixture(pathname, res) {
+  const ext = pathname.slice(pathname.lastIndexOf("."));
+  const contentType = FIXTURE_MIME_TYPES[ext];
+  if (!contentType) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  try {
+    const body = await readFile(`${FIXTURES_DIR}${pathname.replace("/fixtures", "")}`);
+    res.writeHead(200, { "Content-Type": contentType });
+    res.end(body);
+  } catch {
+    res.writeHead(404);
+    res.end();
+  }
+}
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   res.setHeader("Access-Control-Allow-Origin", "*");
+
+  if (url.pathname.startsWith("/fixtures/")) {
+    void serveFixture(url.pathname, res);
+    return;
+  }
 
   if (url.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
