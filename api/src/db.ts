@@ -27,6 +27,13 @@ export interface FeedRow {
   mastodon_permalink: string | null;
   mastodon_display_name: string | null;
   mastodon_avatar_url: string | null;
+  // Bluesky's own AppView-resolved author (issue #73) - Jetstream's firehose
+  // never carries this, unlike Mastodon's raw_json which embeds it for free.
+  // NULL for Mastodon rows (which don't need it) and for not-yet-swept or
+  // unresolvable Bluesky rows. Exactly one of the mastodon_/bluesky_author_*
+  // pairs is ever non-null per row, by source - see feed.ts's coalesce.
+  bluesky_author_display_name: string | null;
+  bluesky_author_avatar_url: string | null;
   bluesky_embed: unknown;
   mastodon_media: unknown;
   mastodon_card: unknown;
@@ -49,6 +56,8 @@ export async function fetchFeed(
            r.raw_json->>'url' AS mastodon_permalink,
            r.raw_json->'account'->>'display_name' AS mastodon_display_name,
            r.raw_json->'account'->>'avatar' AS mastodon_avatar_url,
+           p.bluesky_author->>'displayName' AS bluesky_author_display_name,
+           p.bluesky_author->>'avatarUrl' AS bluesky_author_avatar_url,
            r.raw_json->'commit'->'record'->'embed' AS bluesky_embed,
            r.raw_json->'media_attachments' AS mastodon_media,
            r.raw_json->'card' AS mastodon_card,

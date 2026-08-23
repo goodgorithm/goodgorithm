@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import config
 from infra import db, redis_guard
 from pipeline_stages import (
+    author_resolver,
     bot_filter,
     category_model,
     content_filter,
@@ -46,6 +47,10 @@ PIPELINE_VERSION = "v3"
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
 MODERATION_RECHECK_BATCH_SIZE = int(os.environ.get("MODERATION_RECHECK_BATCH_SIZE", "500"))
+
+# Batch size for resolve_authors()'s sweep -- see the wiki's Configuration
+# page.
+AUTHOR_RESOLVE_BATCH_SIZE = int(os.environ.get("AUTHOR_RESOLVE_BATCH_SIZE", "500"))
 
 
 def enforce_redis_capacity() -> None:
@@ -237,6 +242,39 @@ def refresh_rankings() -> int:
 
     logger.info("refreshed rankings for %d posts", len(results))
     return len(results)
+
+
+def resolve_authors() -> int:
+    """Resolves a post's own author display name/avatar via Bluesky's
+    public AppView (issue #73) -- Jetstream's firehose never carries this,
+    unlike Mastodon whose API response embeds it for free (api/ reads it
+    straight from raw_json for those, no resolution needed). Deliberately
+    scoped to already-*ranked* posts only (db.fetch_bluesky_posts_needing_author_resolution),
+    not every ingested post -- measured: ~8% of ingested Bluesky posts
+    ever get ranked/shown at all, so resolving the rest would be pure
+    waste (~57,000 distinct authors vs. ~2,700 among ranked posts).
+    Must run after refresh_rankings() in the caller's loop, not before --
+    its candidate population depends on rank_score already being set this
+    cycle. Throttled by the caller (main.py), same reasoning as
+    recheck_moderation -- this calls an external API in batches, must not
+    compound under a large backlog. See the wiki's Pipeline Internals and
+    Configuration pages."""
+    posts = db.fetch_bluesky_posts_needing_author_resolution(AUTHOR_RESOLVE_BATCH_SIZE)
+    if not posts:
+        return 0
+
+    results = author_resolver.resolve_authors(posts)
+    resolved: list[tuple] = []
+    for post in posts:
+        if post.raw_post_id not in results:
+            continue  # batch failed -- left unresolved, retried next sweep
+        resolved.append((post.raw_post_id, results[post.raw_post_id]))
+
+    db.mark_authors_resolved(resolved)
+    found = sum(1 for _, author in resolved if author is not None)
+    if resolved:
+        logger.info("resolved author info for %d/%d swept bluesky posts", found, len(resolved))
+    return found
 
 
 def purge_blocked_authors() -> int:

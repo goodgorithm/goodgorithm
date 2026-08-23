@@ -265,6 +265,71 @@ def mark_moderation_checked(raw_post_ids: list[UUID]) -> None:
             )
 
 
+@dataclass
+class UnresolvedAuthorPost:
+    raw_post_id: UUID
+    source_id: str
+    author_id: str
+
+
+def fetch_bluesky_posts_needing_author_resolution(batch_size: int) -> list[UnresolvedAuthorPost]:
+    """Bounded batch of already-*ranked* Bluesky posts author_resolver.py
+    hasn't resolved yet (issue #73). Deliberately scoped to rank_score IS
+    NOT NULL, not every Bluesky post the way fetch_unchecked_bluesky_posts
+    is -- only ~8% of ingested Bluesky posts ever get ranked/shown at all,
+    so resolving author info for the rest would be pure waste (measured:
+    ~2,700 distinct authors among ranked posts vs. ~57,000 among all
+    ingested ones). No time window needed -- author_resolved_at is set
+    exactly once and never re-derived, same contract as
+    moderation_checked_at."""
+    with pool.connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.raw_post_id, r.source_id, r.author_id
+            FROM processed_posts p
+            JOIN raw_posts r ON r.id = p.raw_post_id
+            WHERE r.source = 'bluesky' AND p.rank_score IS NOT NULL AND p.author_resolved_at IS NULL
+            ORDER BY r.created_at DESC
+            LIMIT %s
+            """,
+            (batch_size,),
+        ).fetchall()
+    return [UnresolvedAuthorPost(*row) for row in rows]
+
+
+def mark_authors_resolved(results: list[tuple[UUID, dict | None]]) -> None:
+    """Bulk-writes (raw_post_id, bluesky_author) pairs from author_resolver.py's
+    sweep. Can't reuse mark_moderation_checked's exact shape -- that writes
+    one shared constant (NOW()) to many rows, while each row here carries
+    its own distinct JSONB value -- so this is its own chunked multi-row
+    UPDATE, same DB_RANK_SCORE_UPDATE_CHUNK_SIZE pattern as
+    update_rank_scores/mark_moderation_checked. A `None` bluesky_author is
+    a definitive "no author data available" result (mirrors
+    moderation_recheck.py's clean-vs-absent contract for a post Bluesky's
+    AppView didn't return) -- author_resolved_at is still set either way,
+    so a permanently-unresolvable post isn't retried every sweep."""
+    if not results:
+        return
+    with pool.connection() as conn:
+        for i in range(0, len(results), DB_RANK_SCORE_UPDATE_CHUNK_SIZE):
+            chunk = results[i : i + DB_RANK_SCORE_UPDATE_CHUNK_SIZE]
+            values_sql = ", ".join(["(%s::uuid, %s::jsonb)"] * len(chunk))
+            params = [
+                value
+                for raw_post_id, author in chunk
+                for value in (raw_post_id, Jsonb(author) if author is not None else None)
+            ]
+            conn.execute(
+                f"""
+                UPDATE processed_posts AS p
+                SET bluesky_author = v.bluesky_author, author_resolved_at = NOW()
+                FROM (VALUES {values_sql}) AS v(raw_post_id, bluesky_author)
+                WHERE p.raw_post_id = v.raw_post_id
+                """,
+                params,
+            )
+
+
 def fetch_blocked_authors() -> set[tuple[str, str]]:
     """Whole table, loaded fresh once per cycle -- the moderation blocklist
     is small (manual entries + Bluesky bot-label auto-inserts), cheaper

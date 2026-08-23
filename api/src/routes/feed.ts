@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { buildAttachments } from "../attachments";
+import { buildAuthor } from "../author";
 import { fetchFeed } from "../db";
 import { decodeCursor, encodeCursor, type Cursor } from "../pagination";
 import { buildPermalink } from "../permalink";
@@ -66,10 +67,7 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
             created_at: row.created_at,
             entities: row.entities ?? [],
             permalink: buildPermalink(row),
-            author: {
-              display_name: row.mastodon_display_name,
-              avatar_url: row.mastodon_avatar_url,
-            },
+            author: buildAuthor(row),
             scores: {
               sentiment: row.sentiment_score,
               topicality: row.topicality_score,

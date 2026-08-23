@@ -74,6 +74,16 @@ def main() -> None:
         type=int,
         default=int(os.environ.get("MODERATION_RECHECK_INTERVAL_SECONDS", 10)),
     )
+    # Cosmetic, not a safety backstop like --moderation-recheck-interval --
+    # no need to chase Bluesky's AppView aggressively for this. Must run
+    # after refresh_rankings in the loop below: its candidate population
+    # (rank_score IS NOT NULL) depends on that stage having already run
+    # this cycle. See issue #73 and the wiki's Configuration page.
+    parser.add_argument(
+        "--author-resolve-interval",
+        type=int,
+        default=int(os.environ.get("AUTHOR_RESOLVE_INTERVAL_SECONDS", 60)),
+    )
     args = parser.parse_args()
 
     config.validate()
@@ -86,6 +96,7 @@ def main() -> None:
         pipeline.run_cycle(args.batch_size)
         pipeline.recheck_moderation()
         pipeline.refresh_rankings()
+        pipeline.resolve_authors()
         pipeline.cleanup_old_data()
         pipeline.purge_blocked_authors()
         network_detector.record_clusters(network_detector.detect_clusters())
@@ -96,6 +107,7 @@ def main() -> None:
     last_network_detection_time = 0.0
     last_redis_guard_time = 0.0
     last_moderation_recheck_time = 0.0
+    last_author_resolve_time = 0.0
     while not _shutdown:
         now = time.monotonic()
         if now - last_redis_guard_time >= args.redis_guard_interval:
@@ -112,6 +124,11 @@ def main() -> None:
         if now - last_refresh_time >= args.refresh_interval:
             pipeline.refresh_rankings()
             last_refresh_time = now
+
+        now = time.monotonic()
+        if now - last_author_resolve_time >= args.author_resolve_interval:
+            pipeline.resolve_authors()
+            last_author_resolve_time = now
 
         if now - last_network_detection_time >= args.network_detection_interval:
             network_detector.record_clusters(network_detector.detect_clusters())
