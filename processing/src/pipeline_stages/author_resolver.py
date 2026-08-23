@@ -3,7 +3,7 @@ import logging
 import requests
 
 from infra.db import UnresolvedAuthorPost
-from pipeline_stages.quote_resolver import APPVIEW_BASE, GET_POSTS_MAX_URIS, QUOTE_RESOLVER_REQUEST_TIMEOUT_SECONDS
+from util.bluesky_appview import APPVIEW_BASE, APPVIEW_REQUEST_TIMEOUT_SECONDS, GET_POSTS_MAX_URIS
 
 logger = logging.getLogger("processing")
 
@@ -73,7 +73,7 @@ def resolve_authors(posts: list[UnresolvedAuthorPost]) -> dict:
             response = requests.get(
                 f"{APPVIEW_BASE}/app.bsky.feed.getPosts",
                 params=[("uris", uri) for uri in batch],
-                timeout=QUOTE_RESOLVER_REQUEST_TIMEOUT_SECONDS,
+                timeout=APPVIEW_REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
             payload = response.json()

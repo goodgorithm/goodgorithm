@@ -15,12 +15,12 @@ logger = logging.getLogger("processing")
 # Mastodon server whose own card-fetch failed) -- the same og:image
 # mechanism Mastodon's server already uses for the cards that do work.
 #
-# Unlike quote_resolver.py's Bluesky AppView calls (a fixed, trusted host),
-# this fetches arbitrary URLs a random poster put in their post -- a real
-# SSRF surface. _is_safe_public_url is the required gate, not an optional
-# extra: without it a malicious post could point at a cloud metadata
-# endpoint or an internal service and have this dutifully fetch it. See
-# the wiki's Thumbnail Resolution page.
+# Unlike util/bluesky_appview.py's Bluesky AppView calls (a fixed, trusted
+# host), this fetches arbitrary URLs a random poster put in their post --
+# a real SSRF surface. _is_safe_public_url is the required gate, not an
+# optional extra: without it a malicious post could point at a cloud
+# metadata endpoint or an internal service and have this dutifully fetch
+# it. See the wiki's Thumbnail Resolution page.
 THUMBNAIL_RESOLVER_REQUEST_TIMEOUT_SECONDS = int(
     os.environ.get("THUMBNAIL_RESOLVER_REQUEST_TIMEOUT_SECONDS", "10")
 )
@@ -30,7 +30,7 @@ THUMBNAIL_RESOLVER_MAX_RESPONSE_BYTES = int(
     os.environ.get("THUMBNAIL_RESOLVER_MAX_RESPONSE_BYTES", str(2 * 1024 * 1024))
 )
 # A project identity string sent to third-party servers, not an operator
-# tunable -- not an env var, same reasoning as quote_resolver.py's
+# tunable -- not an env var, same reasoning as util/bluesky_appview.py's
 # APPVIEW_BASE.
 USER_AGENT = "Goodgorithm/0.1 (+https://github.com/goodgorithm/goodgorithm)"
 

@@ -1,21 +1,11 @@
 import logging
-import os
 
 import requests
 
 from pipeline_stages import content_filter
+from util.bluesky_appview import APPVIEW_BASE, APPVIEW_REQUEST_TIMEOUT_SECONDS, GET_POSTS_MAX_URIS
 
 logger = logging.getLogger("processing")
-
-# Bluesky's own public, unauthenticated AppView instance -- not something
-# an operator would tune, so it's not an env var, same as ingestion/'s
-# Jetstream URL. See the wiki's Bluesky Protocol page.
-APPVIEW_BASE = "https://public.api.bsky.app/xrpc"
-# app.bsky.feed.getPosts' documented max URIs per call -- an external API
-# limit, not a tunable; raising this would just make oversized batches
-# fail against Bluesky's own enforcement.
-GET_POSTS_MAX_URIS = 25
-QUOTE_RESOLVER_REQUEST_TIMEOUT_SECONDS = int(os.environ.get("QUOTE_RESOLVER_REQUEST_TIMEOUT_SECONDS", "10"))
 
 
 def extract_quote_uri(raw_json: dict) -> str | None:
@@ -120,7 +110,7 @@ def resolve_quotes(
             response = requests.get(
                 f"{APPVIEW_BASE}/app.bsky.feed.getPosts",
                 params=[("uris", uri) for uri in batch],
-                timeout=QUOTE_RESOLVER_REQUEST_TIMEOUT_SECONDS,
+                timeout=APPVIEW_REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
             payload = response.json()
