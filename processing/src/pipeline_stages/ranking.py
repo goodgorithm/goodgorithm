@@ -27,8 +27,16 @@ RANKING_SIMILARITY_ENTITY_WEIGHT = float(os.environ.get("RANKING_SIMILARITY_ENTI
 # Source-diversity signal, not a content-similarity one -- two posts from the
 # same author count as "similar" for MMR's diversity penalty regardless of
 # topic overlap, so one prolific source can't crowd out other quality
-# sources just by posting more. See the wiki's Ranking page.
-RANKING_SIMILARITY_AUTHOR_WEIGHT = float(os.environ.get("RANKING_SIMILARITY_AUTHOR_WEIGHT", "0.3"))
+# sources just by posting more. 20x TFIDF_WEIGHT/ENTITY_WEIGHT's default,
+# deliberately: a source with a genuinely deep reserve of individually
+# high-scoring posts can keep refilling MMR's selection from that reserve
+# once cheaper diverse alternatives run out, unless the same-author
+# penalty is large enough to make even the deepest reserve unattractive --
+# a real news story covered by many different authors doesn't have that
+# dynamic, since its supply is naturally finite, which is why the
+# content-similarity weights don't need the same scale.
+# See the wiki's Ranking page.
+RANKING_SIMILARITY_AUTHOR_WEIGHT = float(os.environ.get("RANKING_SIMILARITY_AUTHOR_WEIGHT", "10.0"))
 
 
 @dataclass
