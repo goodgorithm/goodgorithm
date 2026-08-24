@@ -38,7 +38,7 @@ Before starting work, comment on the issue saying you're picking it up — this 
 
 ## Coding conventions
 
-No separate style guide — what CI actually checks (below) is the real bar. Beyond that, match what's already in the file you're touching: this codebase leans toward small, focused functions over abstraction, and comments that explain a non-obvious *why* (a workaround, a trade-off, an incident that shaped the code) rather than restating *what* the code already says. If you're unsure, look at how a neighboring function in the same file is written and follow it, rather than introducing a new pattern.
+No separate style guide — what CI actually checks (below) is the real bar. Beyond that, match what's already in the file you're touching: this codebase leans toward small, focused functions over abstraction, and comments that explain a non-obvious *why* (a workaround, a trade-off, a load-bearing constraint) rather than restating *what* the code already says or narrating the history of how it got that way — see [`CLAUDE.md`'s Documentation and comment style section](CLAUDE.md#documentation-and-comment-style) for the full guidance. If you're unsure, look at how a neighboring function in the same file is written and follow it, rather than introducing a new pattern.
 
 ## What CI checks
 
