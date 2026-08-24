@@ -37,9 +37,27 @@ export interface FeedPostScores {
   rank: number;
 }
 
+// Mastodon's custom-emoji shortcode mechanism (issue #77) - a `:shortcode:`
+// in display_name/post text is meant to render as this inline image,
+// client-side, per Mastodon's own convention. Bluesky has no equivalent,
+// so this is always `[]` for Bluesky posts/authors. Only the two fields
+// web/ actually needs to render one - Mastodon's API also returns
+// `static_url`/`visible_in_picker`/`category`, none of which apply here
+// (no emoji picker exists in this product).
+export interface CustomEmoji {
+  shortcode: string;
+  url: string;
+}
+
 export interface FeedPostAuthor {
   display_name: string | null;
   avatar_url: string | null;
+  // account.emojis - resolves shortcodes used in display_name. A post's
+  // own text uses a separate array (FeedPost.emojis below, from the
+  // status's own emojis) - Mastodon models these independently since an
+  // account's display name and a specific post can use different custom
+  // emoji sets.
+  emojis: CustomEmoji[];
 }
 
 // Pre-shaped by processing/'s quote_resolver.py at scoring time (batched
@@ -94,6 +112,9 @@ export interface FeedPost {
   entities: string[];
   permalink: string;
   author: FeedPostAuthor;
+  // Resolves shortcodes used in `text` itself (issue #77) - the status's
+  // own emojis array, distinct from author.emojis above.
+  emojis: CustomEmoji[];
   scores: FeedPostScores;
   // Which pipeline logic produced this post's scores - see CLAUDE.md's
   // Versioning & migration section.

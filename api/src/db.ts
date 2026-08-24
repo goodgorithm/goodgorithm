@@ -34,6 +34,11 @@ export interface FeedRow {
   // pairs is ever non-null per row, by source - see feed.ts's coalesce.
   bluesky_author_display_name: string | null;
   bluesky_author_avatar_url: string | null;
+  // Mastodon's custom-emoji shortcode data (issue #77) - see emoji.ts's
+  // buildEmojis. Always null/absent for Bluesky rows, which have no
+  // equivalent concept - db.ts never selects a Bluesky counterpart.
+  mastodon_account_emojis: unknown;
+  mastodon_status_emojis: unknown;
   bluesky_embed: unknown;
   mastodon_media: unknown;
   mastodon_card: unknown;
@@ -58,6 +63,8 @@ export async function fetchFeed(
            r.raw_json->'account'->>'avatar' AS mastodon_avatar_url,
            p.bluesky_author->>'displayName' AS bluesky_author_display_name,
            p.bluesky_author->>'avatarUrl' AS bluesky_author_avatar_url,
+           r.raw_json->'account'->'emojis' AS mastodon_account_emojis,
+           r.raw_json->'emojis' AS mastodon_status_emojis,
            r.raw_json->'commit'->'record'->'embed' AS bluesky_embed,
            r.raw_json->'media_attachments' AS mastodon_media,
            r.raw_json->'card' AS mastodon_card,

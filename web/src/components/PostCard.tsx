@@ -1,4 +1,5 @@
 import type { FeedPost } from "../api/types";
+import { renderEmojiShortcodes } from "../lib/emoji";
 import type { RelativeFractions } from "../lib/scoreScale";
 import { CollapsiblePostText } from "./CollapsiblePostText";
 import { EntityTags } from "./EntityTags";
@@ -42,12 +43,19 @@ export function PostCard({
           />
         )}
         {post.author.display_name && (
-          <span className={styles.authorName}>{post.author.display_name}</span>
+          <span className={styles.authorName}>
+            {renderEmojiShortcodes(post.author.display_name, post.author.emojis)}
+          </span>
         )}
         <RelativeTime date={post.created_at} />
       </div>
 
-      <CollapsiblePostText text={post.text} source={post.source} permalink={post.permalink} />
+      <CollapsiblePostText
+        text={post.text}
+        emojis={post.emojis}
+        source={post.source}
+        permalink={post.permalink}
+      />
       <EntityTags entities={post.entities} />
       <PostAttachments post={post} />
 

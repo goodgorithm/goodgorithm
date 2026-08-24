@@ -18,6 +18,11 @@ const FIXTURES_DIR = fileURLToPath(new URL("./fixtures", import.meta.url));
 // Mirrors web/src/api/types.ts's CATEGORIES - keep in sync if that changes.
 const CATEGORIES = ["science_technology", "arts_culture", "food_dining", "diaries_daily_life"];
 
+// A minimal 1x1 PNG, used as a stand-in custom-emoji image (issue #77) -
+// a data: URI needs no network fetch, keeping the mock fully offline.
+const EMOJI_DATA_URI =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
 const LONG_TEXT =
   "Neighbors on Elm Street spent the whole weekend rebuilding the community garden after the storm knocked over half the raised beds. " +
   "Someone brought a truckload of compost, someone else donated seedlings, and by Sunday evening there were fresh rows of tomatoes, peppers, and squash going in the ground. " +
@@ -39,6 +44,12 @@ function makePosts(count) {
     const hasRealHlsVideo = i === 12;
     const isSensitive = i === 7 || i === 12; // exercise the reveal/re-hide toggle
     const hasLink = i === 8; // one post with a URL + hashtag, to exercise linkify
+    // One Mastodon post with a custom-emoji shortcode in both its display
+    // name and its own text (issue #77) - exercises renderEmojiShortcodes
+    // in both call sites and its composition with linkify in the post-text
+    // case (i === 11 is odd, i.e. "mastodon" per the source calc below -
+    // Bluesky has no custom-emoji concept, so this only makes sense there).
+    const hasEmoji = i === 11;
     // every 5th post uncategorized (category: null), matching real data
     // where a lot of content doesn't match any taxonomy term.
     const category = i % 5 === 0 ? null : CATEGORIES[i % CATEGORIES.length];
@@ -51,11 +62,22 @@ function makePosts(count) {
         ? LONG_TEXT
         : hasLink
           ? `Loving this #goodnews today - check it out at https://example.com/story.`
-          : `Short uplifting post number ${i} (${category ?? "uncategorized"}).`,
+          : hasEmoji
+            ? `So happy right now :blobcat: check this out https://example.com/story`
+            : `Short uplifting post number ${i} (${category ?? "uncategorized"}).`,
       created_at: new Date(Date.now() - i * 60_000).toISOString(),
       entities: [],
       permalink: source === "mastodon" ? `https://fosstodon.org/@user${i}/${i}` : `https://example.com/post/${i}`,
-      author: { display_name: `Person ${i}`, avatar_url: null },
+      author: {
+        display_name: hasEmoji ? `Person ${i} :bot:` : `Person ${i}`,
+        avatar_url: null,
+        // A tiny inline data: URI, not a real Mastodon CDN URL - keeps this
+        // mock fully offline (no network dependency for the driver/E2E
+        // suite to flake on), unlike every other image field here which
+        // points at a real or fixture URL.
+        emojis: hasEmoji ? [{ shortcode: "bot", url: EMOJI_DATA_URI }] : [],
+      },
+      emojis: hasEmoji ? [{ shortcode: "blobcat", url: EMOJI_DATA_URI }] : [],
       // Varies across posts so the score bars' fill levels actually differ
       // instead of every card looking identical. Sentiment stays within the
       // realistic post-eligibility range (0.3-1.0, see ranking.py's

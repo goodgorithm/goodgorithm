@@ -1,0 +1,8 @@
+/* Sized/aligned to sit inline with surrounding text, matching Mastodon's
+   own client convention for custom emoji. */
+.emoji {
+  height: 1.2em;
+  width: 1.2em;
+  vertical-align: text-bottom;
+  object-fit: contain;
+}

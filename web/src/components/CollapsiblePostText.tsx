@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
-import type { Source } from "../api/types";
+import type { CustomEmoji, Source } from "../api/types";
+import { renderEmojiShortcodes } from "../lib/emoji";
 import { linkify } from "../lib/linkify";
 import styles from "./CollapsiblePostText.module.css";
 
@@ -12,10 +13,12 @@ const COLLAPSE_THRESHOLD_CHARS = 400;
 
 export function CollapsiblePostText({
   text,
+  emojis,
   source,
   permalink,
 }: {
   text: string;
+  emojis: CustomEmoji[];
   source: Source;
   permalink: string;
 }) {
@@ -26,7 +29,15 @@ export function CollapsiblePostText({
   // collapsed" (false on first render too) - only the former should ever
   // move the scroll position.
   const wasExpandedRef = useRef(false);
-  const content = linkify(text, source, permalink);
+  // Emoji substitution runs first, then linkify only over the plain-text
+  // segments it leaves behind (an emoji <img> has no URLs/hashtags of its
+  // own to find) - each segment gets its own keyed Fragment so linkify's
+  // own internal key counter (which restarts at 0 per call) never collides
+  // with another segment's, since React only requires key uniqueness among
+  // siblings, not globally (issue #77).
+  const content = renderEmojiShortcodes(text, emojis).map((segment, i) => (
+    <Fragment key={i}>{typeof segment === "string" ? linkify(segment, source, permalink) : segment}</Fragment>
+  ));
 
   useEffect(() => {
     // Collapsing shrinks the post's height, which pulls everything below

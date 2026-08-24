@@ -14,7 +14,8 @@ const bskyPost: FeedPost = {
   created_at: new Date().toISOString(),
   entities: ["nice thing"],
   permalink: "https://bsky.app/profile/did:plc:abc123/post/xyz",
-  author: { display_name: null, avatar_url: null },
+  author: { display_name: null, avatar_url: null, emojis: [] },
+  emojis: [],
   scores: { sentiment: 0.9, topicality: 1.2, base: 1.1, rank: 0.8 },
   pipeline_version: "v1",
   attachments: [],
@@ -27,7 +28,7 @@ const mastodonPost: FeedPost = {
   id: "2",
   source: "mastodon",
   permalink: "https://fosstodon.org/@someone/123",
-  author: { display_name: "Someone Nice", avatar_url: "https://example.com/a.png" },
+  author: { display_name: "Someone Nice", avatar_url: "https://example.com/a.png", emojis: [] },
 };
 
 describe("PostCard", () => {
@@ -51,6 +52,23 @@ describe("PostCard", () => {
     render(<PostCard post={mastodonPost} relative={noRelative} />);
     expect(screen.getByText("Someone Nice")).toBeInTheDocument();
     expect(screen.getByRole("img")).toBeInTheDocument();
+  });
+
+  it("renders a custom emoji shortcode in the display name as an inline image (issue #77)", () => {
+    const post: FeedPost = {
+      ...mastodonPost,
+      author: {
+        display_name: "Volodymyr Zelenskyy :bot:",
+        avatar_url: null,
+        emojis: [{ shortcode: "bot", url: "https://example.com/bot.png" }],
+      },
+    };
+    render(<PostCard post={post} relative={noRelative} />);
+
+    expect(screen.getByText(/Volodymyr Zelenskyy/)).toBeInTheDocument();
+    expect(screen.queryByText(":bot:")).not.toBeInTheDocument();
+    const emojiImg = screen.getByAltText(":bot:");
+    expect(emojiImg).toHaveAttribute("src", "https://example.com/bot.png");
   });
 
   it("exposes raw scores behind a details toggle", () => {

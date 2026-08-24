@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { buildAttachments } from "../attachments";
 import { buildAuthor } from "../author";
 import { fetchFeed } from "../db";
+import { buildEmojis } from "../emoji";
 import { decodeCursor, encodeCursor, type Cursor } from "../pagination";
 import { buildPermalink } from "../permalink";
 import { CATEGORIES } from "../types";
@@ -68,6 +69,7 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
             entities: row.entities ?? [],
             permalink: buildPermalink(row),
             author: buildAuthor(row),
+            emojis: buildEmojis(row.mastodon_status_emojis),
             scores: {
               sentiment: row.sentiment_score,
               topicality: row.topicality_score,
