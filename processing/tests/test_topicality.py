@@ -245,3 +245,28 @@ def test_score_topicality_first_mention_has_minimal_burst_boost():
     assert result.burst_component == 1 / topicality.TOPICALITY_BURST_THRESHOLD
     assert result.entities == ["nasa"]
     assert result.score > result.tfidf_component
+
+
+class RaisingPipeline:
+    def execute(self, command):
+        return self
+
+    def exec(self):
+        raise RuntimeError("redis unreachable")
+
+
+class RaisingClient:
+    def pipeline(self):
+        return RaisingPipeline()
+
+
+def test_redis_burst_index_degrades_on_bump_entities_failure(monkeypatch):
+    from infra import degradation, redis_client
+
+    monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
+    index = topicality.RedisBurstIndex()
+
+    result = index.bump_entities([["earthquake", "california"], ["sourdough"]])
+
+    assert result == [{}, {}]
+    assert "topicality" in degradation.snapshot()

@@ -8,6 +8,17 @@ from psycopg_pool import ConnectionPool
 
 import config
 
+# No try/except anywhere in this file, deliberately -- unlike Redis (an
+# auxiliary signal input dedup/bot_filter/topicality can degrade without),
+# a Postgres write here IS the actual deliverable of most pipeline stages
+# (upsert_processed_posts, update_rank_scores, mark_moderation_checked,
+# purge_blocked_authors, etc.). Silently swallowing a write failure would
+# mean a cycle claims success while having done nothing -- a more
+# deceptive failure than the loud crash this file's current behavior
+# produces instead. An explicit decision, not the accidental default it
+# looked like before this was written down -- see CLAUDE.md's Service
+# resilience section and the wiki's Pipeline Internals page.
+
 # See the wiki's Pipeline Internals page for what each of these controls.
 DB_POOL_MIN_SIZE = int(os.environ.get("DB_POOL_MIN_SIZE", "1"))
 DB_POOL_MAX_SIZE = int(os.environ.get("DB_POOL_MAX_SIZE", "5"))

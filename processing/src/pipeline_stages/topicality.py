@@ -8,7 +8,7 @@ import numpy as np
 import spacy
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from infra import redis_client
+from infra import degradation, redis_client
 from util.text_normalize import normalize_text, split_camel_hashtags
 
 # TF-IDF salience + entity-burst detection -- see the wiki's Topicality
@@ -173,12 +173,23 @@ class RedisBurstIndex:
         if not flat_entities:
             return [{} for _ in entities_by_post]
 
-        pipe = self.client.pipeline()
-        for entity in flat_entities:
-            key = f"burst:entity:{entity[:TOPICALITY_ENTITY_KEY_MAX_LEN]}"
-            pipe.incr(key)
-            pipe.expire(key, TOPICALITY_BURST_TTL_SECONDS)
-        results = pipe.exec()
+        try:
+            pipe = self.client.pipeline()
+            for entity in flat_entities:
+                key = f"burst:entity:{entity[:TOPICALITY_ENTITY_KEY_MAX_LEN]}"
+                pipe.incr(key)
+                pipe.expire(key, TOPICALITY_BURST_TTL_SECONDS)
+            results = pipe.exec()
+        except Exception as exc:
+            # Degrades to the same shape this function already returns for
+            # "no entities at all" -- every post's burst_component becomes 0
+            # for the batch, so score just falls back to plain
+            # tfidf_component. A pure ranking-input weakening, no false
+            # signal in either direction. See the wiki's Topicality page.
+            degradation.record("topicality", str(exc))
+            return [{} for _ in entities_by_post]
+
+        degradation.clear("topicality")
         counts_flat = results[0::2]  # incr, expire, incr, expire, ...
 
         counts_by_post: list[dict[str, int]] = []

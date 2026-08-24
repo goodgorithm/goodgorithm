@@ -15,6 +15,10 @@ logger = logging.getLogger("processing")
 # distinguishable in processed_posts. Mirrors sentiment.py's
 # SENTIMENT_METHOD exactly -- see the wiki's Categorization page.
 CATEGORY_METHOD = "keyword_v1"
+# The resolved R2 version string, set alongside CATEGORY_METHOD on success --
+# None while on the keyword matcher. Mirrors sentiment.py's
+# SENTIMENT_MODEL_LOADED_VERSION exactly.
+CATEGORY_MODEL_LOADED_VERSION: str | None = None
 
 _session: ort.InferenceSession | None = None
 _labels: list[str] | None = None
@@ -28,7 +32,7 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     order mismatch — logs once and leaves the keyword-matcher path active.
     Mirrors sentiment.py's load_model() shape exactly. See the wiki's
     Categorization page."""
-    global _session, _labels, _threshold, CATEGORY_METHOD
+    global _session, _labels, _threshold, CATEGORY_METHOD, CATEGORY_MODEL_LOADED_VERSION
 
     if store is None:
         if not config.r2_configured():
@@ -59,6 +63,7 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     _labels = labels
     _threshold = model_config["confidence_threshold"]
     CATEGORY_METHOD = "tfidf_lr_v1"
+    CATEGORY_MODEL_LOADED_VERSION = version
     logger.info("loaded category classifier %s", version)
 
 

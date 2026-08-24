@@ -302,3 +302,61 @@ def test_distinct_posts_get_different_clusters():
     assert results[posts[0].id].cluster_id != results[posts[1].id].cluster_id
     assert results[posts[0].id].is_canonical is True
     assert results[posts[1].id].is_canonical is True
+
+
+class RaisingPipeline:
+    def execute(self, command):
+        return self
+
+    def exec(self):
+        raise RuntimeError("redis unreachable")
+
+
+class RaisingClient:
+    def pipeline(self):
+        return RaisingPipeline()
+
+
+def test_redis_dedup_index_degrades_on_find_candidates_failure(monkeypatch):
+    from infra import degradation, redis_client
+
+    monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
+    index = dedup.RedisDedupIndex()
+
+    lsh_candidates, url_candidates = index.find_candidates(["0:abc"], "urlhash")
+
+    assert lsh_candidates == set()
+    assert url_candidates == set()
+    assert "dedup" in degradation.snapshot()
+
+
+def test_redis_dedup_index_degrades_on_get_signatures_failure(monkeypatch):
+    from infra import degradation, redis_client
+
+    monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
+    index = dedup.RedisDedupIndex()
+
+    assert index.get_signatures({"a", "b"}) == {}
+    assert "dedup" in degradation.snapshot()
+
+
+def test_redis_dedup_index_degrades_on_get_clusters_failure(monkeypatch):
+    from infra import degradation, redis_client
+
+    monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
+    index = dedup.RedisDedupIndex()
+
+    assert index.get_clusters(["a", "b"]) == {}
+    assert "dedup" in degradation.snapshot()
+
+
+def test_redis_dedup_index_degrades_on_record_failure(monkeypatch):
+    from infra import degradation, redis_client
+
+    monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
+    index = dedup.RedisDedupIndex()
+    mh = dedup.compute_minhash("some post text")
+
+    index.record("post-id", mh, ["0:abc"], "cluster-id", None)  # must not raise
+
+    assert "dedup" in degradation.snapshot()

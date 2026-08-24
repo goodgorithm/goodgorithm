@@ -6,7 +6,7 @@ import time
 
 import config
 import pipeline
-from infra import db, heartbeat, network_detector
+from infra import db, degradation, heartbeat, network_detector, status_server
 
 logging.basicConfig(level=logging.INFO, format="[processing] %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -103,6 +103,25 @@ def main() -> None:
         db.close()
         return
 
+    # Public, safe-to-expose config only -- see infra/status_server.py and
+    # CLAUDE.md's Service resilience section for what's deliberately
+    # excluded (credentials, the heartbeat URL itself).
+    status_server.start(
+        port=int(os.environ.get("PORT", 8080)),
+        public_config={
+            "redis_max_bytes": config.REDIS_MAX_BYTES,
+            "redis_soft_limit_ratio": config.REDIS_SOFT_LIMIT_RATIO,
+            "r2_configured": config.r2_configured(),
+            "batch_size": args.batch_size,
+            "interval_seconds": args.interval,
+            "backlog_buffer_seconds": args.backlog_buffer,
+            "refresh_interval_seconds": args.refresh_interval,
+            "moderation_recheck_interval_seconds": args.moderation_recheck_interval,
+            "author_resolve_interval_seconds": args.author_resolve_interval,
+            "network_detection_interval_seconds": args.network_detection_interval,
+        },
+    )
+
     last_refresh_time = 0.0
     last_network_detection_time = 0.0
     last_redis_guard_time = 0.0
@@ -139,7 +158,11 @@ def main() -> None:
         # Only reached if the whole cycle completed without raising - an
         # unhandled exception anywhere above crashes the process before
         # this line, which is exactly the "missed ping" a dead-man's-switch
-        # monitor needs to see. No try/except here on purpose.
+        # monitor needs to see. No try/except here on purpose. Recording
+        # cycle success here too (not just pinging) is what lets the status
+        # endpoint's "degraded" field mean "not degraded since this cycle",
+        # not just "never degraded since process start".
+        degradation.record_cycle_success()
         heartbeat.ping(config.HEARTBEAT_URL_PROCESSING)
         if _shutdown:
             break

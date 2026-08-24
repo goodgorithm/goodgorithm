@@ -298,3 +298,46 @@ def test_score_bot_varying_structure_does_not_raise_template_component():
 
     assert last.template_component < 1.0
     assert last.is_bot is False
+
+
+class RaisingPipeline:
+    def execute(self, command):
+        return self
+
+    def exec(self):
+        raise RuntimeError("redis unreachable")
+
+
+class RaisingClient:
+    def pipeline(self):
+        return RaisingPipeline()
+
+
+def test_redis_bot_filter_index_degrades_on_bump_velocity_failure(monkeypatch):
+    from infra import degradation, redis_client
+
+    monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
+    index = bot_filter.RedisBotFilterIndex()
+
+    assert index.bump_velocity("author-1") == 0
+    assert "bot_filter" in degradation.snapshot()
+
+
+def test_redis_bot_filter_index_degrades_on_self_duplicate_failure(monkeypatch):
+    from infra import degradation, redis_client
+
+    monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
+    index = bot_filter.RedisBotFilterIndex()
+
+    assert index.check_and_record_self_duplicate("author-1", "cluster-1") is False
+    assert "bot_filter" in degradation.snapshot()
+
+
+def test_redis_bot_filter_index_degrades_on_template_repeat_failure(monkeypatch):
+    from infra import degradation, redis_client
+
+    monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
+    index = bot_filter.RedisBotFilterIndex()
+
+    assert index.bump_template_repeat("author-1", "skeleton") == 0
+    assert "bot_filter" in degradation.snapshot()

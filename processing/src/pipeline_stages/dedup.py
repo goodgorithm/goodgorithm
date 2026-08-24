@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 import numpy as np
 from datasketch import MinHash
 
-from infra import redis_client
+from infra import degradation, redis_client
 from util.text_normalize import normalize_text
 from util.url_extract import extract_raw_url
 
@@ -152,13 +152,26 @@ class RedisDedupIndex:
         # Band lookups and the URL lookup are pipelined together into one
         # round trip, not two separate ones -- same discipline as batching
         # the band lookups themselves below.
-        pipe = self.client.pipeline()
-        for h in hashes:
-            pipe.smembers(f"lsh:band:{h}")
-        if url_hash is not None:
-            pipe.smembers(f"dedup:url:{url_hash}")
-        results = pipe.exec()
+        try:
+            pipe = self.client.pipeline()
+            for h in hashes:
+                pipe.smembers(f"lsh:band:{h}")
+            if url_hash is not None:
+                pipe.smembers(f"dedup:url:{url_hash}")
+            results = pipe.exec()
+        except Exception as exc:
+            # Degrades to "no candidates found" -- every post in the batch
+            # looks canonical/unique for the outage's duration, so real
+            # duplicates flood through unfiltered. A real cost, not a free
+            # degrade, but the alternative (today's behavior) is a total
+            # processing outage instead -- nothing gets scored at all,
+            # including the genuinely unique content that would be fine.
+            # Self-resolving once Redis recovers. See the wiki's Pipeline
+            # Internals page.
+            degradation.record("dedup", str(exc))
+            return set(), set()
 
+        degradation.clear("dedup")
         lsh_candidates: set[str] = set()
         for members in results[: len(hashes)]:
             lsh_candidates.update(members or [])
@@ -173,10 +186,19 @@ class RedisDedupIndex:
         if not post_ids:
             return {}
         ids = list(post_ids)
-        pipe = self.client.pipeline()
-        for post_id in ids:
-            pipe.get(f"mh:{post_id}")
-        results = pipe.exec()
+        try:
+            pipe = self.client.pipeline()
+            for post_id in ids:
+                pipe.get(f"mh:{post_id}")
+            results = pipe.exec()
+        except Exception as exc:
+            # Same degrade shape as find_candidates -- an empty result here
+            # means no candidate is ever confirmed a match, same end effect
+            # as returning None for every id.
+            degradation.record("dedup", str(exc))
+            return {}
+
+        degradation.clear("dedup")
         return {
             post_id: (deserialize_minhash(data) if data else None)
             for post_id, data in zip(ids, results)
@@ -185,29 +207,46 @@ class RedisDedupIndex:
     def get_clusters(self, post_ids: list[str]) -> dict[str, str | None]:
         if not post_ids:
             return {}
-        pipe = self.client.pipeline()
-        for post_id in post_ids:
-            pipe.get(f"dedup:cluster:{post_id}")
-        results = pipe.exec()
+        try:
+            pipe = self.client.pipeline()
+            for post_id in post_ids:
+                pipe.get(f"dedup:cluster:{post_id}")
+            results = pipe.exec()
+        except Exception as exc:
+            degradation.record("dedup", str(exc))
+            return {}
+
+        degradation.clear("dedup")
         return dict(zip(post_ids, results))
 
     def record(
         self, post_id: str, mh: MinHash, hashes: list[str], cluster_id: str, url_hash: str | None
     ) -> None:
-        pipe = self.client.pipeline()
-        for h in hashes:
-            key = f"lsh:band:{h}"
-            pipe.sadd(key, post_id)
-            # nx=True: only the band's first member sets the TTL -- see the
-            # wiki's Deduplication page for why a rolling TTL here is unsafe.
-            pipe.expire(key, DEDUP_BAND_TTL_SECONDS, nx=True)
-        if url_hash is not None:
-            url_key = f"dedup:url:{url_hash}"
-            pipe.sadd(url_key, post_id)
-            pipe.expire(url_key, DEDUP_BAND_TTL_SECONDS, nx=True)
-        pipe.set(f"mh:{post_id}", serialize_minhash(mh), ex=DEDUP_BAND_TTL_SECONDS)
-        pipe.set(f"dedup:cluster:{post_id}", cluster_id, ex=DEDUP_BAND_TTL_SECONDS)
-        pipe.exec()
+        try:
+            pipe = self.client.pipeline()
+            for h in hashes:
+                key = f"lsh:band:{h}"
+                pipe.sadd(key, post_id)
+                # nx=True: only the band's first member sets the TTL -- see
+                # the wiki's Deduplication page for why a rolling TTL here
+                # is unsafe.
+                pipe.expire(key, DEDUP_BAND_TTL_SECONDS, nx=True)
+            if url_hash is not None:
+                url_key = f"dedup:url:{url_hash}"
+                pipe.sadd(url_key, post_id)
+                pipe.expire(url_key, DEDUP_BAND_TTL_SECONDS, nx=True)
+            pipe.set(f"mh:{post_id}", serialize_minhash(mh), ex=DEDUP_BAND_TTL_SECONDS)
+            pipe.set(f"dedup:cluster:{post_id}", cluster_id, ex=DEDUP_BAND_TTL_SECONDS)
+            pipe.exec()
+        except Exception as exc:
+            # Distinct from the read-path degrades above: a failure here
+            # means *this* post becomes invisible to future dedup lookups
+            # too, not just unmatched against past ones -- it compounds
+            # forward for as long as the outage lasts.
+            degradation.record("dedup", f"record() failed, post now unmatchable: {exc}")
+            return
+
+        degradation.clear("dedup")
 
 
 @dataclass

@@ -3,6 +3,19 @@ import onnx
 import pytest
 from onnx import TensorProto, helper
 
+from infra import degradation
+
+
+@pytest.fixture(autouse=True)
+def _reset_degradation_state():
+    """degradation.py's module-level state is process-global by design (it
+    answers "is anything degraded right now", not a durable log) -- reset
+    it before every test so one test's simulated Redis failure can't leak
+    into another test's assertions via import order."""
+    degradation._last_degradation.clear()
+    degradation._last_cycle_success_at = None
+    yield
+
 
 def _build_fixture_graph(prob_table: np.ndarray) -> bytes:
     """A tiny ONNX graph matching the real sentiment model's

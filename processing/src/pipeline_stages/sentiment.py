@@ -13,6 +13,10 @@ logger = logging.getLogger("processing")
 # Bumped to "cnn_v1" on a successful model load — stored alongside every
 # score so vader_v1/cnn_v1 results are distinguishable in processed_posts.
 SENTIMENT_METHOD = "vader_v1"
+# The resolved R2 version string ("v3", etc.), set alongside SENTIMENT_METHOD
+# on success -- None while on VADER. Exists so the status endpoint can
+# report which model version is actually live without digging through logs.
+SENTIMENT_MODEL_LOADED_VERSION: str | None = None
 
 # negative/neutral/positive -- architecturally fixed by sentiment_model.py's
 # final nn.Linear(..., 3) layer, not something that varies by version the
@@ -40,7 +44,7 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     leaves the VADER path active. score_sentiment() never raises because of
     this and never blocks waiting for R2 to recover mid-run. See the
     wiki's Pipeline Internals page."""
-    global _session, _vocab, SENTIMENT_METHOD
+    global _session, _vocab, SENTIMENT_METHOD, SENTIMENT_MODEL_LOADED_VERSION
 
     if store is None:
         if not config.r2_configured():
@@ -72,6 +76,7 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     _session = session
     _vocab = vocab
     SENTIMENT_METHOD = "cnn_v1"
+    SENTIMENT_MODEL_LOADED_VERSION = version
     logger.info("loaded sentiment CNN %s", version)
 
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from infra import redis_client
+from infra import degradation, redis_client
 from util.text_normalize import normalize_text
 
 # Bot/spam scoring -- see the wiki's Bot Filter page for how this works
@@ -159,28 +159,47 @@ class RedisBotFilterIndex:
 
     def bump_velocity(self, author_id: str) -> int:
         key = f"botvel:{author_id}"
-        pipe = self.client.pipeline()
-        pipe.incr(key)
-        # nx=True: only sets a fresh TTL on this key's first write in the
-        # window, so the window is fixed (resets exactly
-        # BOT_FILTER_VELOCITY_WINDOW_SECONDS after the first post) rather
-        # than extending with continued activity.
-        pipe.expire(key, BOT_FILTER_VELOCITY_WINDOW_SECONDS, nx=True)
-        results = pipe.exec()
+        try:
+            pipe = self.client.pipeline()
+            pipe.incr(key)
+            # nx=True: only sets a fresh TTL on this key's first write in the
+            # window, so the window is fixed (resets exactly
+            # BOT_FILTER_VELOCITY_WINDOW_SECONDS after the first post) rather
+            # than extending with continued activity.
+            pipe.expire(key, BOT_FILTER_VELOCITY_WINDOW_SECONDS, nx=True)
+            results = pipe.exec()
+        except Exception as exc:
+            # Degrades to "0" -- as if this were the author's first post ever
+            # this window. Biases toward a false negative (a real spam burst
+            # looks clean) rather than a false positive (never flags a real
+            # active user) -- the deliberately safer failure direction. See
+            # the wiki's Bot Filter page.
+            degradation.record("bot_filter", str(exc))
+            return 0
+
+        degradation.clear("bot_filter")
         return results[0]
 
     def check_and_record_self_duplicate(self, author_id: str, cluster_id: str) -> bool:
         key = f"cluster:{cluster_id}:authors"
-        pipe = self.client.pipeline()
-        pipe.sadd(key, author_id)
-        # nx=True -- this set grows with each new author, so without it a
-        # sustained bot wave (many distinct authors reposting into one
-        # cluster, exactly what this check exists to catch) could keep
-        # pushing the TTL forward on every new member, growing the set
-        # unbounded instead of clearing on a fixed window. See the wiki's
-        # Bot Filter page.
-        pipe.expire(key, BOT_FILTER_SELF_DUP_TTL_SECONDS, nx=True)
-        results = pipe.exec()
+        try:
+            pipe = self.client.pipeline()
+            pipe.sadd(key, author_id)
+            # nx=True -- this set grows with each new author, so without it a
+            # sustained bot wave (many distinct authors reposting into one
+            # cluster, exactly what this check exists to catch) could keep
+            # pushing the TTL forward on every new member, growing the set
+            # unbounded instead of clearing on a fixed window. See the wiki's
+            # Bot Filter page.
+            pipe.expire(key, BOT_FILTER_SELF_DUP_TTL_SECONDS, nx=True)
+            results = pipe.exec()
+        except Exception as exc:
+            # Degrades to "not a self-dup" -- same safer-direction bias as
+            # bump_velocity above.
+            degradation.record("bot_filter", str(exc))
+            return False
+
+        degradation.clear("bot_filter")
         added = results[0]
         return added == 0  # already a member => this author already posted into this cluster
 
@@ -190,14 +209,20 @@ class RedisBotFilterIndex:
         # TOPICALITY_ENTITY_KEY_MAX_LEN.
         digest = hashlib.sha1(skeleton.encode("utf8")).hexdigest()
         key = f"tmpl:{author_id}:{digest}"
-        pipe = self.client.pipeline()
-        pipe.incr(key)
-        # Rolling TTL, refreshed on every hit -- deliberately not the
-        # NX-only-on-first-hit pattern the two methods above use. See the
-        # wiki's Bot Filter page for why this key needs the opposite TTL
-        # shape.
-        pipe.expire(key, BOT_FILTER_TEMPLATE_REPEAT_TTL_SECONDS)
-        results = pipe.exec()
+        try:
+            pipe = self.client.pipeline()
+            pipe.incr(key)
+            # Rolling TTL, refreshed on every hit -- deliberately not the
+            # NX-only-on-first-hit pattern the two methods above use. See the
+            # wiki's Bot Filter page for why this key needs the opposite TTL
+            # shape.
+            pipe.expire(key, BOT_FILTER_TEMPLATE_REPEAT_TTL_SECONDS)
+            results = pipe.exec()
+        except Exception as exc:
+            degradation.record("bot_filter", str(exc))
+            return 0
+
+        degradation.clear("bot_filter")
         return results[0]
 
 
