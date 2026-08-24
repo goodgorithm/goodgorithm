@@ -1,10 +1,9 @@
 import re
 
-# Moved out of dedup.py (was a private _extract_raw_url) so content_filter.py
-# can reuse the same platform-specific extraction for its own domain
-# blocklist check (issue #57) without reaching into another pipeline
-# stage's internals -- same "shared helper, not hand-duplicated" precedent
-# as sentiment_model.py/text_normalize.py's own move into util/.
+# Shared by dedup.py's near-duplicate URL extraction and
+# content_filter.py's domain-blocklist check, so neither has to reach
+# into the other's internals -- same "shared helper, not hand-duplicated"
+# pattern as sentiment_model.py/text_normalize.py living in util/.
 
 _TEXT_URL_RE = re.compile(r"https?://\S+")
 

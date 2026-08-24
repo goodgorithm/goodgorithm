@@ -65,9 +65,8 @@ def _entities_from_doc(doc: spacy.tokens.Doc) -> list[tuple[str, str]]:
             continue
         normalized = ent.text.strip().lower()
         # spaCy's NER occasionally mis-tags a URL span as a relevant label
-        # (ORG/GPE are the ones seen in practice) -- a URL was never a
-        # meaningful "topicality entity", independent of the downstream
-        # rendering bug (issue #55) this happened to expose.
+        # (ORG/GPE are the ones seen in practice) -- a URL is never a
+        # meaningful "topicality entity".
         if normalized and normalized not in seen and not _URL_ENTITY_RE.match(normalized):
             seen[normalized] = ent.label_
     return list(seen.items())
@@ -210,8 +209,8 @@ def score_topicality(posts: list, index: BurstIndex) -> dict[UUID, TopicalityRes
     texts = [post.text for post in posts]
     tfidf_scores, tfidf_top_terms = _compute_tfidf(texts)
     # split_camel_hashtags only, not normalize_text -- NER needs original
-    # casing (normalize_text lowercases), see issue #70. _compute_tfidf
-    # above already gets this via its own normalize_text() call.
+    # casing, which normalize_text() lowercases away. _compute_tfidf above
+    # already gets this via its own normalize_text() call.
     entities_by_post = extract_entities_batch([split_camel_hashtags(t) for t in texts])
     entity_counts_by_post = index.bump_entities(entities_by_post)
 

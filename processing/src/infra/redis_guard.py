@@ -33,17 +33,13 @@ REDIS_GUARD_SCAN_COUNT = int(os.environ.get("REDIS_GUARD_SCAN_COUNT", "500"))
 # every check, since the key-size mix (mh:*'s ~700-byte MinHash signatures vs.
 # much smaller counters like botvel:*/burst:entity:*) can drift as traffic
 # composition or dedup config changes, and a stale manual constant would
-# silently degrade the same way INFO memory did. See issue #65.
+# silently degrade the same way INFO memory did.
 #
-# 100 was the original value and turned out too small: a follow-up incident
-# showed lsh:band:* alone outnumbering mh:* 5.6:1 (611,301 vs. 109,114 keys
-# during remediation), and both are a small minority of the full keyspace
-# once botvel:*/tmpl:*/cluster:*:authors/burst:entity:* are counted -- an
-# unbiased-but-high-variance random sample that small can easily draw few or
-# no mh:* keys and badly undercount the true average on a skewed
-# distribution (many tiny counters, a numerically small population of much
-# larger dedup keys). Raised to 2000; kept cheap via pipelining (below)
-# rather than one MEMORY USAGE round trip per sampled key.
+# The sample needs to be large: the keyspace is skewed (a numerically small
+# population of large dedup keys against many small counters), so a random
+# sample that's too small can easily draw few or none of the large keys and
+# badly undercount the true average. Kept cheap at this size via pipelining
+# (below) rather than one MEMORY USAGE round trip per sampled key.
 REDIS_GUARD_MEMORY_SAMPLE_SIZE = int(os.environ.get("REDIS_GUARD_MEMORY_SAMPLE_SIZE", "2000"))
 
 
@@ -52,16 +48,12 @@ def estimate_used_memory_bytes() -> int | None:
     raises) on any failure -- monitoring itself must never be able to crash
     a processing cycle, same discipline as heartbeat.ping().
 
-    Deliberately does NOT use `INFO memory`'s `used_memory` field -- issue
-    #65: confirmed directly in a real incident that Upstash's REST API
-    returns wildly inconsistent values for it (three consecutive reads one
-    second apart on the same connection: 47917017, 7572913, 47917017, with
-    nothing actually changing), completely disconnected from Upstash's own
-    real capacity-quota enforcement. `DBSIZE` and `MEMORY USAGE <key>` were
-    both confirmed consistent/reliable instead during that same incident's
-    remediation, so this estimates total bytes as DBSIZE * (a fresh sampled
-    average of real MEMORY USAGE reads), rather than trusting a single
-    unreliable aggregate command."""
+    Deliberately does NOT use `INFO memory`'s `used_memory` field --
+    Upstash's REST API returns unreliable values for it, disconnected from
+    its own real capacity-quota enforcement. `DBSIZE` and `MEMORY USAGE
+    <key>` are both reliable instead, so this estimates total bytes as
+    DBSIZE * (a fresh sampled average of real MEMORY USAGE reads), rather
+    than trusting a single unreliable aggregate command."""
     try:
         client = redis_client.get_client()
         dbsize = client.execute(["DBSIZE"])
@@ -119,9 +111,9 @@ def clear_expendable_data() -> int:
 
 def enforce(max_bytes: int = DEFAULT_MAX_BYTES, soft_limit_ratio: float = DEFAULT_SOFT_LIMIT_RATIO) -> None:
     """Called once per processing cycle, before that cycle's dedup/bot-filter/
-    topicality writes. Logs current usage for visibility (there was
-    previously none at all) and proactively clears expendable data once
-    usage nears max_bytes, rather than finding out via a crashed write."""
+    topicality writes. Logs current usage for visibility and proactively
+    clears expendable data once usage nears max_bytes, rather than finding
+    out via a crashed write."""
     used = estimate_used_memory_bytes()
     if used is None:
         return

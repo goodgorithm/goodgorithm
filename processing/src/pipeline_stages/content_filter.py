@@ -50,21 +50,17 @@ def has_excluded_self_label(raw_json: dict) -> bool:
 
 
 def has_excluded_sensitive_media(raw_json: dict) -> bool:
-    """Mastodon's sensitive flag (issue #72), narrowed to the one sub-case a
-    real production sample confirmed high-precision for adult content:
-    media attached AND no spoiler_text. The flag alone is too blunt to
-    hard-exclude on -- most sensitive-flagged posts with no media (or with
-    a spoiler_text) turned out to be ordinary CW-culture use (movie/game
-    spoilers, political discussion, mental-health disclosure, courtesy
-    "eye contact" selfie tags), not adult content, and would be wrongly
-    excluded, including genuinely positive content (a rescued-animal story
-    flagged sensitive for a predator scene, seen in the sample). A diverse
-    20-account sample of the media+no-spoiler-text combination, by
-    contrast, was effectively 100% genuine adult content. Bluesky rows
-    have no top-level "sensitive"/"media_attachments" keys at all (its
-    adult content is already hard-excluded via has_excluded_self_label
-    above), so this naturally returns False for them. See CLAUDE.md's
-    Content moderation section."""
+    """Mastodon's sensitive flag, narrowed to the one sub-case confirmed
+    high-precision for adult content: media attached AND no spoiler_text.
+    The flag alone is too blunt to hard-exclude on -- a post with no media
+    (or with a spoiler_text) is far more likely to be ordinary CW-culture
+    use (movie/game spoilers, political discussion, mental-health
+    disclosure, courtesy "eye contact" selfie tags) than adult content,
+    and excluding on the flag alone would wrongly catch genuinely positive
+    content along with it. Bluesky rows have no top-level "sensitive"/
+    "media_attachments" keys at all (its adult content is already
+    hard-excluded via has_excluded_self_label above), so this naturally
+    returns False for them. See CLAUDE.md's Content moderation section."""
     raw_json = raw_json or {}
     if raw_json.get("sensitive") is not True:
         return False
@@ -86,7 +82,7 @@ def _matches_suppressed_domain(candidate: str, suppressed_domains: frozenset[str
 def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domains: frozenset[str]) -> bool:
     """suppressed_domains is db.fetch_suppressed_domains()'s whole-table read
     -- same moderator-curated, loaded-fresh-per-cycle contract as
-    suppressed_terms (issue #57). Deliberately doesn't reuse dedup.py's
+    suppressed_terms. Deliberately doesn't reuse dedup.py's
     extract_dedup_url -- that rejects bare-domain URLs (no path), right for
     dedup (a homepage link is a weak dedup signal) but wrong here (a bare
     https://www.amazon.com link should still match)."""
@@ -101,14 +97,12 @@ def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domai
 
 
 def has_excluded_home_instance(raw_json: dict, suppressed_domains: frozenset[str]) -> bool:
-    """Mastodon-only (issue #72): excludes every post from an account whose
-    own home instance is a listed domain -- distinct from has_excluded_domain
+    """Mastodon-only: excludes every post from an account whose own home
+    instance is a listed domain -- distinct from has_excluded_domain
     above, which only matches a link *inside* the post body/card. Many
     adult-content posts carry no outbound link at all (native image posts),
     so a link-domain check alone can't catch a post that merely originates
-    from a fully dedicated adult instance (mastodon-sex.com, fedinsfw.app --
-    confirmed by real sampling to be ~100% adult content, unlike a general-
-    purpose instance any account might be on). Reuses suppressed_domains
+    from a fully dedicated adult instance. Reuses suppressed_domains
     rather than a separate table: a moderator adding a domain there
     reasonably expects both "links to this domain" and "accounts hosted on
     this domain" to be covered, with identical exact/subdomain matching.

@@ -84,10 +84,9 @@ def _ensure_loaded() -> None:
 
 def _score_with_cnn_batch(texts: list[str]) -> list[float]:
     """One ONNX call for the whole batch -- viable because the published
-    model's ONNX graph has a dynamic batch dimension (issue #52; used to be
-    fixed at batch=1). Mirrors category_model.py's
-    _categorize_with_model_batch shape exactly. See the wiki's Pipeline
-    Internals page."""
+    model's ONNX graph has a dynamic batch dimension. Mirrors
+    category_model.py's _categorize_with_model_batch shape exactly. See
+    the wiki's Pipeline Internals page."""
     encoded = [sentiment_model.encode(sentiment_model.tokenize(text), _vocab) for text in texts]
     input_ids = np.array(encoded, dtype=np.int64)
     # label order 0=negative, 1=neutral, 2=positive — fixed by the training

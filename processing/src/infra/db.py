@@ -31,9 +31,8 @@ class RawPost:
 
 def fetch_unprocessed_posts(batch_size: int) -> list[RawPost]:
     # Newest-first, not FIFO, and NOT EXISTS rather than LEFT JOIN ...
-    # WHERE p.id IS NULL -- both deliberate, both learned the hard way at
-    # production scale. See the wiki's Pipeline Internals page for the
-    # full story (a real crash-loop and query-planner postmortem).
+    # WHERE p.id IS NULL -- both deliberate, neither obvious without
+    # production scale. See the wiki's Pipeline Internals page for why.
     with pool.connection() as conn:
         rows = conn.execute(
             """
@@ -75,10 +74,10 @@ DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE = int(os.environ.get("DB_UPSERT_PROCESSED_P
 
 
 def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
-    """Batched sibling of the old per-post upsert -- run_cycle used to call
-    that once per post. Mirrors update_rank_scores' existing chunked-
-    multi-row-VALUES pattern below rather than one giant statement, so
-    param count stays bounded as batch_size grows."""
+    """Bulk-writes a cycle's scored posts in one round trip, not one per
+    post. Mirrors update_rank_scores' chunked-multi-row-VALUES pattern
+    below rather than one giant statement, so param count stays bounded
+    as batch_size grows."""
     if not rows:
         return
     with pool.connection() as conn:
@@ -176,10 +175,9 @@ DB_RANK_SCORE_UPDATE_CHUNK_SIZE = int(os.environ.get("DB_RANK_SCORE_UPDATE_CHUNK
 def update_rank_scores(updates: list[tuple[UUID, float, float]]) -> None:
     """Bulk-writes (raw_post_id, base_score, rank_score) after MMR ranking.
     refresh_rankings can touch thousands of posts a cycle -- one UPDATE per
-    row was a real production crash (per-round-trip latency compounding
-    into minutes at that volume). Batched into chunks rather than one
-    giant statement so query size/param count stay bounded as the eligible
-    pool grows."""
+    row's per-round-trip latency compounds into minutes at that volume.
+    Batched into chunks rather than one giant statement so query
+    size/param count stay bounded as the eligible pool grows."""
     if not updates:
         return
     with pool.connection() as conn:
@@ -224,11 +222,11 @@ class UncheckedBlueskyPost:
 
 def fetch_unchecked_bluesky_posts(batch_size: int) -> list[UncheckedBlueskyPost]:
     """Bounded batch of already-scored Bluesky posts moderation_recheck.py
-    hasn't independently re-verified yet (issue #67's backstop against
-    ingestion/'s real-time label-stream listener racing Jetstream's own
-    insert). No time window needed -- moderation_checked_at is set exactly
-    once and never re-derived, same contract as quote_content/
-    generated_thumbnail_url."""
+    hasn't independently re-verified yet -- moderation_recheck.py is a
+    backstop against ingestion/'s real-time label-stream listener racing
+    Jetstream's own insert. No time window needed -- moderation_checked_at
+    is set exactly once and never re-derived, same contract as
+    quote_content/generated_thumbnail_url."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
@@ -274,14 +272,12 @@ class UnresolvedAuthorPost:
 
 def fetch_bluesky_posts_needing_author_resolution(batch_size: int) -> list[UnresolvedAuthorPost]:
     """Bounded batch of already-*ranked* Bluesky posts author_resolver.py
-    hasn't resolved yet (issue #73). Deliberately scoped to rank_score IS
-    NOT NULL, not every Bluesky post the way fetch_unchecked_bluesky_posts
-    is -- only ~8% of ingested Bluesky posts ever get ranked/shown at all,
-    so resolving author info for the rest would be pure waste (measured:
-    ~2,700 distinct authors among ranked posts vs. ~57,000 among all
-    ingested ones). No time window needed -- author_resolved_at is set
-    exactly once and never re-derived, same contract as
-    moderation_checked_at."""
+    hasn't resolved yet. Deliberately scoped to rank_score IS NOT NULL,
+    not every Bluesky post the way fetch_unchecked_bluesky_posts is --
+    only a small fraction of ingested Bluesky posts ever get ranked/shown
+    at all, so resolving author info for the rest would be pure waste. No
+    time window needed -- author_resolved_at is set exactly once and
+    never re-derived, same contract as moderation_checked_at."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
@@ -400,8 +396,8 @@ def fetch_cluster_candidates(
 
     Reads mastodon_account_created_at directly rather than extracting
     raw_json->'account'->>'created_at' at query time -- that JSON-path
-    extraction across the full Mastodon population timed out in
-    production. Same "promote a frequently-queried field out of raw_json
+    extraction across the full Mastodon population is too slow at this
+    table's scale. Same "promote a frequently-queried field out of raw_json
     into a real column" pattern text/lang/author_id already follow, not a
     workaround. See the wiki's Pipeline Internals page.
 
@@ -410,14 +406,14 @@ def fetch_cluster_candidates(
     instances' public timelines (ActivityPub federation routinely surfaces
     one post through several instances) gets a distinct author_id per
     polling instance, even though `acct` (and so the true identity) is
-    identical. COUNT(DISTINCT author_id)/COUNT(*) both silently multiply
-    with the number of instances a post fanned out through -- issue #56.
-    `identity` here strips the polling-instance prefix (split_part on '/')
-    so account_count and post_count are deduplicated on the real account
-    and the real post (author + text + created_at, not source_id, which
-    is itself per-polling-instance) instead. home_domain's own derivation
-    is untouched -- split_part on '@' gives the same result either way,
-    since '/' always precedes '@' in the raw string.
+    identical. Using raw author_id directly would silently inflate both
+    account_count and post_count by however many instances a post fanned
+    out through. `identity` here strips the polling-instance prefix
+    (split_part on '/') so account_count and post_count are deduplicated
+    on the real account and the real post (author + text + created_at, not
+    source_id, which is itself per-polling-instance) instead. home_domain's
+    own derivation is untouched -- split_part on '@' gives the same result
+    either way, since '/' always precedes '@' in the raw string.
 
     author_ids stays un-deduplicated (every raw, polling-instance-prefixed
     variant, not one per identity) deliberately -- blocked_authors matches

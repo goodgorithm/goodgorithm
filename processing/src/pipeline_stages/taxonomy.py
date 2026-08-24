@@ -4,9 +4,9 @@ per CLAUDE.md's no-LLM-in-the-algorithm constraint.
 The whole-process fallback for when category_model.py's trained classifier
 can't load, the direct parallel to VADER's role for the sentiment CNN --
 same 4-category set the classifier uses, not a superset. See CLAUDE.md's
-Category filtering section for why these 4 (narrowed from an original 8,
-issue #37) and the wiki's Categorization page for this module's matching
-mechanics (why two matching modes, known limitations)."""
+Category filtering section for why these 4 and the wiki's Categorization
+page for this module's matching mechanics (why two matching modes,
+known limitations)."""
 
 CATEGORY_TERMS: dict[str, set[str]] = {
     "science_technology": {
@@ -86,7 +86,7 @@ CATEGORY_PHRASES: dict[str, set[str]] = {
         "farmers market",
         "food truck",
     },
-    # diaries_daily_life (issue #62) has no CATEGORY_TERMS entry at all --
+    # diaries_daily_life has no CATEGORY_TERMS entry at all --
     # unlike gaming/food_dining/science_technology, its defining quality is
     # personal daily-life narration, not topic vocabulary, so there's no
     # small set of unambiguous single-word triggers to list. This phrase

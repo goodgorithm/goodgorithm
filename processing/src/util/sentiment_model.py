@@ -28,12 +28,12 @@ _HASHTAG_RE = re.compile(r"#(\w+)")
 
 def _split_camel_hashtags(text: str) -> str:
     """Same boundary-splitting logic as util/text_normalize.py's
-    split_camel_hashtags (issue #70/#74) -- duplicated rather than
-    imported, since this file is fetched standalone via one pinned commit
-    URL by the training notebook and is deliberately zero-project-imports
-    (see module docstring); importing text_normalize.py here would mean
-    the notebook fetching two pinned files instead of one. Keep both in
-    sync by hand if the boundary logic ever changes.
+    split_camel_hashtags -- duplicated rather than imported, since this
+    file is fetched standalone via one pinned commit URL by the training
+    notebook and is deliberately zero-project-imports (see module
+    docstring); importing text_normalize.py here would mean the notebook
+    fetching two pinned files instead of one. Keep both in sync by hand
+    if the boundary logic ever changes.
 
     Must run before _TOKEN_RE ever sees the text, on the original-case
     string -- case boundaries are the whole signal, and once split, a
@@ -62,8 +62,9 @@ def tokenize(text: str) -> list[str]:
     would otherwise bloat the vocab with one-off usernames), hashtags are
     split into their word content before matching (often carries real
     sentiment, e.g. "#blessed", and a multi-word CamelCase hashtag like
-    "#GreatNewsToday" used to glue into one almost-certainly-out-of-vocab
-    token -- see _split_camel_hashtags), emoticons are preserved as their
+    "#GreatNewsToday" would otherwise glue into one almost-certainly-
+    out-of-vocab token -- see _split_camel_hashtags), emoticons are
+    preserved as their
     own tokens rather than stripped as punctuation. All-digit runs collapse
     to NUM_TOKEN — the specific value is noise the same way a URL is, but
     *that a number appeared* is kept (unlike anything else the regex

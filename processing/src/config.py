@@ -15,10 +15,10 @@ UPSTASH_REDIS_REST_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 REDIS_MAX_BYTES = int(os.environ.get("REDIS_MAX_BYTES", 1024 * 1024 * 1024))
 if REDIS_MAX_BYTES <= 0:
     raise ValueError(f"REDIS_MAX_BYTES ({REDIS_MAX_BYTES}) must be greater than 0")
-# Was 0.85; lowered as extra margin against estimate_used_memory_bytes()'s
-# residual sampling error (see redis_guard.py's REDIS_GUARD_MEMORY_SAMPLE_SIZE
-# comment, issue #65) -- a soft limit meant to trigger before the real 1GB
-# wall should assume the estimate itself isn't exact.
+# A soft limit meant to trigger before the real 1GB wall should assume the
+# estimate itself isn't exact -- see redis_guard.py's
+# REDIS_GUARD_MEMORY_SAMPLE_SIZE for the residual sampling error this
+# margins against.
 REDIS_SOFT_LIMIT_RATIO = float(os.environ.get("REDIS_SOFT_LIMIT_RATIO", "0.70"))
 
 # R2 / trained models — all optional, never blocks the rest of the service

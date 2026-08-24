@@ -121,23 +121,20 @@ def template_skeleton(text: str) -> str:
 
 def canonical_account_id(source: str, author_id: str) -> str:
     """The real per-author identity behind the three Redis-keyed signals
-    below (issue #78). Mastodon's author_id is `{polled_instance}/{acct}`
+    below. Mastodon's author_id is `{polled_instance}/{acct}`
     (ingestion/src/mastodon.ts) -- `acct` is Mastodon's own field, already
     the globally-qualified `user@host` form when the polled instance sees
     the account as remote/federated, but a bare `user` when the polled
-    instance happens to be that account's own home instance. A single
-    real account visible across N of our 8 polled instances' public
-    timelines -- via genuine crossposting, or (the empirically dominant
-    case) simply federation making one post visible on several public
-    timelines at once -- used to fragment into N distinct author_id
-    values and N independent velocity/self-dup/template-repeat counters.
-    Normalizing both acct shapes to the same `user@host` form regardless
-    of which instance polled it fixes this: confirmed against a real
-    2h production sample, canonicalizing collapsed 4,245 distinct
-    author_ids down to 1,140 real accounts. Bluesky's author_id (a bare
-    DID, never containing "/") needs no such normalization -- Jetstream
-    is a single global firehose, not N independently polled instances,
-    so it's already one source-agnostic identity; returned unchanged."""
+    instance happens to be that account's own home instance. Without this
+    normalization, a single real account visible across N of our 8 polled
+    instances' public timelines -- via genuine crossposting, or simply
+    federation making one post visible on several public timelines at
+    once -- fragments into N distinct author_id values and N independent
+    velocity/self-dup/template-repeat counters. Bluesky's author_id (a
+    bare DID, never containing "/") needs no such normalization --
+    Jetstream is a single global firehose, not N independently polled
+    instances, so it's already one source-agnostic identity; returned
+    unchanged."""
     if source != "mastodon":
         return author_id
     polled_instance, _, acct = author_id.partition("/")
@@ -222,7 +219,7 @@ def score_bot(source: str, author_id: str, text: str, cluster_id: UUID, index: B
     boost. See the wiki's Bot Filter page.
 
     The three Redis-keyed signals below are keyed by canonical_account_id,
-    not the raw author_id -- see that function's docstring (issue #78)."""
+    not the raw author_id -- see that function's docstring."""
     account_id = canonical_account_id(source, author_id)
 
     velocity_count = index.bump_velocity(account_id)

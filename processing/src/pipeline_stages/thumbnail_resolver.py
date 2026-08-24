@@ -135,8 +135,8 @@ def resolve_thumbnail(url: str) -> str | None:
         return None
 
     # og:image content attributes are HTML-encoded like any other
-    # attribute value - a real production URL came back with "&amp;"
-    # instead of "&" before this, which would corrupt its query string.
+    # attribute value -- must be unescaped, or an "&amp;" in the query
+    # string would corrupt the URL.
     image_url = html.unescape(match.group(1))
     return image_url if _is_safe_public_url(image_url) else None
 

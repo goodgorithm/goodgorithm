@@ -44,11 +44,10 @@ def _map_author(author) -> dict | None:
 
 def resolve_authors(posts: list[UnresolvedAuthorPost]) -> dict:
     """Resolves a post's own author display name/avatar via Bluesky's
-    public AppView (issue #73) -- Jetstream's firehose never carries this,
-    only the author's DID, unlike Mastodon whose API response embeds it
-    for free. Deliberately scoped by the caller to already-*ranked* posts
-    only (~8% of ingested Bluesky posts), not every ingested post -- see
-    infra.db.fetch_bluesky_posts_needing_author_resolution.
+    public AppView -- Jetstream's firehose never carries this, only the
+    author's DID, unlike Mastodon whose API response embeds it for free.
+    Deliberately scoped by the caller to already-*ranked* posts only, not
+    every ingested post -- see infra.db.fetch_bluesky_posts_needing_author_resolution.
 
     Mirrors moderation_recheck.check_posts' exact batching/failure-
     isolation shape (itself mirroring quote_resolver.resolve_quotes):

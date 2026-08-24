@@ -30,7 +30,7 @@ def _is_labeled_adult(labels) -> bool:
 def check_posts(posts: list[UncheckedBlueskyPost]) -> dict:
     """Independent backstop against ingestion/'s blueskyLabels.ts real-time
     label-stream listener racing Jetstream's own insert for the same post
-    (issue #67) -- batches into groups of GET_POSTS_MAX_URIS, mirroring
+    -- batches into groups of GET_POSTS_MAX_URIS, mirroring
     quote_resolver.resolve_quotes' exact batching/failure-isolation shape,
     and checks a post's own current moderation labels (postView.labels --
     redundant with, but independent of, the real-time listener) plus its

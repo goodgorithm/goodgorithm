@@ -246,14 +246,13 @@ def refresh_rankings() -> int:
 
 def resolve_authors() -> int:
     """Resolves a post's own author display name/avatar via Bluesky's
-    public AppView (issue #73) -- Jetstream's firehose never carries this,
-    unlike Mastodon whose API response embeds it for free (api/ reads it
-    straight from raw_json for those, no resolution needed). Deliberately
-    scoped to already-*ranked* posts only (db.fetch_bluesky_posts_needing_author_resolution),
-    not every ingested post -- measured: ~8% of ingested Bluesky posts
-    ever get ranked/shown at all, so resolving the rest would be pure
-    waste (~57,000 distinct authors vs. ~2,700 among ranked posts).
-    Must run after refresh_rankings() in the caller's loop, not before --
+    public AppView -- Jetstream's firehose never carries this, unlike
+    Mastodon whose API response embeds it for free (api/ reads it straight
+    from raw_json for those, no resolution needed). Deliberately scoped to
+    already-*ranked* posts only (db.fetch_bluesky_posts_needing_author_resolution),
+    not every ingested post -- only a small fraction of ingested Bluesky
+    posts ever get ranked/shown at all, so resolving the rest would be
+    pure waste. Must run after refresh_rankings() in the caller's loop, not before --
     its candidate population depends on rank_score already being set this
     cycle. Throttled by the caller (main.py), same reasoning as
     recheck_moderation -- this calls an external API in batches, must not
@@ -292,8 +291,8 @@ def purge_blocked_authors() -> int:
 
 def recheck_moderation() -> int:
     """Backstop against ingestion/'s blueskyLabels.ts real-time label-
-    stream listener racing Jetstream's own insert for the same post (issue
-    #67) -- independently re-verifies each already-scored Bluesky post's
+    stream listener racing Jetstream's own insert for the same post --
+    independently re-verifies each already-scored Bluesky post's
     own moderation labels *and* its author's profile self-label against
     Bluesky's public AppView, mirroring quote_resolver.py's exact getPosts
     pattern. Purges (db.delete_raw_post, cascades to processed_posts) any

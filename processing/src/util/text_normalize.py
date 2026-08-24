@@ -17,16 +17,14 @@ _CAMEL_BOUNDARY_RE = re.compile(
 
 
 def split_camel_hashtags(text: str) -> str:
-    """#OfCourseItsGenocide -> ". Of Course Its Genocide" -- issue #70.
-    Every word-level stage (TF-IDF, NER, category classification) used to
-    see a hashtag as one opaque glued token.
+    """#OfCourseItsGenocide -> ". Of Course Its Genocide". Every word-level
+    stage (TF-IDF, NER, category classification) would otherwise see a
+    hashtag as one opaque glued token.
 
-    The leading ". " (not just a space) is load-bearing, confirmed by real
-    A/B testing against production posts: without it, adjacent hashtags
-    lose their separation and spaCy's NER glues them into one garbage
-    multi-word entity (e.g. 6 actor-name hashtags merging into 2 unreadable
-    strings). With it, the same 6 hashtags resolve to 6 correctly-typed
-    PERSON entities.
+    The leading ". " (not just a space) is load-bearing: without it,
+    adjacent hashtags lose their separation and spaCy's NER glues them
+    into one garbage multi-word entity instead of resolving each one
+    correctly.
 
     Known limitation, not fixed: a 2-letter acronym directly followed by an
     all-lowercase word (#UKnews, as opposed to #UKNews) has no case

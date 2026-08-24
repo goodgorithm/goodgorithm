@@ -32,11 +32,10 @@ DEDUP_JACCARD_THRESHOLD = float(os.environ.get("DEDUP_JACCARD_THRESHOLD", "0.7")
 # URL (see extract_dedup_url below) -- catches cross-"persona" syndication
 # networks/campaigns reposting the same link with a different hashtag set
 # or attribution tail, which fall well short of DEDUP_JACCARD_THRESHOLD on
-# text alone. Empirically-validated against real production data (issue
-# #53): independent human commentary sharing the same URL topped out at
-# 0.062 Jaccard, real cross-persona duplicates started at 0.289 -- 0.2 sits
-# in the middle of that gap with margin on both sides. Treat any change as
-# unvalidated until re-checked the same way.
+# text alone. Independent human commentary sharing the same URL tops out
+# around 0.06 Jaccard; real cross-persona duplicates start around 0.29 --
+# 0.2 sits in the middle of that gap with margin on both sides. Treat any
+# change as unvalidated until re-checked the same way.
 DEDUP_URL_JACCARD_THRESHOLD = float(os.environ.get("DEDUP_URL_JACCARD_THRESHOLD", "0.2"))
 # Matches processing/'s data-retention window by convention, not a shared
 # constant -- keep in sync if you change either. See the wiki's
@@ -63,20 +62,19 @@ def compute_minhash(text: str) -> MinHash:
 
 def extract_dedup_url(post) -> str | None:
     """The canonical article/link URL a post is "about", for the URL-gated
-    dedup tier (issue #53) -- a different contract from thumbnail_resolver's
+    dedup tier -- a different contract from thumbnail_resolver's
     extract_link_needing_thumbnail, which only returns a URL when a
     thumbnail still needs generating. Prefers the platform's own structured
     embed (Bluesky's embed.external.uri, Mastodon's card.url) over a raw-
     text regex match, but falls back to text since Mastodon's card is
     generated asynchronously and is often still empty at ingestion time
-    (same caveat extract_link_needing_thumbnail's own docstring documents),
-    and both real duplicate cases behind this tier had the URL directly in
-    the text anyway. Strips query string/fragment before returning --
-    two reposts of the same article with different tracking params
-    (utm_source etc.) must still compare equal. Bare-domain URLs (no path)
-    are rejected -- a generic homepage link shared by many unrelated posts
-    would otherwise become a false-positive dedup signal. See the wiki's
-    Deduplication page and issue #53 for the empirical basis."""
+    (same caveat extract_link_needing_thumbnail's own docstring documents).
+    Strips query string/fragment before returning -- two reposts of the
+    same article with different tracking params (utm_source etc.) must
+    still compare equal. Bare-domain URLs (no path) are rejected -- a
+    generic homepage link shared by many unrelated posts would otherwise
+    become a false-positive dedup signal. See the wiki's Deduplication
+    page for the empirical basis."""
     raw = extract_raw_url(post.source, post.raw_json, post.text)
     if not raw:
         return None
@@ -232,7 +230,7 @@ def dedup_posts(
     extract_dedup_url) confirmed at the much lower url_jaccard_threshold --
     catches cross-"persona" syndication/campaign networks reposting the
     same link with a different hashtag set or attribution tail, which fall
-    well short of jaccard_threshold on text alone (issue #53). A candidate
+    well short of jaccard_threshold on text alone. A candidate
     reachable both ways gets the lower threshold, since the URL match is
     itself corroborating evidence. Mutates `index` as it goes, so posts
     within the same batch can match each other, not just posts from prior

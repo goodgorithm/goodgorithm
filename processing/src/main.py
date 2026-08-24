@@ -64,11 +64,11 @@ def main() -> None:
         default=int(os.environ.get("REDIS_GUARD_INTERVAL_SECONDS", 30)),
     )
     # Unlike purge_blocked_authors (an unthrottled, cheap indexed DB join),
-    # this calls an external API in batches -- deliberately throttled so it
-    # can't compound under backlog the way today's earlier Redis capacity
-    # incident did. Still comfortably beats --refresh-interval's 30s floor,
-    # which is what actually gates a post becoming feed-visible. See issue
-    # #67 and the wiki's Configuration page.
+    # this calls an external API in batches -- deliberately throttled so a
+    # large backlog can't turn it into a burst of external calls. Still
+    # comfortably beats --refresh-interval's 30s floor, which is what
+    # actually gates a post becoming feed-visible. See the wiki's
+    # Configuration page.
     parser.add_argument(
         "--moderation-recheck-interval",
         type=int,
@@ -78,7 +78,7 @@ def main() -> None:
     # no need to chase Bluesky's AppView aggressively for this. Must run
     # after refresh_rankings in the loop below: its candidate population
     # (rank_score IS NOT NULL) depends on that stage having already run
-    # this cycle. See issue #73 and the wiki's Configuration page.
+    # this cycle. See the wiki's Configuration page.
     parser.add_argument(
         "--author-resolve-interval",
         type=int,
