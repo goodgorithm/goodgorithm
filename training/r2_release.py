@@ -19,13 +19,11 @@ artifact list. CLAUDE.md's own stated principle for this file: "extend
 this shape to a new integration point before inventing a different one."
 
 `publish` also mirrors the version's artifacts to a public GitHub Release
-(`<prefix>-<version>`) -- goodgorithm-models is a private R2 bucket (no
-r2.dev/custom domain configured, confirmed 2026-08-12), so without this
-the "we open-source model weights" claim on the Mission/Algorithm wiki
-pages wasn't actually true: the weights existed, but nobody outside the
-project could download them.
-Making the live version public is now a required part of promoting it,
-not a separate/optional step.
+(`<prefix>-<version>`) -- goodgorithm-models is a private R2 bucket with
+no public read access, so without this the "we open-source model
+weights" claim on the Mission/Algorithm wiki pages wouldn't actually be
+true. Making the live version public is a required part of promoting it,
+not a separate/optional step, so the two can't drift out of sync.
 Requires the `gh` CLI, authenticated, with access to goodgorithm/goodgorithm.
 
 Usage:
@@ -203,7 +201,7 @@ def publish(client, prefix: str, artifacts: list[str], version: str) -> None:
     one would otherwise fail silently until the next time the inference
     side tries to load it, in production. Also makes the version publicly
     downloadable (see create_github_release) -- promoting a version to
-    production and making it public happen together now, not as separate
+    production and making it public happen together, not as separate
     optional steps, so the two can't drift out of sync."""
     for artifact in artifacts:
         key = f"{prefix}/{version}/{artifact}"

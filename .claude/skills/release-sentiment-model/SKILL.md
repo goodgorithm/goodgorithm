@@ -44,11 +44,11 @@ Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the 
 
 7. **Verify:** `uv run python r2_release.py --model sentiment current` should print the new version, and `gh release view sentiment-cnn-<version> --repo goodgorithm/goodgorithm` should show the public release. `processing/` picks the model up the next time a process starts — it resolves the live version once per process, on the first sentiment score, not continuously — so a running deployment needs a restart (a normal Railway redeploy) to pick up a newly-promoted version.
 
-8. **Record the release.** Add a line to the Decisions Log in Notion (internal workspace) with the version, the commit it was trained against, and the key eval numbers from step 4 — this is part of the project's transparency commitment (publishing training data and model weights is only meaningful if there's also a record of *when* and *why* a version went live).
+8. **The GitHub Release created in step 6 is the durable record of this promotion** — it already captures the version, the dataset composition, and a pointer to `config.json` for the full eval numbers, publicly and permanently, so no separate logging step is needed.
 
 ## Rolling back
 
-If a live version turns out to be worse in production than its eval numbers suggested: `uv run python r2_release.py --model sentiment list` to see what's available, then `uv run python r2_release.py --model sentiment publish <previous-version>`. No need to retrain — this just repoints `latest.json`. Record the rollback in the Decisions Log too, with the reason.
+If a live version turns out to be worse in production than its eval numbers suggested: `uv run python r2_release.py --model sentiment list` to see what's available, then `uv run python r2_release.py --model sentiment publish <previous-version>`. No need to retrain — this just repoints `latest.json` (and creates a GitHub Release for that version if one doesn't already exist, same as any other promotion).
 
 ## Guardrails this skill exists to protect
 

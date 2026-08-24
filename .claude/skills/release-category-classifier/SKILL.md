@@ -26,14 +26,14 @@ Every training run publishes its artifacts to `category-classifier/<version>/` i
 3. **Run all cells top to bottom.** Provide R2 credentials the same way as the sentiment model (Colab/Kaggle Secrets if running there, or local `.env`/shell export otherwise — same `R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/`R2_BUCKET_NAME` vars).
 
 4. **Before considering promotion, check the notebook's own output — this model has more to check than the sentiment CNN does, because of class imbalance:**
-   - **Per-label positive counts** printed right after loading the training split. A category left with only a few hundred examples (some real ones run this low — `food_dining`/`travel_adventure` were ~100-130 in the first training run) is a genuine limitation, not a bug — but worth knowing before trusting that category's numbers.
-   - **Per-label multi-label precision/recall/F1** from the `classification_report` cell. Expect real spread here — categories with more training data (e.g. `arts_culture`, `sports`) will score meaningfully better than thin ones. Don't average this away by only looking at macro/micro averages.
+   - **Per-label positive counts** printed right after loading the training split. Support varies meaningfully across the 4 kept categories (see `CLAUDE.md` for current counts) — a thinner category isn't a bug, but its numbers deserve less confidence than a well-supported one.
+   - **Per-label multi-label precision/recall/F1** from the `classification_report` cell. Expect real spread here — categories with more training data will score meaningfully better than thin ones. Don't average this away by only looking at macro/micro averages.
    - **The threshold sweep table**, and the confidence threshold chosen from it. This is the single most important judgment call in this notebook, and it's deliberately not automated (see the markdown cell right before the threshold is set): **the actual goal is more categorized volume, not maximum abstain-precision** — a threshold that trades away a lot of on-taxonomy accuracy for marginally better off-topic rejection works against the point of the whole project. Look for the knee of the curve (where accuracy is still close to its best value but off-taxonomy correctness has jumped substantially), not the threshold with the single highest combined score under some formula. Re-pick this by hand each run — the sweep numbers will vary run to run.
-   - **The final confusion matrix**, including its `(none)` row/column — check it's not either (a) never abstaining (the pre-fix bug this notebook's evaluation section was specifically built to catch — see the "on the FULL test_2021 set" markdown cell for why) or (b) abstaining so often the model isn't adding value over the keyword-only fallback.
+   - **The final confusion matrix**, including its `(none)` row/column — check it's not either (a) never abstaining, which would mean the confidence threshold isn't actually filtering anything, or (b) abstaining so often the model isn't adding value over the keyword-only fallback.
    - **The spot-check examples.** Same "obvious wrong answers are a red flag" reasoning as the sentiment model.
    - **The ONNX export cell's own assertions** — it already checks output-name and label-order-vs-`KEPT_LABELS` parity and will raise if either fails. Don't skip past a failure here by re-running with `--allow-errors` or similar; a label-order mismatch is a *silent* wrong-answer failure at inference time (the model loads fine, just confidently mislabels everything) — this cell existing and passing is the whole safety net for that.
 
-   Same "no hard pass/fail bar, judge relatively" stance as the sentiment skill — but for a *first* version specifically, there's no prior version to judge against; judge against the keyword-only fallback's own real production numbers instead (its baseline: most categories under 10 posts, technology's ~126 as the best performer) — the bar to clear is "meaningfully more than that," not some absolute target.
+   Same "no hard pass/fail bar, judge relatively" stance as the sentiment skill — judge against the *previous* live version's numbers (check `training/r2_release.py --model category current`, then that version's `config.json` in R2). If no version has ever been published yet, judge against the keyword-only fallback's own real production numbers instead — the bar to clear is "meaningfully more categorized volume than keyword-only matching," not some absolute target.
 
 5. **The notebook always uploads the versioned artifacts** (`category-classifier/<version>/model.onnx`, `config.json`) regardless of the decision in step 4 — safe and reversible on its own. If the notebook was run somewhere other than an interactive session with R2 access (e.g. artifacts produced elsewhere and handed off as local files), upload them manually instead: `cd training && uv run python r2_release.py --model category upload <version> --path <local-dir>` — `<local-dir>` needs exactly `model.onnx` and `config.json` under those plain names.
 
@@ -43,14 +43,14 @@ Every training run publishes its artifacts to `category-classifier/<version>/` i
 
 7. **Verify:** `uv run python r2_release.py --model category current` should print the new version, and `gh release view category-classifier-<version> --repo goodgorithm/goodgorithm` should show the public release. `processing/` picks up the model the next time a process starts (resolved once per process, on first categorization) — a running deployment needs a restart to pick up a newly-promoted version.
 
-   **The real verification, though, is the same diagnostic query that originally surfaced the keyword matcher's recall problem** — run it against staging after a soak period, then again against production after promoting there:
+   **The real verification, though, is this diagnostic query** — run it against staging after a soak period, then again against production after promoting there:
    ```sql
    SELECT category, COUNT(*) FILTER (WHERE rank_score IS NOT NULL) AS eligible_and_ranked, COUNT(*) AS total
    FROM processed_posts GROUP BY category ORDER BY eligible_and_ranked DESC;
    ```
    Also check the `category_method` column's distribution — it should be overwhelmingly `tfidf_lr_v1`, not `keyword_v1`, once a version is live and processes have restarted. A high `keyword_v1` share post-promotion usually means the model failed to load (check logs), not that it's intentionally falling back.
 
-8. **Record the release.** Add a line to the Decisions Log in Notion, same as the sentiment model — version, commit trained against, key eval numbers (including the per-label support counts and chosen threshold — those matter more for this model than a single aggregate score does).
+8. **The GitHub Release created in step 6 is the durable record of this promotion**, same as the sentiment model — it captures the version, dataset composition, and a pointer to `config.json` for the full eval numbers (including per-label support counts and the chosen threshold, which matter more for this model than a single aggregate score does).
 
 ## Rolling back
 
