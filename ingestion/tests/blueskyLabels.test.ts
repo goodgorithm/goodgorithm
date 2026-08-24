@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isBotLabel, isExcludedLabel, parseAccountTarget, parsePostTarget } from "../src/blueskyLabels";
+import {
+  getConnectionState,
+  isBotLabel,
+  isExcludedLabel,
+  parseAccountTarget,
+  parsePostTarget,
+} from "../src/blueskyLabels";
 
 test("parsePostTarget extracts did/rkey from a post-collection AT-URI", () => {
   assert.deepEqual(
@@ -85,4 +91,12 @@ test("isBotLabel ignores retractions (neg: true)", () => {
     isBotLabel({ src: "did:plc:mod", uri: "at://did:plc:x", val: "bot", neg: true, cts: "" }),
     false,
   );
+});
+
+test("getConnectionState reports disconnected and not disabled before startBlueskyLabelIngestion runs", () => {
+  const state = getConnectionState();
+  assert.equal(state.disabled, false);
+  assert.equal(state.connected, false);
+  assert.equal(state.connectedAt, null);
+  assert.equal(state.lastMessageAt, null);
 });

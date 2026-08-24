@@ -23,6 +23,34 @@ const MASTODON_POLL_INTERVAL_MS = parseNumberEnv("MASTODON_POLL_INTERVAL_MS", 30
 const MASTODON_REQUEST_TIMEOUT_MS = parseNumberEnv("MASTODON_REQUEST_TIMEOUT_MS", 10000);
 const USER_AGENT = "Goodgorithm/0.1 (https://github.com/goodgorithm)";
 
+// Per-instance poll outcome, for the status endpoint -- only sinceId
+// (pagination) persisted across cycles before this; nothing tracked
+// success/failure per instance, so a single instance going fully silent
+// was invisible short of reading logs.
+interface InstanceStatus {
+  lastSuccessAt: Date | null;
+  lastErrorAt: Date | null;
+  lastError: string | null;
+}
+const instanceStatus = new Map<string, InstanceStatus>();
+
+export function getInstanceStatus(): Record<string, InstanceStatus> {
+  return Object.fromEntries(instanceStatus);
+}
+
+export function recordSuccess(instance: string): void {
+  const status = instanceStatus.get(instance) ?? { lastSuccessAt: null, lastErrorAt: null, lastError: null };
+  status.lastSuccessAt = new Date();
+  instanceStatus.set(instance, status);
+}
+
+export function recordError(instance: string, message: string): void {
+  const status = instanceStatus.get(instance) ?? { lastSuccessAt: null, lastErrorAt: null, lastError: null };
+  status.lastErrorAt = new Date();
+  status.lastError = message;
+  instanceStatus.set(instance, status);
+}
+
 interface MastodonStatus {
   id: string;
   account: { acct: string; discoverable: boolean | null; indexable: boolean | null; created_at: string | null };
@@ -107,14 +135,17 @@ async function pollInstance(
     });
   } catch (err) {
     console.error(`[mastodon:${instance}] fetch error:`, (err as Error).message);
+    recordError(instance, (err as Error).message);
     return;
   }
 
   if (!response.ok) {
     console.error(`[mastodon:${instance}] HTTP ${response.status}`);
+    recordError(instance, `HTTP ${response.status}`);
     return;
   }
 
+  recordSuccess(instance);
   const statuses = (await response.json()) as MastodonStatus[];
   if (!statuses.length) return;
 

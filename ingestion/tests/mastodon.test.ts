@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isDiscoverable, stripHtml } from "../src/mastodon";
+import { getInstanceStatus, isDiscoverable, recordError, recordSuccess, stripHtml } from "../src/mastodon";
 
 test("stripHtml strips tags", () => {
   assert.equal(stripHtml("<p>Hello <strong>world</strong></p>"), "Hello world");
@@ -102,4 +102,24 @@ test("isDiscoverable treats null (unset) fields as opted-in by default", () => {
   assert.equal(isDiscoverable({ discoverable: null, indexable: null }), true);
   assert.equal(isDiscoverable({ discoverable: null, indexable: true }), true);
   assert.equal(isDiscoverable({ discoverable: true, indexable: null }), true);
+});
+
+test("getInstanceStatus reflects a successful poll", () => {
+  recordSuccess("test-instance-success.example");
+  const status = getInstanceStatus()["test-instance-success.example"];
+  assert.ok(status.lastSuccessAt instanceof Date);
+  assert.equal(status.lastError, null);
+});
+
+test("getInstanceStatus reflects a failed poll without clearing a prior success", () => {
+  recordSuccess("test-instance-mixed.example");
+  recordError("test-instance-mixed.example", "HTTP 503");
+  const status = getInstanceStatus()["test-instance-mixed.example"];
+  assert.ok(status.lastSuccessAt instanceof Date);
+  assert.ok(status.lastErrorAt instanceof Date);
+  assert.equal(status.lastError, "HTTP 503");
+});
+
+test("getInstanceStatus has no entry for an instance that's never been polled", () => {
+  assert.equal(getInstanceStatus()["test-instance-never-polled.example"], undefined);
 });

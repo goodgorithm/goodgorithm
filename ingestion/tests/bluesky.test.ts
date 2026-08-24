@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { resolveFacetLinks } from "../src/bluesky";
+import { getConnectionState, resolveFacetLinks } from "../src/bluesky";
 
 test("resolveFacetLinks substitutes a facet-marked truncated link with its real URI (issue #42)", () => {
   // Real text + facet pulled from production (the reported post): the
@@ -108,4 +108,14 @@ test("resolveFacetLinks only touches the link facet's range when tag/mention fac
 test("resolveFacetLinks returns the text unchanged when facets is not an array", () => {
   assert.equal(resolveFacetLinks("hello world", undefined), "hello world");
   assert.equal(resolveFacetLinks("hello world", null), "hello world");
+});
+
+test("getConnectionState reports disconnected before startBlueskyIngestion has ever connected", () => {
+  // startBlueskyIngestion() itself opens a real WebSocket and isn't
+  // exercised in unit tests -- this just guards the getter's shape/default.
+  const state = getConnectionState();
+  assert.equal(state.connected, false);
+  assert.equal(state.connectedAt, null);
+  assert.equal(state.lastMessageAt, null);
+  assert.equal(typeof state.reconnectDelayMs, "number");
 });

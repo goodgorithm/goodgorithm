@@ -79,6 +79,19 @@ export function resolveFacetLinks(text: string, facets: unknown): string {
   return buf.toString("utf8");
 }
 
+// Connection-health state for the status endpoint -- module-level since
+// startBlueskyIngestion() is only ever called once (from index.ts), but a
+// closure-local variable wouldn't be reachable from outside it. Not a
+// business-logic signal, purely for statusServer.ts to read.
+let connected = false;
+let connectedAt: Date | null = null;
+let lastMessageAt: Date | null = null;
+let reconnectDelayMs = BLUESKY_RECONNECT_BASE_MS;
+
+export function getConnectionState() {
+  return { connected, connectedAt, lastMessageAt, reconnectDelayMs };
+}
+
 export function startBlueskyIngestion(): void {
   let delay = BLUESKY_RECONNECT_BASE_MS;
 
@@ -88,9 +101,13 @@ export function startBlueskyIngestion(): void {
     ws.on("open", () => {
       console.log("[bluesky] connected to Jetstream");
       delay = BLUESKY_RECONNECT_BASE_MS;
+      connected = true;
+      connectedAt = new Date();
+      reconnectDelayMs = delay;
     });
 
     ws.on("message", async (data) => {
+      lastMessageAt = new Date();
       let event: JetstreamEvent;
       try {
         event = JSON.parse(data.toString()) as JetstreamEvent;
@@ -147,9 +164,12 @@ export function startBlueskyIngestion(): void {
     });
 
     ws.on("close", () => {
+      connected = false;
+      connectedAt = null;
       console.log(`[bluesky] disconnected — reconnecting in ${delay / 1000}s`);
       setTimeout(() => {
         delay = Math.min(delay * 2, BLUESKY_RECONNECT_MAX_MS);
+        reconnectDelayMs = delay;
         connect();
       }, delay);
     });

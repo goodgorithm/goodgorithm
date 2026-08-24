@@ -81,12 +81,25 @@ export function parseAccountTarget(uri: string): string | null {
   return rest;
 }
 
+// Connection-health state for the status endpoint -- see bluesky.ts's
+// identical pattern for why this is module-level, not closure-local.
+let connected = false;
+let connectedAt: Date | null = null;
+let lastMessageAt: Date | null = null;
+let reconnectDelayMs = BLUESKY_RECONNECT_BASE_MS;
+let disabled = false;
+
+export function getConnectionState() {
+  return { disabled, connected, connectedAt, lastMessageAt, reconnectDelayMs };
+}
+
 // Frame/payload shape below (`op`, `#info`, `#labels`, `seq`-based
 // resumption) is AT Protocol's generic event-stream framing -- see the
 // wiki's Bluesky Protocol page.
 export function startBlueskyLabelIngestion(): void {
   if (process.env.DISABLE_LABEL_FILTER) {
     console.log("[bluesky-labels] disabled via DISABLE_LABEL_FILTER");
+    disabled = true;
     return;
   }
 
@@ -112,9 +125,13 @@ export function startBlueskyLabelIngestion(): void {
     ws.on("open", () => {
       console.log("[bluesky-labels] connected to labels stream");
       delay = BLUESKY_RECONNECT_BASE_MS;
+      connected = true;
+      connectedAt = new Date();
+      reconnectDelayMs = delay;
     });
 
     ws.on("message", async (data) => {
+      lastMessageAt = new Date();
       try {
         // ws delivers binary frames as Buffer, which already satisfies
         // Uint8Array -- no conversion needed. Two consecutive top-level
@@ -179,9 +196,12 @@ export function startBlueskyLabelIngestion(): void {
     });
 
     ws.on("close", () => {
+      connected = false;
+      connectedAt = null;
       console.log(`[bluesky-labels] disconnected — reconnecting in ${delay / 1000}s`);
       setTimeout(() => {
         delay = Math.min(delay * 2, BLUESKY_RECONNECT_MAX_MS);
+        reconnectDelayMs = delay;
         void safeConnect();
       }, delay);
     });
