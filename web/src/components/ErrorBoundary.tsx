@@ -11,16 +11,12 @@ interface State {
 }
 
 // React has no hook-based equivalent to this - a class component is the
-// only way to catch a render/lifecycle error in the tree below it. Without
-// this, the app had zero error boundaries anywhere: any uncaught exception
-// (a malformed post shape, a null-ref in a rarely-hit branch, anything)
-// unmounts the *entire* React tree with no recovery path and no
-// diagnostic trail - the most plausible mechanism behind issue #35's
-// reports of the feed vanishing completely with nothing in view and
-// nothing obviously wrong (investigated there with a real stress-test
-// harness, not reliably reproduced). Wrapping just the feed/content-page
-// area, not the whole <main>, so the header/nav survive a crash below it
-// and stay usable.
+// only way to catch a render/lifecycle error in the tree below it.
+// Without it, any uncaught exception (a malformed post shape, a null-ref
+// in a rarely-hit branch, anything) unmounts the *entire* React tree with
+// no recovery path and no diagnostic trail. Wraps just the feed/content-
+// page area, not the whole <main>, so the header/nav survive a crash
+// below it and stay usable.
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
 

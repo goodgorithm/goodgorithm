@@ -6,7 +6,7 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <!-- viewport-fit=cover: without it, env(safe-area-inset-*) (App.module.css)
          always resolves to 0 -- needed for the notch/status-bar padding on
-         native builds (issue #9). No effect on the web PWA case. -->
+         native builds. No effect on the web PWA case. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1f9d55" />
     <title>Goodgorithm — An Open-Source Algorithm for Good News</title>
@@ -20,7 +20,7 @@
          app is a client-rendered SPA with no server-side rendering, and
          most link-preview scrapers (Slack, Discord, iMessage, X) don't
          execute JS, so these have to live in the raw HTML, not be set from
-         React (issue #17). -->
+         React. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Goodgorithm" />
     <meta property="og:url" content="https://goodgorithm.com/" />

@@ -15,7 +15,7 @@
   color: var(--color-text-secondary);
   /* anywhere, not break-word: this is a flex item, and break-word doesn't
      affect the min-content size flex uses for layout, so an unbreakable
-     long tag (e.g. a stray URL, issue #55) would still overflow the card
-     even with break-word applied. */
+     long tag (e.g. a stray URL) would still overflow the card even with
+     break-word applied. */
   overflow-wrap: anywhere;
 }

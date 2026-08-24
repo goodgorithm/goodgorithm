@@ -23,11 +23,10 @@ export function SensitiveMedia({
 
   // children stay in the exact same tree position across the reveal toggle
   // -- only the blur class and which button renders change. Conditionally
-  // rendering children under a *different* wrapper per branch (as this used
-  // to do: children directly when revealed, wrapped in an extra <div> when
-  // not) makes React tear down and remount them on every toggle, which for
-  // VideoPlayer meant losing its hls.js attachment entirely and leaving the
-  // video permanently stuck with no error (found investigating issue #66).
+  // rendering children under a *different* wrapper per branch would make
+  // React tear down and remount them on every toggle, which for VideoPlayer
+  // would mean losing its hls.js attachment entirely and leaving the video
+  // permanently stuck with no error.
   const mediaClassName = revealed ? styles.mediaWrapper : `${styles.mediaWrapper} ${styles.blurred}`;
 
   return (

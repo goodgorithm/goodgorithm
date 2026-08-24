@@ -11,17 +11,16 @@ type VideoAttachment = Extract<Attachment, { kind: "video" }>;
 // it directly everywhere. Bluesky's is an HLS .m3u8 playlist, needing
 // hls.js's Media Source Extensions parsing on most engines.
 //
-// Must check for "probably" specifically, not just non-empty (issue #66) -
-// canPlayType returns "", "maybe", or "probably". Modern Chromium *and*
-// Playwright's WebKit build both return "maybe" here despite not actually
-// being able to play a real multi-rendition HLS manifest natively (verified
-// directly, issue #69) - treating "maybe" as supported skips hls.js
-// entirely and silently fails (network state goes straight to
-// NETWORK_NO_SOURCE, no error ever surfaces). "probably" is the only value
-// actually worth trusting; in practice that routes every engine through
-// hls.js today, which is fine - hls.js works on any MSE-capable browser.
-// See e2e/video.spec.ts, which runs this exact check against real
-// Chromium/Firefox/WebKit on every change.
+// Must check for "probably" specifically, not just non-empty - canPlayType
+// returns "", "maybe", or "probably". Modern Chromium *and* Playwright's
+// WebKit build both return "maybe" here despite not actually being able
+// to play a real multi-rendition HLS manifest natively - treating "maybe"
+// as supported skips hls.js entirely and silently fails (network state
+// goes straight to NETWORK_NO_SOURCE, no error ever surfaces). "probably"
+// is the only value actually worth trusting; in practice that routes every
+// engine through hls.js today, which is fine - hls.js works on any
+// MSE-capable browser. See e2e/video.spec.ts, which runs this exact check
+// against real Chromium/Firefox/WebKit on every change.
 function isNativeHlsSupported(video: HTMLVideoElement): boolean {
   return video.canPlayType("application/vnd.apple.mpegurl") === "probably";
 }
@@ -41,11 +40,9 @@ function useHlsSource(playlistUrl: string) {
     if (!Hls.isSupported()) return; // no HLS path available - browser just won't play this one
 
     const hls = new Hls();
-    // hls.js failures were previously completely silent -- issue #66's
-    // actual root cause (isNativeHlsSupported wrongly treating Chromium's
-    // "maybe" canPlayType answer as real support) meant this code path
-    // wasn't even the problem, but a future real hls.js failure deserves
-    // to be visible rather than a silent black box like this one was.
+    // Surfaces real hls.js failures instead of failing silently -- a fatal
+    // error here would otherwise leave the video stuck with nothing
+    // visible in the console.
     hls.on(Hls.Events.ERROR, (_event, data) => {
       if (data.fatal) console.error("[hls.js]", data.type, data.details);
     });

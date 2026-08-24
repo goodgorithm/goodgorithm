@@ -34,7 +34,7 @@ export function CollapsiblePostText({
   // own to find) - each segment gets its own keyed Fragment so linkify's
   // own internal key counter (which restarts at 0 per call) never collides
   // with another segment's, since React only requires key uniqueness among
-  // siblings, not globally (issue #77).
+  // siblings, not globally.
   const content = renderEmojiShortcodes(text, emojis).map((segment, i) => (
     <Fragment key={i}>{typeof segment === "string" ? linkify(segment, source, permalink) : segment}</Fragment>
   ));
@@ -42,10 +42,10 @@ export function CollapsiblePostText({
   useEffect(() => {
     // Collapsing shrinks the post's height, which pulls everything below
     // it upward - if the post scrolled out of view above the viewport as
-    // a result, the reader lands with no visible cue what happened (issue
-    // #60). Only correct for that case (top < 0, scrolled past) rather
-    // than unconditionally scrolling on every collapse, so this stays a
-    // no-op when the reader was already looking at the top of the post.
+    // a result, the reader lands with no visible cue what happened. Only
+    // correct for that case (top < 0, scrolled past) rather than
+    // unconditionally scrolling on every collapse, so this stays a no-op
+    // when the reader was already looking at the top of the post.
     if (wasExpandedRef.current && !expanded) {
       const el = containerRef.current;
       if (el && el.getBoundingClientRect().top < 0) {

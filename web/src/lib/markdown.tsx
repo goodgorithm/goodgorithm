@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
 
 // A hand-rolled subset renderer, not a general CommonMark parser - covers
-// exactly what the project's static content pages (mission, content
-// policy, algorithm) use: #/## headings, paragraphs, "- " lists, ``` code
-// fences (verbatim, no inline parsing inside), and inline
-// `code`/**bold**/*italic*/[text](url). Not worth a markdown dependency
-// for a handful of static pages (no markdown lib exists anywhere in this
-// repo today).
+// exactly what the project's static content pages use: #/## headings,
+// paragraphs, "- " lists, ``` code fences (verbatim, no inline parsing
+// inside), and inline `code`/**bold**/*italic*/[text](url). Not worth a
+// markdown dependency for a handful of static pages (no markdown lib
+// exists anywhere in this repo today).
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
   // `code` first: content between single backticks (e.g. `raw_posts`)
   // must never fall through to the bold/italic/link alternatives, even

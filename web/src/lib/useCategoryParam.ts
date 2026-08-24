@@ -4,14 +4,10 @@ import { CATEGORIES, type Category } from "../api/types";
 
 // The landing default. Also what an absent OR unrecognized/stale
 // ?category= value falls back to - CLAUDE.md's defensive-unknown-category
-// handling. This includes the old "all"/Full feed URL value, removed once
-// there was enough content in every category that an unfiltered,
-// unmoderated-by-category feed no longer earned its keep - it's just
-// another unrecognized string now, no special-case needed.
-// "kindness_community" was the original default but doesn't exist in the
-// trained-classifier taxonomy (see CLAUDE.md's Category filtering section)
-// - arts_culture is the closest replacement in spirit (broadly appealing,
-// not niche) and happens to be the highest-volume category too.
+// handling - so any unrecognized string (a stale bookmark, a typo,
+// anything) lands somewhere reasonable rather than erroring. arts_culture
+// is broadly appealing (not niche) and the highest-volume category, which
+// is what makes it the right fallback, not just the default.
 const DEFAULT_CATEGORY: Category = "arts_culture";
 
 function readCategory(): Category {
@@ -34,8 +30,8 @@ export function useCategoryParam(): [Category, (category: Category) => void] {
 
   // Makes the default explicit in the address bar rather than leaving it
   // implicit - an absent or garbage ?category= value silently resolving to
-  // Kindness & Community underneath would leave the URL not reflecting
-  // what's actually showing. Runs once on mount only: replaceState mutates
+  // Arts & Culture underneath would leave the URL not reflecting what's
+  // actually showing. Runs once on mount only: replaceState mutates
   // the current history entry, so there's no bare-/-or-garbage entry left
   // for back/forward to return to afterward - no popstate handling needed.
   useEffect(() => {

@@ -5,9 +5,9 @@ import styles from "./emoji.module.css";
 
 const SHORTCODE_RE = /:([a-zA-Z0-9_]+):/g;
 
-// Substitutes Mastodon custom-emoji shortcodes (issue #77, e.g. a display
-// name of "Volodymyr Zelenskyy :bot:") with the real inline image
-// Mastodon's own client would show, using the emojis array that already
+// Substitutes Mastodon custom-emoji shortcodes (e.g. a display name of
+// "Volodymyr Zelenskyy :bot:") with the real inline image Mastodon's own
+// client would show, using the emojis array that already
 // ships in raw_json for free - no extra API call, just the browser
 // fetching the image directly, same as avatars/media already do. A
 // `:word:`-shaped span that isn't a real shortcode in *this* post's/

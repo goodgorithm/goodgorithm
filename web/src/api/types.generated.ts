@@ -23,20 +23,13 @@
 export type Source = "bluesky" | "mastodon";
 
 // The fixed 4-category taxonomy assigned by processing/'s category_model.py
-// (a trained classifier, with taxonomy.py's keyword matcher as a fallback)
-// - narrowed from an original 8 (issue #37) once real production precision
-// data (not just the offline eval) showed a sharp, specific quality divide.
-// `gaming` was later swapped for `diaries_daily_life` (issue #62) after
-// issue #61 found it was the strongest unexplored category in the full
-// 19-label source space, never previously considered, and also resolved
-// #61's original motivating problem (sports content bleeding into gaming
-// via "game"-keyword overlap) by retiring the category that bled. See
-// CLAUDE.md's Category filtering section for why these 4 and the full
-// history behind them. Deliberately no DB CHECK constraint enforcing this
-// set (see processed_posts.category in supabase/migrations/0005_add_category.sql)
-// - a stricter constraint would make the taxonomy harder to extend, not
-// easier. See the wiki's API Internals page for what happens end to end
-// when this list and the DB disagree.
+// (a trained classifier, with taxonomy.py's keyword matcher as a fallback).
+// See CLAUDE.md's Category filtering section for why these 4. Deliberately
+// no DB CHECK constraint enforcing this set (see processed_posts.category
+// in supabase/migrations/0005_add_category.sql) - a stricter constraint
+// would make the taxonomy harder to extend, not easier. See the wiki's API
+// Internals page for what happens end to end when this list and the DB
+// disagree.
 export const CATEGORIES = ["science_technology", "arts_culture", "food_dining", "diaries_daily_life"] as const;
 
 export type Category = (typeof CATEGORIES)[number];
@@ -48,8 +41,8 @@ export interface FeedPostScores {
   rank: number;
 }
 
-// Mastodon's custom-emoji shortcode mechanism (issue #77) - a `:shortcode:`
-// in display_name/post text is meant to render as this inline image,
+// Mastodon's custom-emoji shortcode mechanism - a `:shortcode:` in
+// display_name/post text is meant to render as this inline image,
 // client-side, per Mastodon's own convention. Bluesky has no equivalent,
 // so this is always `[]` for Bluesky posts/authors. Only the two fields
 // web/ actually needs to render one - Mastodon's API also returns
@@ -123,8 +116,8 @@ export interface FeedPost {
   entities: string[];
   permalink: string;
   author: FeedPostAuthor;
-  // Resolves shortcodes used in `text` itself (issue #77) - the status's
-  // own emojis array, distinct from author.emojis above.
+  // Resolves shortcodes used in `text` itself - the status's own emojis
+  // array, distinct from author.emojis above.
   emojis: CustomEmoji[];
   scores: FeedPostScores;
   // Which pipeline logic produced this post's scores - see CLAUDE.md's

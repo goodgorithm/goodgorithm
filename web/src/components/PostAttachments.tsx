@@ -5,10 +5,11 @@ import { ImageGrid } from "./ImageGrid";
 import { LinkCard } from "./LinkCard";
 import { QuoteLink } from "./QuoteLink";
 
-// hls.js is a substantial media-parsing library and was shipping in every
-// visitor's initial bundle even though most posts carry no video (and even
-// on Safari, which doesn't need it - see VideoPlayer's native-HLS check).
-// Split into its own chunk, fetched only when a post actually has a video.
+// hls.js is a substantial media-parsing library that would otherwise ship
+// in every visitor's initial bundle, even though most posts carry no
+// video (and even on Safari, which doesn't need it - see VideoPlayer's
+// native-HLS check). Split into its own chunk, fetched only when a post
+// actually has a video.
 const VideoPlayer = lazy(() => import("./VideoPlayer").then((m) => ({ default: m.VideoPlayer })));
 
 function isKind<K extends Attachment["kind"]>(kind: K) {

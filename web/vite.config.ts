@@ -14,8 +14,8 @@ export default defineConfig({
         name: "Goodgorithm",
         short_name: "Goodgorithm",
         // Matches index.html's meta description/og:description/twitter:description
-        // and the JSON-LD description exactly -- this used to be its own
-        // independently-drifted fifth variant (issue #86).
+        // and the JSON-LD description exactly - keep all four in sync by
+        // hand if this copy ever changes.
         description:
           "Goodgorithm surfaces genuinely uplifting posts from across the open social web — a free, open-source feed built to counter doomscrolling, not feed it.",
         start_url: "/",

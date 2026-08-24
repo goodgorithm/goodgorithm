@@ -70,8 +70,8 @@ export function ScoreDetails({
           <span className={styles.rowValue}>{scores.rank.toFixed(2)}</span>
         </div>
       </div>
-      {/* Algorithm mechanics moved to the GitHub Wiki - this is now a plain
-          external link, not client-side routing. */}
+      {/* A plain external link, not client-side routing - algorithm
+          mechanics live on the GitHub Wiki, not in this app. */}
       <a
         className={styles.algorithmLink}
         href="https://github.com/goodgorithm/goodgorithm/wiki/Algorithm"

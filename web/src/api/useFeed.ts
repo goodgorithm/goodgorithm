@@ -6,8 +6,8 @@ import type { Category } from "./types";
 import { clearCursor, loadCursor, saveCursor } from "../lib/feedCursor";
 
 export function useFeed(category: Category) {
-  // Per-category, not a single shared counter: resetting "Kindness &
-  // Community" back to the top shouldn't also force "Technology" to the
+  // Per-category, not a single shared counter: resetting "Arts & Culture"
+  // back to the top shouldn't also force "Science & Technology" to the
   // top the next time you switch to it - each category's reset state is
   // independent.
   const [resetGenerations, setResetGenerations] = useState<Record<string, number>>({});
