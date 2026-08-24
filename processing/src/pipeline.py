@@ -150,7 +150,7 @@ def run_cycle(batch_size: int) -> int:
     upserts: list[db.ProcessedPostUpsert] = []
     for post in kept_posts:
         cluster = dedup_results[post.id]
-        bot_score = bot_filter.score_bot(post.author_id, post.text, cluster.cluster_id, bot_index)
+        bot_score = bot_filter.score_bot(post.source, post.author_id, post.text, cluster.cluster_id, bot_index)
         topic = topicality_results[post.id]
         sentiment_score = sentiment_results[post.id]
 

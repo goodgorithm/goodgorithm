@@ -119,6 +119,31 @@ def template_skeleton(text: str) -> str:
     return "|".join(prefix) + "||" + "|".join(suffix)
 
 
+def canonical_account_id(source: str, author_id: str) -> str:
+    """The real per-author identity behind the three Redis-keyed signals
+    below (issue #78). Mastodon's author_id is `{polled_instance}/{acct}`
+    (ingestion/src/mastodon.ts) -- `acct` is Mastodon's own field, already
+    the globally-qualified `user@host` form when the polled instance sees
+    the account as remote/federated, but a bare `user` when the polled
+    instance happens to be that account's own home instance. A single
+    real account visible across N of our 8 polled instances' public
+    timelines -- via genuine crossposting, or (the empirically dominant
+    case) simply federation making one post visible on several public
+    timelines at once -- used to fragment into N distinct author_id
+    values and N independent velocity/self-dup/template-repeat counters.
+    Normalizing both acct shapes to the same `user@host` form regardless
+    of which instance polled it fixes this: confirmed against a real
+    2h production sample, canonicalizing collapsed 4,245 distinct
+    author_ids down to 1,140 real accounts. Bluesky's author_id (a bare
+    DID, never containing "/") needs no such normalization -- Jetstream
+    is a single global firehose, not N independently polled instances,
+    so it's already one source-agnostic identity; returned unchanged."""
+    if source != "mastodon":
+        return author_id
+    polled_instance, _, acct = author_id.partition("/")
+    return acct if "@" in acct else f"{acct}@{polled_instance}"
+
+
 class BotFilterIndex(Protocol):
     def bump_velocity(self, author_id: str) -> int: ...
     def check_and_record_self_duplicate(self, author_id: str, cluster_id: str) -> bool: ...
@@ -189,21 +214,26 @@ class BotScore:
     template_component: float
 
 
-def score_bot(author_id: str, text: str, cluster_id: UUID, index: BotFilterIndex) -> BotScore:
+def score_bot(source: str, author_id: str, text: str, cluster_id: UUID, index: BotFilterIndex) -> BotScore:
     """Content-derived bot heuristics only — posting velocity, self-repost
     rate (via dedup cluster membership), lexical spam patterns, and
     template repetition. Never reads likes/reposts/replies/follower
     counts. Defensive-only: this produces a filter flag, never a ranking
-    boost. See the wiki's Bot Filter page."""
-    velocity_count = index.bump_velocity(author_id)
+    boost. See the wiki's Bot Filter page.
+
+    The three Redis-keyed signals below are keyed by canonical_account_id,
+    not the raw author_id -- see that function's docstring (issue #78)."""
+    account_id = canonical_account_id(source, author_id)
+
+    velocity_count = index.bump_velocity(account_id)
     velocity_component = min(1.0, velocity_count / BOT_FILTER_VELOCITY_THRESHOLD)
 
-    is_self_dup = index.check_and_record_self_duplicate(author_id, str(cluster_id))
+    is_self_dup = index.check_and_record_self_duplicate(account_id, str(cluster_id))
     self_dup_component = 1.0 if is_self_dup else 0.0
 
     lex_component = lexical_score(text)
 
-    template_count = index.bump_template_repeat(author_id, template_skeleton(text))
+    template_count = index.bump_template_repeat(account_id, template_skeleton(text))
     template_component = min(1.0, template_count / BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD)
 
     bot_score = (

@@ -66,9 +66,69 @@ def test_lexical_score_flags_link_stuffing():
     assert bot_filter.lexical_score(clean) == 0.0
 
 
+# --- canonical_account_id (issue #78) ---
+
+
+def test_canonical_account_id_qualifies_a_bare_acct_with_the_polled_instance():
+    # The polled instance IS this account's home instance (Mastodon's own
+    # `acct` field has no "@host" for a local account).
+    assert bot_filter.canonical_account_id("mastodon", "fosstodon.org/localuser") == "localuser@fosstodon.org"
+
+
+def test_canonical_account_id_leaves_an_already_qualified_acct_alone():
+    # The polled instance sees this account as remote/federated -- acct is
+    # already the globally-qualified form, so the polled instance itself
+    # is irrelevant to this account's real identity.
+    assert (
+        bot_filter.canonical_account_id("mastodon", "hachyderm.io/zelenskyyua@zpravobot.news")
+        == "zelenskyyua@zpravobot.news"
+    )
+
+
+def test_canonical_account_id_unifies_the_same_account_seen_via_different_polled_instances():
+    # The actual regression: one real account, visible on several of our
+    # polled instances' public timelines (crossposting, or just
+    # federation), used to fragment into a distinct author_id per instance.
+    variants = [
+        "fosstodon.org/zelenskyyua@zpravobot.news",
+        "hachyderm.io/zelenskyyua@zpravobot.news",
+        "mas.to/zelenskyyua@zpravobot.news",
+        "mstdn.social/zelenskyyua@zpravobot.news",
+    ]
+    canonical_ids = {bot_filter.canonical_account_id("mastodon", v) for v in variants}
+    assert canonical_ids == {"zelenskyyua@zpravobot.news"}
+
+
+def test_canonical_account_id_bluesky_is_unchanged():
+    # Bluesky's author_id is already one global, source-agnostic identity
+    # (a bare DID) -- Jetstream is a single firehose, not N independently
+    # polled instances, so there's nothing to canonicalize.
+    assert bot_filter.canonical_account_id("bluesky", "did:plc:abc123") == "did:plc:abc123"
+
+
+def test_score_bot_velocity_unifies_across_polled_instances_for_the_same_account():
+    # Before the fix, this exact scenario (one real account posting
+    # rapidly but observed under N different polled-instance-prefixed
+    # author_ids) would split into N separate low counts, none reaching
+    # BOT_FILTER_VELOCITY_THRESHOLD (15) -- a genuinely high-frequency
+    # poster looking like several low-frequency ones.
+    index = InMemoryBotFilterIndex()
+    instances = ["fosstodon.org", "hachyderm.io", "mas.to"]
+
+    for i in range(20):
+        author_id = f"{instances[i % len(instances)]}/crossposter@home.example"
+        last = bot_filter.score_bot("mastodon", author_id, f"update {i}", uuid4(), index)
+
+    assert last.velocity_component == 1.0
+    # Confirms the counter really is shared, not 3 separate ones that each
+    # happened to reach 1.0 independently.
+    assert index.velocity == {"crossposter@home.example": 20}
+
+
 def test_score_bot_normal_post_is_not_flagged():
     index = InMemoryBotFilterIndex()
     result = bot_filter.score_bot(
+        source="bluesky",
         author_id="alice",
         text="had a lovely walk in the park this morning",
         cluster_id=uuid4(),
@@ -91,9 +151,9 @@ def test_score_bot_rapid_fire_posting_raises_velocity_component():
     index = InMemoryBotFilterIndex()
     author = "busy_human"
 
-    first = bot_filter.score_bot(author, "update 0: breaking news happening now", uuid4(), index)
+    first = bot_filter.score_bot("bluesky", author, "update 0: breaking news happening now", uuid4(), index)
     for i in range(1, 21):
-        last = bot_filter.score_bot(author, f"update {i}: breaking news happening now", uuid4(), index)
+        last = bot_filter.score_bot("bluesky", author, f"update {i}: breaking news happening now", uuid4(), index)
 
     assert last.velocity_component > first.velocity_component
     assert last.velocity_component == 1.0
@@ -111,7 +171,7 @@ def test_score_bot_rapid_fire_plus_self_duplication_flags_as_bot():
     cluster_id = uuid4()
 
     for _ in range(20):
-        last = bot_filter.score_bot(author, text, cluster_id, index)
+        last = bot_filter.score_bot("bluesky", author, text, cluster_id, index)
 
     assert last.self_dup_component == 1.0
     assert last.velocity_component == 1.0
@@ -123,8 +183,8 @@ def test_score_bot_self_duplicate_flagged_on_second_post_into_same_cluster():
     author = "repeater"
     cluster_id = uuid4()
 
-    first = bot_filter.score_bot(author, "buy my product", cluster_id, index)
-    second = bot_filter.score_bot(author, "buy my product", cluster_id, index)
+    first = bot_filter.score_bot("bluesky", author, "buy my product", cluster_id, index)
+    second = bot_filter.score_bot("bluesky", author, "buy my product", cluster_id, index)
 
     assert first.self_dup_component == 0.0
     assert second.self_dup_component == 1.0
@@ -134,8 +194,8 @@ def test_score_bot_different_authors_same_cluster_not_self_duplicate():
     index = InMemoryBotFilterIndex()
     cluster_id = uuid4()
 
-    result_a = bot_filter.score_bot("alice", "breaking news update", cluster_id, index)
-    result_b = bot_filter.score_bot("bob", "breaking news update", cluster_id, index)
+    result_a = bot_filter.score_bot("bluesky", "alice", "breaking news update", cluster_id, index)
+    result_b = bot_filter.score_bot("bluesky", "bob", "breaking news update", cluster_id, index)
 
     assert result_a.self_dup_component == 0.0
     assert result_b.self_dup_component == 0.0
@@ -217,7 +277,7 @@ def test_score_bot_repeated_template_flags_as_bot():
     songs = [MIXIFY_A, MIXIFY_B] * 6  # 12 posts, alternating song, same skeleton
 
     for text in songs:
-        last = bot_filter.score_bot(author, text, uuid4(), index)
+        last = bot_filter.score_bot("bluesky", author, text, uuid4(), index)
 
     assert last.template_component == 1.0
     assert last.self_dup_component == 0.0  # different clusters -- dedup never groups these
@@ -234,7 +294,7 @@ def test_score_bot_varying_structure_does_not_raise_template_component():
     ]
 
     for text in texts:
-        last = bot_filter.score_bot(author, text, uuid4(), index)
+        last = bot_filter.score_bot("bluesky", author, text, uuid4(), index)
 
     assert last.template_component < 1.0
     assert last.is_bot is False
