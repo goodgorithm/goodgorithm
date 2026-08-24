@@ -124,7 +124,7 @@ export function startBlueskyIngestion(): void {
       const sourceId = `${event.did}/${event.commit.rkey}`;
       // Bluesky's own moderation labeler can react faster than our own
       // insert lands -- if blueskyLabels.ts already tried and failed to
-      // delete this exact post, don't insert it at all (issue #67).
+      // delete this exact post, don't insert it at all.
       if (consumePendingExclusion(sourceId)) {
         console.log(`[bluesky] skipped insert for ${sourceId} -- pending exclusion from label stream`);
         return;

@@ -162,8 +162,8 @@ export function startBlueskyLabelIngestion(): void {
           const deleted = await deleteBySourceId("bluesky", sourceId);
           // No matching row yet doesn't mean "not ours" -- our own
           // Jetstream-driven insert for this exact post may still be in
-          // flight and land moments later (issue #67). Remember it so
-          // bluesky.ts can catch that case instead of silently losing it.
+          // flight and land moments later. Remember it so bluesky.ts can
+          // catch that case instead of silently losing it.
           if (!deleted) markPendingExclusion(sourceId);
           console.log(
             `[bluesky-labels] "${label.val}" from ${label.src} on ${label.uri}` +
@@ -171,9 +171,9 @@ export function startBlueskyLabelIngestion(): void {
           );
         }
       } catch (err) {
-        // A bug in this brand-new CBOR/matching path must never crash the
-        // whole ingestion process and take the primary Jetstream/Mastodon
-        // paths down with it.
+        // A bug in this CBOR/matching path must never crash the whole
+        // ingestion process and take the primary Jetstream/Mastodon paths
+        // down with it.
         console.error("[bluesky-labels] error handling message:", err);
       }
     });

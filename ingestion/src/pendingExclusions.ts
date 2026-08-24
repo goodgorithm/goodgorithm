@@ -1,6 +1,5 @@
 import { parseNumberEnv } from "./env";
 
-// Closes a real race condition confirmed in production (issue #67):
 // bluesky.ts's Jetstream-driven raw_posts INSERT and blueskyLabels.ts's
 // label-stream-driven DELETE are two independent WebSocket connections in
 // this same process with no coordination. When Bluesky's own moderation
@@ -11,10 +10,10 @@ import { parseNumberEnv } from "./env";
 // state that closes that ordering: blueskyLabels.ts records a miss here,
 // bluesky.ts checks it right before inserting.
 //
-// Bounded window for that flipped ordering only -- both confirmed
-// incidents had an insert-latency gap of ~4-8s; 30s gives real headroom.
-// The opposite ordering (insert lands first, label arrives after) already
-// works today via the existing deleteBySourceId path and needs no change.
+// Bounded window for that flipped ordering only -- real insert-latency
+// gaps run a few seconds, so 30s gives real headroom. The opposite
+// ordering (insert lands first, label arrives after) already works via
+// the existing deleteBySourceId path and needs no change.
 const BLUESKY_PENDING_EXCLUSION_TTL_MS = parseNumberEnv("BLUESKY_PENDING_EXCLUSION_TTL_MS", 30000);
 
 // sourceId -> expiry epoch ms. Only ever grows from markPendingExclusion's
