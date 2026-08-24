@@ -152,6 +152,8 @@ class RankableRow:
     is_bot: bool
     is_dedup_canonical: bool
     context_penalty: float
+    source: str
+    author_id: str
 
 
 def fetch_rankable_posts(since: datetime) -> list[RankableRow]:
@@ -159,7 +161,8 @@ def fetch_rankable_posts(since: datetime) -> list[RankableRow]:
         rows = conn.execute(
             """
             SELECT r.id, r.text, r.created_at, p.sentiment_score, p.topicality_score,
-                   p.entities, p.is_bot, p.is_dedup_canonical, p.context_penalty
+                   p.entities, p.is_bot, p.is_dedup_canonical, p.context_penalty,
+                   r.source, r.author_id
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
             WHERE r.created_at >= %s

@@ -165,6 +165,8 @@ def run_cycle(batch_size: int) -> int:
             entities=topic.entities,
             is_bot=bot_score.is_bot,
             is_dedup_canonical=cluster.is_canonical,
+            source=post.source,
+            author_id=post.author_id,
             context_penalty=context_penalty,
         )
         base_score = ranking.compute_base_score(rankable, now)
@@ -231,6 +233,8 @@ def refresh_rankings() -> int:
             entities=row.entities or [],
             is_bot=row.is_bot,
             is_dedup_canonical=row.is_dedup_canonical,
+            source=row.source,
+            author_id=row.author_id,
             context_penalty=row.context_penalty,
         )
         for row in rows

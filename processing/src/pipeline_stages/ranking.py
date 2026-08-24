@@ -8,6 +8,7 @@ from scipy.sparse import csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+from pipeline_stages import bot_filter
 from util.text_normalize import normalize_text
 
 # See the wiki's Ranking page for what each of these controls and why the
@@ -23,6 +24,11 @@ RANKING_MMR_CANDIDATE_POOL_SIZE = int(os.environ.get("RANKING_MMR_CANDIDATE_POOL
 RANKING_MMR_LAMBDA = float(os.environ.get("RANKING_MMR_LAMBDA", "0.7"))
 RANKING_SIMILARITY_TFIDF_WEIGHT = float(os.environ.get("RANKING_SIMILARITY_TFIDF_WEIGHT", "0.5"))
 RANKING_SIMILARITY_ENTITY_WEIGHT = float(os.environ.get("RANKING_SIMILARITY_ENTITY_WEIGHT", "0.5"))
+# Source-diversity signal, not a content-similarity one -- two posts from the
+# same author count as "similar" for MMR's diversity penalty regardless of
+# topic overlap, so one prolific source can't crowd out other quality
+# sources just by posting more. See the wiki's Ranking page.
+RANKING_SIMILARITY_AUTHOR_WEIGHT = float(os.environ.get("RANKING_SIMILARITY_AUTHOR_WEIGHT", "0.3"))
 
 
 @dataclass
@@ -35,6 +41,13 @@ class RankablePost:
     entities: list[str]
     is_bot: bool
     is_dedup_canonical: bool
+    # Raw, not canonicalized -- _similarity_matrix runs both through
+    # bot_filter.canonical_account_id itself, the same normalization
+    # velocity/self-dup/template already rely on, so a real account
+    # crossposted or federated across several polled Mastodon instances
+    # doesn't fragment into several apparently-diverse "authors" here too.
+    source: str
+    author_id: str
     # context_dependency.py's per-platform devalue multiplier -- 1.0 for
     # posts that aren't context-dependent (or whose platform's policy is
     # exclude-only, so a devalued post never reaches ranking at all).
@@ -122,6 +135,23 @@ def _entity_similarity_matrix(entity_lists: list[list[str]]) -> np.ndarray:
     return jaccard
 
 
+def _author_similarity_matrix(canonical_author_ids: list[str]) -> np.ndarray:
+    """1.0 for any two posts from the same canonical author, 0.0 otherwise --
+    binary, not graded like TF-IDF/entity similarity, since account identity
+    either matches or doesn't. Captures the diversity dimension neither of
+    those two signals can: two posts from the same author can be about
+    completely different topics and still both be competing for the same
+    discovery opportunity every other source is competing for. See the
+    wiki's Ranking page."""
+    n = len(canonical_author_ids)
+    if n == 0:
+        return np.zeros((0, 0))
+    _, codes = np.unique(canonical_author_ids, return_inverse=True)
+    same_author = (codes[:, None] == codes[None, :]).astype(float)
+    np.fill_diagonal(same_author, 0.0)  # self-similarity is never consulted, but keep it clean
+    return same_author
+
+
 def _similarity_matrix(posts: list[RankablePost]) -> np.ndarray:
     n = len(posts)
     if n == 0:
@@ -136,8 +166,20 @@ def _similarity_matrix(posts: list[RankablePost]) -> np.ndarray:
         tfidf_sim = np.zeros((n, n))
 
     entity_sim = _entity_similarity_matrix([p.entities for p in posts])
+    # Canonicalized here, not stored on RankablePost -- a cheap pure-string
+    # operation, so recomputing it per ranking pass keeps one single code
+    # path regardless of which construction site (run_cycle vs
+    # refresh_rankings) built the post, rather than threading a precomputed
+    # id through bot_filter.py's BotScore for one call site but not the other.
+    author_sim = _author_similarity_matrix(
+        [bot_filter.canonical_account_id(p.source, p.author_id) for p in posts]
+    )
 
-    return RANKING_SIMILARITY_TFIDF_WEIGHT * tfidf_sim + RANKING_SIMILARITY_ENTITY_WEIGHT * entity_sim
+    return (
+        RANKING_SIMILARITY_TFIDF_WEIGHT * tfidf_sim
+        + RANKING_SIMILARITY_ENTITY_WEIGHT * entity_sim
+        + RANKING_SIMILARITY_AUTHOR_WEIGHT * author_sim
+    )
 
 
 def rank_posts(posts: list[RankablePost], now: datetime | None = None) -> dict[UUID, RankResult]:

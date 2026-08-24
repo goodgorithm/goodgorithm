@@ -18,7 +18,12 @@ def make_post(
     is_dedup_canonical=True,
     text="a distinct post about nothing in particular",
     context_penalty=1.0,
+    source=None,
+    author_id=None,
 ):
+    # A fresh unique author per call by default, so unmodified tests don't
+    # accidentally collide into "same author" with each other now that
+    # author identity feeds MMR's similarity signal.
     return ranking.RankablePost(
         id=uuid4(),
         text=text,
@@ -28,6 +33,8 @@ def make_post(
         entities=entities or [],
         is_bot=is_bot,
         is_dedup_canonical=is_dedup_canonical,
+        source=source or "bluesky",
+        author_id=author_id or str(uuid4()),
         context_penalty=context_penalty,
     )
 
@@ -152,6 +159,86 @@ def test_mmr_spreads_out_near_duplicate_topics():
     assert order.index(diverse.id) < order.index(e3.id)
 
 
+def test_mmr_spreads_out_same_author_regardless_of_topic():
+    # Mirrors test_mmr_spreads_out_near_duplicate_topics, but the crowding
+    # signal here is authorship, not topic -- three posts from one prolific
+    # author (high base_score, but each about a *different*, non-overlapping
+    # topic -- e.g. christiansongz's differently-titled songs) plus one
+    # lower-scoring post from a different author. MMR should still pull the
+    # different author ahead of at least one same-author post, even though
+    # nothing about content similarity would do that on its own.
+    author = "prolific@example.social"
+    a1 = make_post(
+        sentiment_score=0.5, topicality_score=1.0, source="mastodon", author_id=author,
+        entities=["jazz album"], text="reviewing a new jazz album from a local artist",
+    )
+    a2 = make_post(
+        sentiment_score=0.5, topicality_score=0.95, source="mastodon", author_id=author,
+        entities=["short film"], text="a short film premiered at the neighborhood theater",
+    )
+    a3 = make_post(
+        sentiment_score=0.5, topicality_score=0.9, source="mastodon", author_id=author,
+        entities=["mural"], text="a mural was painted downtown this weekend",
+    )
+    diverse = make_post(
+        sentiment_score=0.5, topicality_score=0.7, source="mastodon", author_id="other@example.social",
+        entities=["bridge"], text="a bridge reopened after repairs",
+    )
+
+    results = ranking.rank_posts([a1, a2, a3, diverse], now=NOW)
+    ordered = sorted(results.items(), key=lambda kv: kv[1].rank_position)
+    order = [post_id for post_id, _ in ordered]
+
+    assert order[0] == a1.id  # highest raw base_score still goes first
+    assert order.index(diverse.id) < order.index(a2.id)
+    assert order.index(diverse.id) < order.index(a3.id)
+
+
+def test_author_similarity_uses_canonical_account_id():
+    # Same real Mastodon account, seen via two different polled instances --
+    # canonical_account_id normalizes both to the same identity regardless
+    # of which instance polled it. Without that normalization, these would
+    # incorrectly look like two different authors and get no diversity
+    # credit against each other, reopening the exact fragmentation bug
+    # bot_filter.py's canonical_account_id already fixed once.
+    same_account_a = make_post(
+        source="mastodon", author_id="universeodon.com/same@remote.example",
+        entities=["jazz album"], text="reviewing a new jazz album from a local artist",
+    )
+    same_account_b = make_post(
+        source="mastodon", author_id="mstdn.social/same@remote.example",
+        entities=["short film"], text="a short film premiered at the neighborhood theater",
+    )
+    different_account = make_post(
+        source="mastodon", author_id="universeodon.com/other@remote.example",
+        entities=["mural"], text="a mural was painted downtown this weekend",
+    )
+
+    sim = ranking._similarity_matrix([same_account_a, same_account_b, different_account])
+
+    assert abs(sim[0][1] - ranking.RANKING_SIMILARITY_AUTHOR_WEIGHT) < 1e-9
+    assert sim[0][2] == 0.0
+    assert sim[1][2] == 0.0
+
+
+def test_author_similarity_is_zero_for_different_authors():
+    # Two genuinely different Bluesky accounts (bare DIDs, passed through
+    # canonical_account_id unchanged) with zero content overlap -- confirms
+    # the new signal doesn't spuriously penalize genuinely diverse authors.
+    bluesky_a = make_post(
+        source="bluesky", author_id="did:plc:aaaa",
+        entities=["garden"], text="a garden bloomed early this spring",
+    )
+    bluesky_b = make_post(
+        source="bluesky", author_id="did:plc:bbbb",
+        entities=["bridge"], text="a bridge reopened after repairs",
+    )
+
+    sim = ranking._similarity_matrix([bluesky_a, bluesky_b])
+
+    assert sim[0][1] == 0.0
+
+
 def test_rank_posts_scales_to_production_volume():
     # Regression test: the entity-similarity pass and the MMR selection
     # loop are both vectorized, not pure-Python O(n^2) -- see the wiki's
@@ -172,6 +259,8 @@ def test_rank_posts_scales_to_production_volume():
             entities=entities,
             is_bot=False,
             is_dedup_canonical=True,
+            source="bluesky",
+            author_id=str(uuid4()),
         )
 
     posts = [make_random_post(i) for i in range(2000)]
@@ -201,6 +290,8 @@ def test_rank_posts_caps_candidate_pool_by_base_score():
             entities=[],
             is_bot=False,
             is_dedup_canonical=True,
+            source="bluesky",
+            author_id=str(uuid4()),
         )
         for i in range(n)
     ]
