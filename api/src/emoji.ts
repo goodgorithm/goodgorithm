@@ -25,7 +25,7 @@ interface RawCustomEmoji {
 // resolution call needed, just shape validation, same defensive style as
 // attachments.ts's parseMastodonMedia. Bluesky rows have no emojis concept
 // at all - db.ts never selects a Bluesky equivalent, so `raw` is always
-// `null`/`undefined` for those and this returns `[]`. See issue #77.
+// `null`/`undefined` for those and this returns `[]`.
 export function buildEmojis(raw: unknown): CustomEmoji[] {
   if (!Array.isArray(raw)) return [];
 

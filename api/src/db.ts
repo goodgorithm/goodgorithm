@@ -27,16 +27,16 @@ export interface FeedRow {
   mastodon_permalink: string | null;
   mastodon_display_name: string | null;
   mastodon_avatar_url: string | null;
-  // Bluesky's own AppView-resolved author (issue #73) - Jetstream's firehose
-  // never carries this, unlike Mastodon's raw_json which embeds it for free.
+  // Bluesky's own AppView-resolved author - Jetstream's firehose never
+  // carries this, unlike Mastodon's raw_json which embeds it for free.
   // NULL for Mastodon rows (which don't need it) and for not-yet-swept or
   // unresolvable Bluesky rows. Exactly one of the mastodon_/bluesky_author_*
   // pairs is ever non-null per row, by source - see feed.ts's coalesce.
   bluesky_author_display_name: string | null;
   bluesky_author_avatar_url: string | null;
-  // Mastodon's custom-emoji shortcode data (issue #77) - see emoji.ts's
-  // buildEmojis. Always null/absent for Bluesky rows, which have no
-  // equivalent concept - db.ts never selects a Bluesky counterpart.
+  // Mastodon's custom-emoji shortcode data - see emoji.ts's buildEmojis.
+  // Always null/absent for Bluesky rows, which have no equivalent
+  // concept - db.ts never selects a Bluesky counterpart.
   mastodon_account_emojis: unknown;
   mastodon_status_emojis: unknown;
   bluesky_embed: unknown;
