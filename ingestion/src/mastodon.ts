@@ -27,7 +27,7 @@ const USER_AGENT = "Goodgorithm/0.1 (https://github.com/goodgorithm)";
 // (pagination) persisted across cycles before this; nothing tracked
 // success/failure per instance, so a single instance going fully silent
 // was invisible short of reading logs.
-interface InstanceStatus {
+export interface InstanceStatus {
   lastSuccessAt: Date | null;
   lastErrorAt: Date | null;
   lastError: string | null;

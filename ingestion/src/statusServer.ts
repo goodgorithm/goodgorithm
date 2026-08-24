@@ -1,7 +1,7 @@
 import { createServer } from "http";
 import { getConnectionState as getBlueskyState } from "./bluesky";
 import { getConnectionState as getBlueskyLabelsState } from "./blueskyLabels";
-import { getInstanceStatus } from "./mastodon";
+import { getInstanceStatus, type InstanceStatus } from "./mastodon";
 import { pendingExclusionCount } from "./pendingExclusions";
 
 // Auditable first-look status, not a log replacement -- narrows down where
@@ -16,11 +16,43 @@ interface PublicConfig {
   [key: string]: unknown;
 }
 
+interface ConnectionState {
+  connected: boolean;
+}
+
+// A pure function of the three connection-state shapes, so it's directly
+// unit-testable with fake state -- no live connections needed. "degraded"
+// here means "currently disconnected/failing", not "has ever failed" --
+// this mirrors processing/'s status server's own "not degraded since this
+// cycle" semantics, not a permanent black mark.
+export function computeStatus(
+  bluesky: ConnectionState,
+  blueskyLabels: ConnectionState & { disabled: boolean },
+  mastodon: Record<string, InstanceStatus>,
+): "ok" | "degraded" {
+  if (!bluesky.connected) return "degraded";
+  if (!blueskyLabels.disabled && !blueskyLabels.connected) return "degraded";
+  for (const status of Object.values(mastodon)) {
+    // A poll that's never succeeded once isn't necessarily degraded on its
+    // own (it may just not have run yet) -- only a poll whose most recent
+    // attempt was an error, i.e. it previously worked and then started
+    // failing, or every attempt so far has failed.
+    if (status.lastErrorAt && (!status.lastSuccessAt || status.lastErrorAt > status.lastSuccessAt)) {
+      return "degraded";
+    }
+  }
+  return "ok";
+}
+
 function buildStatus(publicConfig: PublicConfig) {
+  const bluesky = getBlueskyState();
+  const blueskyLabels = getBlueskyLabelsState();
+  const mastodon = getInstanceStatus();
   return {
-    bluesky: getBlueskyState(),
-    blueskyLabels: getBlueskyLabelsState(),
-    mastodon: getInstanceStatus(),
+    status: computeStatus(bluesky, blueskyLabels, mastodon),
+    bluesky,
+    blueskyLabels,
+    mastodon,
     pendingExclusionCount: pendingExclusionCount(),
     config: publicConfig,
   };
