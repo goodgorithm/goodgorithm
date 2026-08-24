@@ -134,11 +134,11 @@ export async function checkDatabaseConnection(): Promise<DatabaseCheckResult> {
     await withTimeout(sql`SELECT 1`, HEALTH_CHECK_TIMEOUT_MS, "health check timeout");
     return { reachable: true, latencyMs: Date.now() - start, error: null };
   } catch (err) {
-    // Previously discarded entirely (a bare `catch {}`) -- collapsing
-    // "slow", "connection refused", and "auth failure" into the same
-    // boolean made /health's own failures unauditable without digging
-    // through separate logs. Logged here too, not just returned, so it
-    // shows up in the usual place as well.
+    // A bare boolean here would collapse "slow", "connection refused", and
+    // "auth failure" into the same undifferentiated result, making
+    // /health's own failures unauditable without digging through separate
+    // logs. Logged here too, not just returned, so it shows up in the
+    // usual place as well.
     const message = err instanceof Error ? err.message : String(err);
     console.error("[api] database health check failed:", message);
     return { reachable: false, latencyMs: Date.now() - start, error: message };

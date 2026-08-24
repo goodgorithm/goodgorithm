@@ -6,10 +6,10 @@ import { pendingExclusionCount } from "./pendingExclusions";
 
 // Auditable first-look status, not a log replacement -- narrows down where
 // to look next, doesn't replace digging through logs for the actual
-// detail. No existing HTTP server in ingestion/ before this (it's a pure
-// WebSocket/polling process), so this uses Node's built-in http module
-// rather than adding a framework dependency for one static route -- same
-// reasoning as processing/'s new status server using Python's built-in
+// detail. ingestion/ is otherwise a pure WebSocket/polling process, with
+// no other inbound HTTP surface -- this uses Node's built-in http module
+// rather than adding a framework dependency for one static route, same
+// reasoning as processing/'s status server using Python's built-in
 // http.server instead of adding Flask/FastAPI.
 
 interface PublicConfig {

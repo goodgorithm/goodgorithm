@@ -15,9 +15,9 @@ import config
 # purge_blocked_authors, etc.). Silently swallowing a write failure would
 # mean a cycle claims success while having done nothing -- a more
 # deceptive failure than the loud crash this file's current behavior
-# produces instead. An explicit decision, not the accidental default it
-# looked like before this was written down -- see CLAUDE.md's Service
-# resilience section and the wiki's Pipeline Internals page.
+# produces instead. A deliberate choice, not an oversight -- see
+# CLAUDE.md's Service resilience section and the wiki's Pipeline
+# Internals page.
 
 # See the wiki's Pipeline Internals page for what each of these controls.
 DB_POOL_MIN_SIZE = int(os.environ.get("DB_POOL_MIN_SIZE", "1"))

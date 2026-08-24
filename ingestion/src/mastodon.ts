@@ -23,10 +23,11 @@ const MASTODON_POLL_INTERVAL_MS = parseNumberEnv("MASTODON_POLL_INTERVAL_MS", 30
 const MASTODON_REQUEST_TIMEOUT_MS = parseNumberEnv("MASTODON_REQUEST_TIMEOUT_MS", 10000);
 const USER_AGENT = "Goodgorithm/0.1 (https://github.com/goodgorithm)";
 
-// Per-instance poll outcome, for the status endpoint -- only sinceId
-// (pagination) persisted across cycles before this; nothing tracked
-// success/failure per instance, so a single instance going fully silent
-// was invisible short of reading logs.
+// Per-instance poll outcome, for the status endpoint -- sinceId
+// (pagination) is the only other thing that persists across cycles.
+// Without this, a single instance going fully silent would be invisible
+// short of reading logs, since both Bluesky connections and all 8
+// Mastodon instances funnel into the same heartbeat counter.
 export interface InstanceStatus {
   lastSuccessAt: Date | null;
   lastErrorAt: Date | null;
