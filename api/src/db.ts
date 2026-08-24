@@ -7,6 +7,20 @@ const DB_POOL_MAX_SIZE = Number(process.env.DB_POOL_MAX_SIZE ?? 5);
 
 const sql = postgres(process.env.DATABASE_URL!, { max: DB_POOL_MAX_SIZE });
 
+// Shared by checkDatabaseConnection's SELECT 1 and fetchFeed's real query
+// below -- postgres.js has no client-level statement_timeout concept of
+// its own, so both need this same explicit race. A hung query (lock
+// contention, a bad index) would otherwise pin a pool connection
+// indefinitely while /health's own SELECT 1 stays green, since it's a
+// completely separate, much cheaper query. See CLAUDE.md's Service
+// resilience section and the wiki's API Internals page.
+export async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
+
 // The raw DB row shape this query returns - distinct from types.ts's
 // FeedPost (the public /feed response shape), which is assembled from this
 // plus buildAttachments()'s output in routes/feed.ts. Named differently on
@@ -49,12 +63,28 @@ export interface FeedRow {
   generated_thumbnail_url: string | null;
 }
 
+// Distinct from HEALTH_CHECK_TIMEOUT_MS below -- the real feed query does
+// real work (a rank_score-ordered scan with a category filter/cursor),
+// unlike SELECT 1, so this needs real headroom above normal latency, not
+// a tight bound. Generous default: this guards against a truly stuck
+// query, not normal variance.
+const FEED_QUERY_TIMEOUT_MS = Number(process.env.FEED_QUERY_TIMEOUT_MS ?? 10000);
+
 export async function fetchFeed(
   limit: number,
   cursor: Cursor | null,
   category: string | null,
 ): Promise<FeedRow[]> {
-  const rows = await sql<FeedRow[]>`
+  const rows = await withTimeout(
+    fetchFeedQuery(limit, cursor, category),
+    FEED_QUERY_TIMEOUT_MS,
+    "feed query timed out",
+  );
+  return rows;
+}
+
+function fetchFeedQuery(limit: number, cursor: Cursor | null, category: string | null): Promise<FeedRow[]> {
+  return sql<FeedRow[]>`
     SELECT r.id, r.source, r.source_id, r.author_id, r.text, r.created_at, p.entities,
            p.sentiment_score, p.topicality_score, p.base_score, p.rank_score,
            p.pipeline_version,
@@ -81,7 +111,6 @@ export async function fetchFeed(
     ORDER BY p.rank_score DESC, r.id DESC
     LIMIT ${limit}
   `;
-  return rows;
 }
 
 // Cheap enough to run on every /health hit (rate-limited to 100/min anyway)
@@ -93,15 +122,26 @@ export async function fetchFeed(
 // never answers. See the wiki's Configuration page.
 const HEALTH_CHECK_TIMEOUT_MS = Number(process.env.HEALTH_CHECK_TIMEOUT_MS ?? 3000);
 
-export async function checkDatabaseConnection(): Promise<boolean> {
+export interface DatabaseCheckResult {
+  reachable: boolean;
+  latencyMs: number;
+  error: string | null;
+}
+
+export async function checkDatabaseConnection(): Promise<DatabaseCheckResult> {
+  const start = Date.now();
   try {
-    await Promise.race([
-      sql`SELECT 1`,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("health check timeout")), HEALTH_CHECK_TIMEOUT_MS)),
-    ]);
-    return true;
-  } catch {
-    return false;
+    await withTimeout(sql`SELECT 1`, HEALTH_CHECK_TIMEOUT_MS, "health check timeout");
+    return { reachable: true, latencyMs: Date.now() - start, error: null };
+  } catch (err) {
+    // Previously discarded entirely (a bare `catch {}`) -- collapsing
+    // "slow", "connection refused", and "auth failure" into the same
+    // boolean made /health's own failures unauditable without digging
+    // through separate logs. Logged here too, not just returned, so it
+    // shows up in the usual place as well.
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[api] database health check failed:", message);
+    return { reachable: false, latencyMs: Date.now() - start, error: message };
   }
 }
 

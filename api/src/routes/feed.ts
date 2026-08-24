@@ -10,8 +10,10 @@ import { CATEGORIES } from "../types";
 
 // See the wiki's Configuration page. minimum stays hardcoded at 1 - not a
 // tunable, just the structural floor for "a page of posts" to mean anything.
-const FEED_LIMIT_MAX = Number(process.env.FEED_LIMIT_MAX ?? 100);
-const FEED_LIMIT_DEFAULT = Number(process.env.FEED_LIMIT_DEFAULT ?? 20);
+// Exported so /health can echo these without re-deriving the defaults in
+// a second place.
+export const FEED_LIMIT_MAX = Number(process.env.FEED_LIMIT_MAX ?? 100);
+export const FEED_LIMIT_DEFAULT = Number(process.env.FEED_LIMIT_DEFAULT ?? 20);
 
 const feedQuerySchema = {
   querystring: {
@@ -49,7 +51,20 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
       const category = request.query.category ?? null;
 
       // fetch one extra row to know if a next page exists, without a second query
-      const rows = await fetchFeed(limit + 1, cursor, category);
+      let rows;
+      try {
+        rows = await fetchFeed(limit + 1, cursor, category);
+      } catch (err) {
+        // A timed-out query (see db.ts's FEED_QUERY_TIMEOUT_MS) gets a
+        // specific, recognizable response instead of falling through to
+        // Fastify's generic 500 -- fails fast and visibly, rather than
+        // silently pinning a pool connection while /health stays green.
+        // Anything else fetchFeed throws still propagates as before.
+        if (err instanceof Error && err.message === "feed query timed out") {
+          return reply.code(503).send({ error: "feed temporarily unavailable" });
+        }
+        throw err;
+      }
       const hasNext = rows.length > limit;
       const page = hasNext ? rows.slice(0, limit) : rows;
       const last = page[page.length - 1];

@@ -133,6 +133,22 @@ export interface FeedResponse {
   next_cursor: string | null;
 }
 
+export interface HealthDatabaseStatus {
+  reachable: boolean;
+  latency_ms: number;
+  error?: string | null;
+}
+
+export interface HealthConfig {
+  rate_limit_max: number;
+  rate_limit_time_window: string;
+  feed_limit_max: number;
+  feed_limit_default: number;
+  db_pool_max_size: number;
+  health_check_timeout_ms: number;
+  feed_query_timeout_ms: number;
+}
+
 export interface HealthResponse {
   status: string;
   // Railway's auto-provided commit SHA for the running deployment - see
@@ -141,4 +157,9 @@ export interface HealthResponse {
   // sequentially, tolerating partial failure) observable instead of
   // invisible. "unknown" outside Railway (e.g. local dev).
   version: string;
+  timestamp: string;
+  database: HealthDatabaseStatus;
+  // Public, safe-to-expose config only -- an auditable first-look, not a
+  // log replacement. See CLAUDE.md's Service resilience section.
+  config: HealthConfig;
 }
