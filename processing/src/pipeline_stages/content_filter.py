@@ -17,9 +17,10 @@ _HASHTAG_RE = re.compile(r"#(\w+)")
 
 def has_excluded_hashtag(text: str, suppressed_terms: frozenset[str]) -> bool:
     """suppressed_terms is db.fetch_suppressed_terms()'s whole-table read --
-    moderator-curated, loaded fresh once per cycle, not a module constant.
-    Required, not defaulted, so a caller can't silently skip the check by
-    forgetting to pass it. See the wiki's Pipeline Internals page."""
+    moderator-curated, refreshed periodically via db.fetch_moderation_lists()'s
+    cache, not a module constant. Required, not defaulted, so a caller
+    can't silently skip the check by forgetting to pass it. See the wiki's
+    Pipeline Internals page."""
     return any(tag.lower() in suppressed_terms for tag in _HASHTAG_RE.findall(text))
 
 
@@ -81,7 +82,7 @@ def _matches_suppressed_domain(candidate: str, suppressed_domains: frozenset[str
 
 def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domains: frozenset[str]) -> bool:
     """suppressed_domains is db.fetch_suppressed_domains()'s whole-table read
-    -- same moderator-curated, loaded-fresh-per-cycle contract as
+    -- same moderator-curated, periodically-refreshed-via-cache contract as
     suppressed_terms. Deliberately doesn't reuse dedup.py's
     extract_dedup_url -- that rejects bare-domain URLs (no path), right for
     dedup (a homepage link is a weak dedup signal) but wrong here (a bare

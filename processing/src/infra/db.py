@@ -1,4 +1,5 @@
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
@@ -167,7 +168,18 @@ class RankableRow:
     author_id: str
 
 
-def fetch_rankable_posts(since: datetime) -> list[RankableRow]:
+def fetch_rankable_posts(since: datetime, min_sentiment: float, pool_size: int) -> list[RankableRow]:
+    """Pushes filter_eligible's is_bot/is_dedup_canonical/sentiment checks
+    and the RANKING_MMR_CANDIDATE_POOL_SIZE cap into SQL, rather than
+    fetching every eligible post's full text for the whole time window and
+    filtering/capping in Python. ORDER BY p.base_score uses each row's
+    previous-cycle value (at most REFRESH_RANKINGS_INTERVAL_SECONDS stale,
+    since this same process rewrites it every cycle) as a proxy for this
+    cycle's own ranking cutoff -- close enough given how little recency
+    decay moves in that window. rank_posts() still re-filters/re-caps in
+    Python too, so behavior stays correct even when it's called with an
+    arbitrary post list (tests, a REPL) that didn't come through this
+    query. See the wiki's Pipeline Internals page."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
@@ -177,8 +189,13 @@ def fetch_rankable_posts(since: datetime) -> list[RankableRow]:
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
             WHERE r.created_at >= %s
+              AND p.is_bot = false
+              AND p.is_dedup_canonical = true
+              AND p.sentiment_score >= %s
+            ORDER BY p.base_score DESC NULLS LAST
+            LIMIT %s
             """,
-            (since,),
+            (since, min_sentiment, pool_size),
         ).fetchall()
     return [RankableRow(*row) for row in rows]
 
@@ -341,30 +358,58 @@ def mark_authors_resolved(results: list[tuple[UUID, dict | None]]) -> None:
 
 
 def fetch_blocked_authors() -> set[tuple[str, str]]:
-    """Whole table, loaded fresh once per cycle -- the moderation blocklist
-    is small (manual entries + Bluesky bot-label auto-inserts), cheaper
-    than a per-post query. See CLAUDE.md's Content moderation section."""
+    """Whole table -- the moderation blocklist is small (manual entries +
+    Bluesky bot-label auto-inserts), cheaper than a per-post query. Called
+    through fetch_moderation_lists()'s cache below, not directly, from
+    run_cycle. See CLAUDE.md's Content moderation section."""
     with pool.connection() as conn:
         rows = conn.execute("SELECT source, author_id FROM blocked_authors").fetchall()
     return {(row[0], row[1]) for row in rows}
 
 
 def fetch_suppressed_terms() -> frozenset[str]:
-    """Whole table, loaded fresh once per cycle -- same "cheaper than a
-    per-post query, no caching/TTL, moderatable without a service restart"
-    pattern as fetch_blocked_authors. See CLAUDE.md's Content moderation
-    section."""
+    """Whole table -- same "cheaper than a per-post query, moderatable
+    without a service restart" pattern as fetch_blocked_authors. Called
+    through fetch_moderation_lists()'s cache below, not directly, from
+    run_cycle. See CLAUDE.md's Content moderation section."""
     with pool.connection() as conn:
         rows = conn.execute("SELECT term FROM suppressed_terms").fetchall()
     return frozenset(row[0] for row in rows)
 
 
 def fetch_suppressed_domains() -> frozenset[str]:
-    """Whole table, loaded fresh once per cycle -- same pattern as
-    fetch_suppressed_terms. See CLAUDE.md's Content moderation section."""
+    """Whole table -- same pattern as fetch_suppressed_terms. Called
+    through fetch_moderation_lists()'s cache below, not directly, from
+    run_cycle. See CLAUDE.md's Content moderation section."""
     with pool.connection() as conn:
         rows = conn.execute("SELECT domain FROM suppressed_domains").fetchall()
     return frozenset(row[0] for row in rows)
+
+
+# How long fetch_moderation_lists()'s combined cache stays valid before the
+# next call re-queries all three tables. Optional; defaults apply if unset.
+# See the wiki's Configuration page.
+MODERATION_LISTS_REFRESH_SECONDS = int(os.environ.get("MODERATION_LISTS_REFRESH_SECONDS", "60"))
+
+_moderation_lists_cache: tuple[set[tuple[str, str]], frozenset[str], frozenset[str]] | None = None
+_moderation_lists_cached_at = 0.0
+
+
+def fetch_moderation_lists() -> tuple[set[tuple[str, str]], frozenset[str], frozenset[str]]:
+    """Combines the three whole-table reads above into one cached result,
+    refreshed at most every MODERATION_LISTS_REFRESH_SECONDS rather than on
+    every call. run_cycle() calls this every processing cycle, which under
+    a real backlog can run every few seconds (bounded only by
+    PROCESSING_BACKLOG_BUFFER_SECONDS) -- re-querying three small,
+    rarely-changing tables that often is pure waste. A moderator's edit
+    still takes effect within one cache window, not one redeploy, just not
+    necessarily on the very next cycle."""
+    global _moderation_lists_cache, _moderation_lists_cached_at
+    now = time.monotonic()
+    if _moderation_lists_cache is None or now - _moderation_lists_cached_at >= MODERATION_LISTS_REFRESH_SECONDS:
+        _moderation_lists_cache = (fetch_blocked_authors(), fetch_suppressed_terms(), fetch_suppressed_domains())
+        _moderation_lists_cached_at = now
+    return _moderation_lists_cache
 
 
 def purge_blocked_authors() -> int:

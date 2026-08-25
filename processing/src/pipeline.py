@@ -76,9 +76,7 @@ def run_cycle(batch_size: int) -> int:
     # so a post is never scored once it's excluded. See the wiki's Content
     # Policy page for the policy behind each, and Pipeline Internals for
     # why this specific order.
-    blocked = db.fetch_blocked_authors()
-    suppressed_terms = db.fetch_suppressed_terms()
-    suppressed_domains = db.fetch_suppressed_domains()
+    blocked, suppressed_terms, suppressed_domains = db.fetch_moderation_lists()
 
     context_classifications: dict = {}
 
@@ -221,7 +219,7 @@ def refresh_rankings() -> int:
     which changes MMR's diversity trade-offs for everyone still in it. See
     the wiki's Pipeline Internals and Configuration pages."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ranking.RANKING_MMR_WINDOW_HOURS)
-    rows = db.fetch_rankable_posts(cutoff)
+    rows = db.fetch_rankable_posts(cutoff, ranking.RANKING_POSITIVITY_THRESHOLD, ranking.RANKING_MMR_CANDIDATE_POOL_SIZE)
 
     posts = [
         ranking.RankablePost(
@@ -284,9 +282,10 @@ def purge_blocked_authors() -> int:
     """Retroactive half of the moderation blocklist -- run_cycle's check only
     stops *future* posts from a blocklisted author; this deletes any of
     their posts already sitting in raw_posts (processed_posts cascades), so
-    a block takes effect on already-ingested posts within one cycle rather
-    than waiting for retention to age them out. See the wiki's Content
-    Policy and Pipeline Internals pages."""
+    a block takes effect on already-ingested posts within its own throttle
+    window (main.py's PURGE_BLOCKED_AUTHORS_INTERVAL_SECONDS) rather than
+    waiting for retention to age them out. See the wiki's Content Policy
+    and Pipeline Internals pages."""
     purged = db.purge_blocked_authors()
     if purged:
         logger.info("purged %d posts from newly/still-blocked authors", purged)
@@ -302,10 +301,11 @@ def recheck_moderation() -> int:
     pattern. Purges (db.delete_raw_post, cascades to processed_posts) any
     match; marks every successfully-checked post either way via
     moderation_checked_at so a genuinely clean post is never re-swept.
-    Throttled by the caller (main.py), unlike purge_blocked_authors --
-    this one calls an external API, so it must not compound under backlog
-    the way an unthrottled per-iteration DB-only sweep safely can. See the
-    wiki's Content Policy and Pipeline Internals pages."""
+    Throttled by the caller (main.py), same as purge_blocked_authors, but
+    for a different reason -- this one calls an external API, so it must
+    not compound into a burst of calls under a large backlog, unlike a
+    DB-only sweep. See the wiki's Content Policy and Pipeline Internals
+    pages."""
     posts = db.fetch_unchecked_bluesky_posts(MODERATION_RECHECK_BATCH_SIZE)
     if not posts:
         return 0
