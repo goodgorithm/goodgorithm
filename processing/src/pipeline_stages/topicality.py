@@ -156,7 +156,7 @@ class BurstIndex(Protocol):
 
 
 class RedisBurstIndex:
-    """Recent entity-mention counts, in Upstash Redis. Short TTL by design —
+    """Recent entity-mention counts, in Redis. Short TTL by design —
     this is a "spiking right now" signal, not a durable count. See the
     wiki's Topicality page."""
 

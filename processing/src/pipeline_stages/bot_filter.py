@@ -148,8 +148,8 @@ class BotFilterIndex(Protocol):
 
 
 class RedisBotFilterIndex:
-    """Per-author posting velocity and self-duplication state, in Upstash
-    Redis. Ephemeral/TTL'd, like dedup's LSH state — Postgres holds the
+    """Per-author posting velocity and self-duplication state, in Redis.
+    Ephemeral/TTL'd, like dedup's LSH state — Postgres holds the
     durable is_bot/bot_score result. Each method batches its read/write
     pair into one pipelined round trip rather than issuing them
     separately -- see the wiki's Bot Filter page."""

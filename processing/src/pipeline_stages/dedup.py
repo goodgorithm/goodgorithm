@@ -142,7 +142,7 @@ class DedupIndex(Protocol):
 
 class RedisDedupIndex:
     """LSH band membership + MinHash signatures + cluster lookups, stored in
-    Upstash Redis. All ephemeral (TTL'd) — Postgres holds the durable result.
+    Redis. All ephemeral (TTL'd) — Postgres holds the durable result.
     See the wiki's Deduplication page."""
 
     def __init__(self) -> None:
