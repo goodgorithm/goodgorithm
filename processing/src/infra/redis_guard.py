@@ -49,10 +49,10 @@ def estimate_used_memory_bytes() -> int | None:
     a processing cycle, same discipline as heartbeat.ping().
 
     Deliberately does NOT use `INFO memory`'s `used_memory` field --
-    Upstash's REST API returns unreliable values for it, disconnected from
-    its own real capacity-quota enforcement. `DBSIZE` and `MEMORY USAGE
-    <key>` are both reliable instead, so this estimates total bytes as
-    DBSIZE * (a fresh sampled average of real MEMORY USAGE reads), rather
+    untested against this self-hosted instance's own reporting, so trusting
+    it directly is optional future work, not assumed here. `DBSIZE` and
+    `MEMORY USAGE <key>` are the values this relies on instead, estimating
+    total bytes as DBSIZE * (a fresh sampled average of real MEMORY USAGE reads), rather
     than trusting a single unreliable aggregate command."""
     try:
         client = redis_client.get_client()
