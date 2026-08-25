@@ -63,16 +63,27 @@ def main() -> None:
         type=int,
         default=int(os.environ.get("REDIS_GUARD_INTERVAL_SECONDS", 30)),
     )
-    # Unlike purge_blocked_authors (an unthrottled, cheap indexed DB join),
-    # this calls an external API in batches -- deliberately throttled so a
-    # large backlog can't turn it into a burst of external calls. Still
-    # comfortably beats --refresh-interval's 30s floor, which is what
-    # actually gates a post becoming feed-visible. See the wiki's
-    # Configuration page.
+    # Also throttled, like --purge-blocked-authors-interval below, but for
+    # a different reason: this calls an external API in batches, so a
+    # large backlog must not be able to turn it into a burst of calls to
+    # Bluesky's AppView. Still comfortably beats --refresh-interval's 30s
+    # floor, which is what actually gates a post becoming feed-visible.
+    # See the wiki's Configuration page.
     parser.add_argument(
         "--moderation-recheck-interval",
         type=int,
         default=int(os.environ.get("MODERATION_RECHECK_INTERVAL_SECONDS", 10)),
+    )
+    # A cheap, well-indexed DB-only join (see the wiki's Pipeline Internals
+    # page) -- throttled anyway, since blocklist entries are rare and
+    # run_cycle()'s own per-post check already blocks all *future* posts
+    # from a newly-blocked author instantly. This only governs how quickly
+    # already-ingested backlog gets swept, where a short delay is a
+    # non-issue.
+    parser.add_argument(
+        "--purge-blocked-authors-interval",
+        type=int,
+        default=int(os.environ.get("PURGE_BLOCKED_AUTHORS_INTERVAL_SECONDS", 60)),
     )
     # Cosmetic, not a safety backstop like --moderation-recheck-interval --
     # no need to chase Bluesky's AppView aggressively for this. Must run
@@ -117,6 +128,7 @@ def main() -> None:
             "backlog_buffer_seconds": args.backlog_buffer,
             "refresh_interval_seconds": args.refresh_interval,
             "moderation_recheck_interval_seconds": args.moderation_recheck_interval,
+            "purge_blocked_authors_interval_seconds": args.purge_blocked_authors_interval,
             "author_resolve_interval_seconds": args.author_resolve_interval,
             "network_detection_interval_seconds": args.network_detection_interval,
         },
@@ -127,6 +139,7 @@ def main() -> None:
     last_redis_guard_time = 0.0
     last_moderation_recheck_time = 0.0
     last_author_resolve_time = 0.0
+    last_purge_blocked_authors_time = 0.0
     while not _shutdown:
         now = time.monotonic()
         if now - last_redis_guard_time >= args.redis_guard_interval:
@@ -154,7 +167,9 @@ def main() -> None:
             last_network_detection_time = now
 
         pipeline.cleanup_old_data()
-        pipeline.purge_blocked_authors()
+        if now - last_purge_blocked_authors_time >= args.purge_blocked_authors_interval:
+            pipeline.purge_blocked_authors()
+            last_purge_blocked_authors_time = now
         # Only reached if the whole cycle completed without raising - an
         # unhandled exception anywhere above crashes the process before
         # this line, which is exactly the "missed ping" a dead-man's-switch

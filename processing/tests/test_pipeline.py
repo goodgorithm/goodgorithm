@@ -8,10 +8,27 @@ def test_refresh_rankings_runs_without_error(monkeypatch):
     # crash-looping processing in both staging and production every cycle
     # (refresh_rankings raised AttributeError, and nothing in the test
     # suite called this function to catch it).
-    monkeypatch.setattr(pipeline.db, "fetch_rankable_posts", lambda since: [])
+    monkeypatch.setattr(pipeline.db, "fetch_rankable_posts", lambda since, min_sentiment, pool_size: [])
     monkeypatch.setattr(pipeline.db, "update_rank_scores", lambda updates: None)
 
     assert pipeline.refresh_rankings() == 0
+
+
+def test_refresh_rankings_pushes_eligibility_and_pool_size_into_the_query(monkeypatch):
+    captured = {}
+
+    def fake_fetch(since, min_sentiment, pool_size):
+        captured["min_sentiment"] = min_sentiment
+        captured["pool_size"] = pool_size
+        return []
+
+    monkeypatch.setattr(pipeline.db, "fetch_rankable_posts", fake_fetch)
+    monkeypatch.setattr(pipeline.db, "update_rank_scores", lambda updates: None)
+
+    pipeline.refresh_rankings()
+
+    assert captured["min_sentiment"] == pipeline.ranking.RANKING_POSITIVITY_THRESHOLD
+    assert captured["pool_size"] == pipeline.ranking.RANKING_MMR_CANDIDATE_POOL_SIZE
 
 
 def test_recheck_moderation_noop_when_nothing_unchecked(monkeypatch):
