@@ -8,7 +8,7 @@ One thing worth knowing going in, in the same spirit of transparency: a meaningf
 
 ## Dev setup
 
-Covered in [`CLAUDE.md`'s Development section](CLAUDE.md#development) — per-service install/run/build/test commands. Not repeated here.
+Covered in [`CLAUDE.md`'s Development section](CLAUDE.md#development) — per-service install/run/build/test commands. Not repeated here. Getting a full local stack running end-to-end (a local Postgres and Redis, wired up to `ingestion`/`processing`/`api`/`web`) is the wiki's [Local Development](https://github.com/goodgorithm/goodgorithm/wiki/Local-Development) page, or the `local-dev-setup` skill for a guided walkthrough of the same steps.
 
 ## Issue types
 

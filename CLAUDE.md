@@ -206,7 +206,7 @@ Env var names are documented in `.env.example` at the repo root — never commit
 
 ## Development
 
-Each service is independent — install/run/test from within its own directory.
+Each service is independent — install/run/test from within its own directory. None of this covers getting a local Postgres/Redis running or wiring `.env`s between services — see the wiki's [Local Development](https://github.com/goodgorithm/goodgorithm/wiki/Local-Development) page for that, or the `local-dev-setup` skill for an interactive walkthrough of the same steps.
 
 - **`ingestion/`, `api/`** (Node/TypeScript): `npm install`, `npm run dev` (watch mode via `tsx`), `npm run build` (type-check + compile), `npm test` (both services, Node's built-in test runner).
 - **`web/`** (Node/TypeScript, React + Vite): `npm install`, `npm run dev` (Vite dev server), `npm run build` (type-check + build, also generates the PWA manifest/service worker), `npm test` (Vitest), `npm run lint` (oxlint), `npm run test:e2e` (Playwright, Chromium/Firefox/WebKit — see CONTRIBUTING.md; a documented pre-push/pre-merge check, not a CI gate). Needs `VITE_API_BASE_URL` set (see `web/.env.example`) — points at a running `api/` instance.
