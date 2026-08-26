@@ -50,4 +50,4 @@ On most browsers you can "Add to Home Screen" for an app-like experience. Native
 
 ## Can I contribute?
 
-The project isn't yet set up to take outside contributions smoothly, and we'd rather say that plainly than pretend otherwise. Watch the [GitHub repo](https://github.com/goodgorithm/goodgorithm) for when that opens up — the [Mission](https://github.com/goodgorithm/goodgorithm/wiki/Mission) page has more on what we'll be looking for.
+Yes — issues, discussions, and pull requests are all welcome. [`CONTRIBUTING.md`](https://github.com/goodgorithm/goodgorithm/blob/main/CONTRIBUTING.md) covers the actual workflow (searching/opening issues, branch naming, PRs), and the wiki's [Local Development](https://github.com/goodgorithm/goodgorithm/wiki/Local-Development) page walks through getting the full stack — Postgres, Redis, ingestion/processing/api/web — running on your own machine. The [Mission](https://github.com/goodgorithm/goodgorithm/wiki/Mission) page has more on what we're looking for.

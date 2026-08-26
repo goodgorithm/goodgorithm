@@ -4,7 +4,7 @@ If you're reading this because you're thinking about contributing: welcome, and 
 
 One thing worth knowing going in, in the same spirit of transparency: a meaningful share of this codebase has been built with AI pair-programming (Claude Code), openly and on purpose. That's expected to continue, including for reviewing contributions — don't be surprised if Claude is part of the process on the other side of a PR too.
 
-**Not yet actually open for outside contributions** (see the README) — the rest of this doc describes the process for when that changes, and is also the working process for whoever *is* touching the repo today, human or Claude, so issues and branches stay predictable as the project grows. Interactions here are also governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+**Open for outside contributions** — the rest of this doc is the actual process, for anyone touching the repo, human or Claude, so issues and branches stay predictable as the project grows. Interactions here are also governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Workflow
 
