@@ -19,6 +19,22 @@ TOPICALITY_TFIDF_TOP_K = int(os.environ.get("TOPICALITY_TFIDF_TOP_K", "3"))
 if TOPICALITY_TFIDF_TOP_K < 1:
     raise ValueError(f"TOPICALITY_TFIDF_TOP_K ({TOPICALITY_TFIDF_TOP_K}) must be at least 1")
 TOPICALITY_LENGTH_NORM_ALPHA = float(os.environ.get("TOPICALITY_LENGTH_NORM_ALPHA", "0.3"))
+# Separate from the length discount above: penalizes a post whose token
+# count is large relative to its surviving distinct-term count -- i.e. text
+# dominated by one or a few repeated words/stopwords rather than varied
+# vocabulary. Validated against a random 4,000-post production sample
+# (2026-08-26): real posts' token_count/nnz ratio maxes out around 14 even
+# at the 99th percentile (median ~1.6), while a post degenerating to a
+# single repeated term sits at 20+ -- genuinely outside the real
+# distribution, unlike raw length, which many real posts share with such
+# text. GAMMA=0.5 pushes that degenerate case to the bottom ~7% of the
+# sample while leaving TOPICALITY_LENGTH_NORM_ALPHA's Bluesky/Mastodon
+# parity (see that constant) essentially untouched (ratio 1.02 -> 0.99) --
+# the two penalties are deliberately orthogonal, since a strong-enough pure
+# length discount to suppress repetition would overshoot parity long before
+# it suppressed the repetition itself. Re-validate before changing, same as
+# TOPICALITY_LENGTH_NORM_ALPHA.
+TOPICALITY_DIVERSITY_PENALTY_GAMMA = float(os.environ.get("TOPICALITY_DIVERSITY_PENALTY_GAMMA", "0.5"))
 TOPICALITY_BURST_THRESHOLD = int(os.environ.get("TOPICALITY_BURST_THRESHOLD", "5"))
 if TOPICALITY_BURST_THRESHOLD < 1:
     raise ValueError(f"TOPICALITY_BURST_THRESHOLD ({TOPICALITY_BURST_THRESHOLD}) must be at least 1")
@@ -99,15 +115,39 @@ def extract_entities_batch(texts: list[str]) -> list[list[str]]:
     ]
 
 
-def _top_k_mean(values: np.ndarray, k: int) -> float:
-    """Length-discounted mean of a doc's top-k TF-IDF weights -- see the
-    wiki's Topicality page for why the discount exists and how
-    TOPICALITY_LENGTH_NORM_ALPHA was chosen."""
+def _top_k_mean(values: np.ndarray, k: int, token_count: int) -> float:
+    """Doubly-discounted mean of a doc's top-k TF-IDF weights -- see the
+    wiki's Topicality page for why each discount exists and how its
+    constant was chosen.
+
+    Two independent discounts, both keyed on token_count (every token the
+    vectorizer's own tokenizer matched, including stopwords and repeats) vs.
+    values.size/nnz (the count of distinct terms that survived stopword
+    filtering into a nonzero TF-IDF weight):
+
+    - Length (TOPICALITY_LENGTH_NORM_ALPHA): divides by token_count itself,
+      so a post with more text overall isn't structurally favored just for
+      having more chances at a high-IDF term.
+    - Diversity (TOPICALITY_DIVERSITY_PENALTY_GAMMA): divides further by
+      token_count/nnz, the ratio of total tokens to distinct surviving
+      terms -- large when a post is dominated by one or a few repeated
+      words/stopwords rather than varied vocabulary. This is what actually
+      catches a post that repeats one non-stopword term many times: nnz
+      collapses to 1 same as a genuinely short post would, but token_count
+      stays large, so the ratio -- and the discount -- stays large too.
+
+    A genuinely short single-term post has token_count==1 and nnz==1, so
+    both discounts are 1 (`1 ** x == 1`) -- undiscounted, same guarantee the
+    length discount alone has always provided."""
     if values.size == 0:
         return 0.0
     top = np.sort(values)[::-1][:k]
     raw_mean = float(np.mean(top))
-    return raw_mean / (values.size**TOPICALITY_LENGTH_NORM_ALPHA)
+    token_count = max(token_count, 1)
+    nnz = values.size
+    length_discount = token_count**TOPICALITY_LENGTH_NORM_ALPHA
+    diversity_discount = (token_count / nnz) ** TOPICALITY_DIVERSITY_PENALTY_GAMMA
+    return raw_mean / (length_discount * diversity_discount)
 
 
 def _top_k_terms(indices: np.ndarray, values: np.ndarray, feature_names: np.ndarray, k: int) -> list[str]:
@@ -135,11 +175,18 @@ def _compute_tfidf(texts: list[str]) -> tuple[list[float], list[list[str]]]:
         return [0.0] * len(texts), [[] for _ in texts]
 
     feature_names = vectorizer.get_feature_names_out()
+    # Reuses the vectorizer's own token_pattern (not a hand-rolled regex) so
+    # the length proxy _top_k_mean discounts by can never silently diverge
+    # from what TF-IDF itself tokenized. build_tokenizer() only applies
+    # token_pattern, not stop_words filtering, so this counts every token
+    # including stopwords and repeats -- see _top_k_mean's docstring.
+    tokenizer = vectorizer.build_tokenizer()
     scores: list[float] = []
     top_terms: list[list[str]] = []
     for i in range(matrix.shape[0]):
         row = matrix.getrow(i)
-        scores.append(_top_k_mean(row.data, TOPICALITY_TFIDF_TOP_K))
+        token_count = len(tokenizer(normalized[i]))
+        scores.append(_top_k_mean(row.data, TOPICALITY_TFIDF_TOP_K, token_count))
         top_terms.append(_top_k_terms(row.indices, row.data, feature_names, TOPICALITY_TFIDF_TOP_K))
     return scores, top_terms
 

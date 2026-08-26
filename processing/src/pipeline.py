@@ -42,7 +42,7 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
-PIPELINE_VERSION = "v3"
+PIPELINE_VERSION = "v4"
 
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.

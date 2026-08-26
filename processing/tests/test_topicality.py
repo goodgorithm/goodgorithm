@@ -138,34 +138,64 @@ def test_score_topicality_burst_upweights_matching_entity():
     assert results[bursting_post.id].score > results[bursting_post.id].tfidf_component
 
 
-def test_top_k_mean_nnz_one_is_undiscounted():
+def test_top_k_mean_single_token_is_undiscounted():
     # A genuine single-term post must not be discounted -- 1 ** ALPHA == 1
     # for any ALPHA, so its score still depends entirely on that term's own
-    # weight, same as before issue #23's length-discount fix. This is what
-    # keeps the discount from reopening the L2-normalization regression
-    # (56ee036) that inflated single-word/emoji posts to a flat ceiling.
-    assert topicality._top_k_mean(np.array([1.0]), 3) == 1.0
+    # weight. This is what keeps the discount from reopening the
+    # L2-normalization regression (56ee036) that inflated single-word/emoji
+    # posts to a flat ceiling.
+    assert topicality._top_k_mean(np.array([1.0]), 3, token_count=1) == 1.0
 
 
-def test_top_k_mean_discount_grows_with_more_terms():
-    # Same top-3 values in both cases; only the extra below-top-k terms
-    # differ, isolating the discount's dependence on nnz (term count) alone.
-    few_terms = np.array([5.0, 4.0, 3.0])
-    many_terms = np.array([5.0, 4.0, 3.0, 1.0, 1.0, 1.0, 1.0])
-    score_few = topicality._top_k_mean(few_terms, 3)
-    score_many = topicality._top_k_mean(many_terms, 3)
-    assert score_few < 4.0  # discount already engages once nnz > 1
-    assert score_many < score_few  # more terms -> larger discount
+def test_top_k_mean_discount_grows_with_token_count():
+    # Fixed top-3 values in both cases; only token_count differs, isolating
+    # the discount's dependence on actual text length rather than on how
+    # many distinct terms survived stopword filtering.
+    values = np.array([5.0, 4.0, 3.0])
+    score_short = topicality._top_k_mean(values, 3, token_count=3)
+    score_long = topicality._top_k_mean(values, 3, token_count=20)
+    assert score_short < 4.0  # discount already engages once token_count > 1
+    assert score_long < score_short  # more tokens -> larger discount
+
+
+def test_top_k_mean_diversity_discount_is_a_noop_when_every_token_is_distinct():
+    # token_count == nnz (every token that survived stopword filtering is
+    # its own distinct term) means the diversity ratio is 1, so the
+    # diversity discount contributes nothing beyond the length discount --
+    # varied vocabulary shouldn't be penalized just for being long.
+    values = np.array([5.0, 4.0, 3.0])
+    with_diversity = topicality._top_k_mean(values, 3, token_count=3)
+    length_only = float(np.mean(values)) / (3**topicality.TOPICALITY_LENGTH_NORM_ALPHA)
+    assert with_diversity == length_only
+
+
+def test_top_k_mean_discounts_repetition_even_when_only_one_term_survives():
+    # A repeated non-stopword term collapses to a single surviving TF-IDF
+    # entry (e.g. "the best" x10 -> only "best" has a nonzero weight, so
+    # nnz==1 same as a genuinely short post would have). The length discount
+    # alone (keyed on token_count) still applies here, but it's the
+    # diversity discount -- token_count/nnz, large when one term dominates a
+    # long post -- that does most of the work distinguishing this case from
+    # a genuine single-term post.
+    weight = np.array([5.0])
+    undiscounted = topicality._top_k_mean(weight, 3, token_count=1)
+    discounted = topicality._top_k_mean(weight, 3, token_count=20)
+    assert discounted < undiscounted
+    nnz = weight.size
+    length_discount = 20**topicality.TOPICALITY_LENGTH_NORM_ALPHA
+    diversity_discount = (20 / nnz) ** topicality.TOPICALITY_DIVERSITY_PENALTY_GAMMA
+    assert discounted == 5.0 / (length_discount * diversity_discount)
 
 
 def test_score_topicality_emoji_spam_score_is_unchanged_by_length_discount():
     # 56ee036 fixed a real production bug where single-word/emoji posts like
     # this scored the theoretical max under L2 normalization. The length
-    # discount added for issue #23 must not disturb that fix: since nnz == 1
-    # for a genuine single-term post, its score must come out mathematically
-    # identical to the pre-discount (currently shipped) formula -- not just
-    # "still low" relative to some other post, which turns out not to be a
-    # stable property to assert (see below).
+    # discount must not disturb that fix: this text tokenizes to a single
+    # token ("cute" -- the ellipsis and emoji don't match the vectorizer's
+    # token pattern), so its score must come out mathematically identical to
+    # the undiscounted formula -- not just "still low" relative to some other
+    # post, which turns out not to be a stable property to assert (see
+    # below).
     #
     # An earlier version of this test asserted the spam post scores below a
     # substantive one, using a small hand-built batch. That's not actually a
@@ -173,7 +203,8 @@ def test_score_topicality_emoji_spam_score_is_unchanged_by_length_discount():
     # corpus, singleton terms -- "cute" as much as any specific breakthrough
     # term -- tend toward the same IDF ceiling (verified empirically), so
     # that comparison is corpus-size-dependent, not a real invariant. The
-    # nnz==1 no-op property below is the actual guarantee this fix relies on.
+    # single-token no-op property below is the actual guarantee this fix
+    # relies on.
     spam_text = "cute... 😵‍💫"
     batch = [spam_text, "quantum entanglement breakthrough confirmed today"]
 
@@ -213,6 +244,18 @@ def test_score_topicality_length_parity_narrows_vs_undiscounted_formula():
     new_ratio = new_scores[0] / new_scores[1]
     old_ratio = old_scores[0] / old_scores[1]
     assert new_ratio > old_ratio
+
+
+def test_compute_tfidf_scores_repetition_spam_does_not_beat_substantive_post():
+    # issue #99: a post that repeats one non-stopword term many times used
+    # to collapse to a single surviving TF-IDF entry and dodge the length
+    # discount entirely, scoring above genuinely substantive posts. With the
+    # discount keyed on actual token count, a long repetitive post is
+    # discounted like any other long post.
+    spam_text = "the best the best the best the best the best " * 2
+    substantive_text = "quantum entanglement breakthrough confirmed by researchers today"
+    scores = topicality.compute_tfidf_scores([spam_text, substantive_text])
+    assert scores[0] < scores[1]
 
 
 def test_score_topicality_splits_adjacent_camel_case_hashtags_into_separate_entities():
