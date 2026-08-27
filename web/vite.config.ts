@@ -1,12 +1,80 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin, type ResolvedConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+
+// Small build/dev HTML transforms that shorten the chain before the first
+// paint (issue #110). No runtime dependency -- this is the "tiny Vite
+// transformIndexHtml hook" the issue calls for. See the wiki's Web
+// Internals page.
+function prepaintOptimizations(): Plugin {
+  let apiBase = "";
+  return {
+    name: "prepaint-optimizations",
+    configResolved(config: ResolvedConfig) {
+      // Mode-aware: picks up VITE_API_BASE_URL from .env.<mode>, the CI
+      // environment, or Playwright's injected webServer env alike.
+      apiBase = config.env.VITE_API_BASE_URL ?? "";
+    },
+    transformIndexHtml: {
+      order: "post",
+      handler(html, ctx) {
+        if (!apiBase) {
+          throw new Error(
+            "VITE_API_BASE_URL is required to build the index.html preconnect + feed-bootstrap tags",
+          );
+        }
+
+        // 1. Inject the api/ origin into the preconnect links and the
+        //    inline feed-bootstrap <script> (both in index.html). Runs in
+        //    dev and build.
+        html = html.replaceAll("__API_BASE__", apiBase);
+
+        // 2. Stop the app's own stylesheet from render-blocking the first
+        //    paint -- index.html's inline <style> already covers the shell.
+        //    Only present in a build; dev injects CSS via JS.
+        html = html.replace(
+          /<link rel="stylesheet"([^>]*)>/,
+          (_m, attrs: string) =>
+            `<link rel="stylesheet"${attrs} media="print" onload="this.media='all'">` +
+            `<noscript><link rel="stylesheet"${attrs}></noscript>`,
+        );
+
+        // 3. Build only: preload the entry chunk and the Latin Manrope
+        //    subset (the one the wordmark + English body text use) from
+        //    their hashed names.
+        if (ctx.bundle) {
+          const entry = Object.values(ctx.bundle).find(
+            (c) => c.type === "chunk" && c.isEntry,
+          );
+          if (entry) {
+            html = html.replace(
+              '<script type="module"',
+              `<link rel="modulepreload" href="/${entry.fileName}"><script type="module"`,
+            );
+          }
+          const latinFont = Object.keys(ctx.bundle).find((f) =>
+            /manrope-latin-wght-normal-[^/]*\.woff2$/.test(f),
+          );
+          if (latinFont) {
+            html = html.replace(
+              "</head>",
+              `<link rel="preload" as="font" type="font/woff2" href="/${latinFont}" crossorigin></head>`,
+            );
+          }
+        }
+
+        return html;
+      },
+    },
+  };
+}
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    prepaintOptimizations(),
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
