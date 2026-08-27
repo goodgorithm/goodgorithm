@@ -10,8 +10,18 @@ import { CATEGORIES, type Category } from "../api/types";
 // is what makes it the right fallback, not just the default.
 const DEFAULT_CATEGORY: Category = "arts_culture";
 
-function readCategory(): Category {
+// The unfiltered feed's explicit URL value - deliberately not "absence of
+// the param", since once absence means "default to Arts & Culture" (above),
+// an unfiltered choice represented only by an absent param would silently
+// revert to the default on every reload. Giving it its own value makes it
+// survive a refresh like any real category does. Never surfaced in the UI -
+// CategorySelector has no control that ever produces null - so this is
+// reachable only by knowing the URL. See issue #101.
+const FULL_FEED_PARAM = "all";
+
+function readCategory(): Category | null {
   const value = new URLSearchParams(window.location.search).get("category");
+  if (value === FULL_FEED_PARAM) return null;
   if ((CATEGORIES as readonly string[]).includes(value ?? "")) return value as Category;
   return DEFAULT_CATEGORY;
 }
@@ -19,8 +29,8 @@ function readCategory(): Category {
 // Mirrors useLocation.ts's hand-rolled pushState/popstate shape (no router
 // lib in web/ by design) - kept separate from useLocation itself since the
 // category param only ever applies to the feed route, not the content pages.
-export function useCategoryParam(): [Category, (category: Category) => void] {
-  const [category, setCategory] = useState<Category>(readCategory);
+export function useCategoryParam(): [Category | null, (category: Category | null) => void] {
+  const [category, setCategory] = useState<Category | null>(readCategory);
 
   useEffect(() => {
     const onPopState = () => setCategory(readCategory());
@@ -43,9 +53,9 @@ export function useCategoryParam(): [Category, (category: Category) => void] {
     }
   }, []);
 
-  const select = (next: Category) => {
+  const select = (next: Category | null) => {
     const url = new URL(window.location.href);
-    url.searchParams.set("category", next);
+    url.searchParams.set("category", next ?? FULL_FEED_PARAM);
     window.history.pushState(null, "", url);
     setCategory(next);
   };

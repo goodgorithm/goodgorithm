@@ -26,12 +26,12 @@ describe("useCategoryParam", () => {
     expect(result.current[0]).toBe("diaries_daily_life");
   });
 
-  it("falls back to the default for the old ?category=all (Full feed, removed - issue #33)", () => {
+  it("reads ?category=all as null (issue #101's hidden unfiltered feed)", () => {
     window.history.pushState(null, "", "/?category=all");
 
     const { result } = renderHook(() => useCategoryParam());
 
-    expect(result.current[0]).toBe("arts_culture");
+    expect(result.current[0]).toBeNull();
   });
 
   it("falls back to the default for an unrecognized category value", () => {
@@ -49,6 +49,21 @@ describe("useCategoryParam", () => {
 
     expect(result.current[0]).toBe("science_technology");
     expect(window.location.search).toContain("category=science_technology");
+  });
+
+  it("selecting null (unfiltered) writes the explicit all value, surviving a reload", () => {
+    window.history.pushState(null, "", "/?category=science_technology");
+    const { result } = renderHook(() => useCategoryParam());
+
+    act(() => result.current[1](null));
+
+    expect(result.current[0]).toBeNull();
+    expect(window.location.search).toContain("category=all");
+
+    // simulates a reload: a fresh hook instance reading the same URL should
+    // still resolve to the unfiltered feed, not silently revert to the default.
+    const { result: afterReload } = renderHook(() => useCategoryParam());
+    expect(afterReload.current[0]).toBeNull();
   });
 
   it("responds to browser back/forward (popstate)", () => {
