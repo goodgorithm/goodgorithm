@@ -1,6 +1,8 @@
 import logging
 import os
+import re
 import tempfile
+import unicodedata
 from pathlib import Path
 
 import fasttext
@@ -25,6 +27,17 @@ LANGUAGE_FILTER_FETCH_TIMEOUT_SECONDS = int(os.environ.get("LANGUAGE_FILTER_FETC
 # Tuned against real production text -- see the wiki's Pipeline Internals
 # page for what this trades off and why 0.3 specifically.
 LANGUAGE_FILTER_CONFIDENCE_THRESHOLD = float(os.environ.get("LANGUAGE_FILTER_CONFIDENCE_THRESHOLD", "0.3"))
+
+# Fraction of a post's letters that must be non-Latin for
+# bluesky_tag_needs_recheck to override a self-reported `en` tag. A random
+# production sample put real posts with a non-empty `langs` tag at ~1%
+# predominantly non-Latin, essentially all genuinely non-English; non-Latin
+# English text does not occur, so the fastText re-check this gates costs no
+# real English. See CLAUDE.md's Non-English content filtering section.
+LANGUAGE_FILTER_NON_LATIN_RATIO = float(os.environ.get("LANGUAGE_FILTER_NON_LATIN_RATIO", "0.5"))
+# URLs, @mentions and #hashtags are stripped before the script check --
+# they skew ASCII even in an otherwise fully non-Latin post.
+_RECHECK_STRIP_RE = re.compile(r"https?://\S+|[@#]\S+")
 
 _model: fasttext.FastText._FastText | None = None
 _load_failed = False
@@ -86,9 +99,56 @@ def is_non_english(text: str) -> bool:
     velocity-alone-can't-flag rule.
 
     Called from pipeline.py for posts with no self-reported language tag,
-    and for every Mastodon post regardless of its tag -- see CLAUDE.md's
-    Non-English content filtering section and the wiki's Content Policy
-    page for why, including why this is deliberately NOT extended to
-    Bluesky's tagged posts."""
+    for every Mastodon post regardless of its tag, and -- via
+    bluesky_tag_needs_recheck below -- for a Bluesky post whose own `langs`
+    tag can't be trusted. See CLAUDE.md's Non-English content filtering
+    section and the wiki's Content Policy page for why a Latin-script
+    Bluesky post under an `en` tag is still exempt."""
     label, confidence = detect_language(text)
     return label != "" and label != "en" and confidence >= LANGUAGE_FILTER_CONFIDENCE_THRESHOLD
+
+
+def is_english_lang_tag(lang: str | None) -> bool:
+    """Whether a source-reported language tag names English. An absent tag
+    (`None`) is not English here -- callers decide separately what to do
+    with a missing tag. Region subtags (`en-US`, `en-GB`) count as English."""
+    if lang is None:
+        return False
+    lang = lang.lower()
+    return lang == "en" or lang.startswith("en-")
+
+
+def is_predominantly_non_latin(text: str) -> bool:
+    """True when at least LANGUAGE_FILTER_NON_LATIN_RATIO of the text's
+    letters are outside the Latin script (CJK, Thai, Arabic, Cyrillic,
+    Hangul, ...). A cheap string scan, no model. URLs / @mentions /
+    #hashtags are stripped first; digits, emoji and punctuation don't
+    count either way. Accented Latin (á, ñ, ö) stays Latin, so Spanish /
+    German / French text is not flagged."""
+    stripped = _RECHECK_STRIP_RE.sub(" ", text)
+    letters = [ch for ch in stripped if ch.isalpha()]
+    if not letters:
+        return False
+    non_latin = 0
+    for ch in letters:
+        try:
+            if not unicodedata.name(ch).startswith("LATIN"):
+                non_latin += 1
+        except ValueError:  # unnamed char -- treat as non-Latin
+            non_latin += 1
+    return non_latin / len(letters) >= LANGUAGE_FILTER_NON_LATIN_RATIO
+
+
+def bluesky_tag_needs_recheck(lang: str | None, text: str) -> bool:
+    """Whether a self-tagged Bluesky post should still get the fastText
+    non-English re-check. True when the tag can't be trusted: its primary
+    self-reported language isn't English at all (`langs:["es","en"]` slips
+    past ingestion because "en" is present in the array), or the text is
+    predominantly non-Latin script (a wrong `langs:["en"]` on Thai / CJK /
+    Arabic text is common in practice, and genuinely non-Latin English
+    doesn't exist, so this costs ~no real English). A Latin-script post
+    under an `en`/`en-*` tag is still trusted as-is -- that gap is left
+    open on purpose; see CLAUDE.md's Non-English content filtering section."""
+    if not is_english_lang_tag(lang):
+        return True
+    return is_predominantly_non_latin(text)

@@ -93,7 +93,11 @@ def run_cycle(batch_size: int) -> int:
                 "content-filtered post %s (hashtag/self-label/spoiler-text/domain/sensitive-media/home-instance)",
                 post.id,
             )
-        elif (post.lang is None or post.source == "mastodon") and language_filter.is_non_english(post.text):
+        elif (
+            post.lang is None
+            or post.source == "mastodon"
+            or (post.source == "bluesky" and language_filter.bluesky_tag_needs_recheck(post.lang, post.text))
+        ) and language_filter.is_non_english(post.text):
             db.delete_raw_post(post.id)
             reason = "no tag" if post.lang is None else f"tagged {post.lang!r}"
             logger.info("language-filtered post %s (%s, detected non-English)", post.id, reason)

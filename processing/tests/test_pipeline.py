@@ -1,5 +1,6 @@
 import pipeline
-from infra.db import UncheckedBlueskyPost, UnresolvedAuthorPost
+from infra.db import RawPost, UncheckedBlueskyPost, UnresolvedAuthorPost
+from pipeline_stages.context_dependency import ContextClassification
 
 
 def test_refresh_rankings_runs_without_error(monkeypatch):
@@ -93,3 +94,58 @@ def test_resolve_authors_marks_resolved_and_skips_failed_batch(monkeypatch):
         ("found-id", {"displayName": "Jane Doe", "avatarUrl": None}),
         ("no-author-id", None),
     ]
+
+
+def _raw_post(id_, source, lang, text):
+    return RawPost(
+        id=id_,
+        source=source,
+        source_id=f"{source}:{id_}",
+        author_id=f"author-{id_}",
+        text=text,
+        lang=lang,
+        created_at=None,
+        raw_json={},
+    )
+
+
+def test_run_cycle_language_gate_covers_untrusted_bluesky_tags(monkeypatch):
+    # issue #107: the fastText re-check runs on an untagged post, on any
+    # Mastodon post, and now also on a Bluesky post whose `langs` tag can't
+    # be trusted (non-Latin body under `en`, or a non-English primary
+    # tag) -- but NOT on a plain Latin-script `en` Bluesky post.
+    posts = [
+        _raw_post("bsky-untagged", "bluesky", None, "algo de texto aqui"),
+        _raw_post("masto-en", "mastodon", "en", "irgendein text hier"),
+        _raw_post("bsky-en-thai", "bluesky", "en", "ขอเลื่อนไลฟ์เปิดกล้องมาเร็ว"),
+        _raw_post("bsky-es", "bluesky", "es", "Creo que es la mejor de la tarde."),
+        _raw_post("bsky-en-latin", "bluesky", "en", "im so excited hehe"),
+    ]
+    monkeypatch.setattr(pipeline.db, "fetch_unprocessed_posts", lambda batch_size: posts)
+    monkeypatch.setattr(pipeline.db, "fetch_moderation_lists", lambda: (set(), [], []))
+    monkeypatch.setattr(pipeline.content_filter, "is_content_excluded", lambda *a, **k: False)
+
+    checked = []
+    monkeypatch.setattr(
+        pipeline.language_filter,
+        "is_non_english",
+        lambda text: checked.append(text) or True,  # every text that reaches fastText is "non-English"
+    )
+    # Anything surviving the language gate is context-excluded, so kept_posts
+    # stays empty and run_cycle returns before any scoring machinery.
+    monkeypatch.setattr(
+        pipeline.context_dependency, "classify", lambda *a, **k: ContextClassification(action="exclude")
+    )
+    deleted = []
+    monkeypatch.setattr(pipeline.db, "delete_raw_post", lambda post_id: deleted.append(post_id))
+
+    assert pipeline.run_cycle(batch_size=10) == len(posts)
+    # fastText was consulted for exactly the untrusted-tag posts...
+    assert set(checked) == {
+        "algo de texto aqui",
+        "irgendein text hier",
+        "ขอเลื่อนไลฟ์เปิดกล้องมาเร็ว",
+        "Creo que es la mejor de la tarde.",
+    }
+    # ...and never for the plain Latin `en` Bluesky post.
+    assert "im so excited hehe" not in checked
