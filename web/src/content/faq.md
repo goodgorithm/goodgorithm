@@ -48,6 +48,10 @@ Yes, MIT-licensed, on [GitHub](https://github.com/goodgorithm/goodgorithm) — i
 
 On most browsers you can "Add to Home Screen" for an app-like experience. Native iOS and Android apps are coming soon.
 
+## Why did I see a negative or off-topic post?
+
+Because the algorithm *favors* positive, on-topic content — it doesn't perfectly filter out everything else, and it never will. It scores posts on sentiment and topical substance and ranks the best to the top, but misjudgments happen. On top of that, Goodgorithm is in alpha, so expect plain bugs too: broken layouts, gaps in the feed, rough edges throughout. A feed that leans toward the good is the goal, not a sealed oasis.
+
 ## Can I contribute?
 
 Yes — issues, discussions, and pull requests are all welcome. [`CONTRIBUTING.md`](https://github.com/goodgorithm/goodgorithm/blob/main/CONTRIBUTING.md) covers the actual workflow (searching/opening issues, branch naming, PRs), and the wiki's [Local Development](https://github.com/goodgorithm/goodgorithm/wiki/Local-Development) page walks through getting the full stack — Postgres, Redis, ingestion/processing/api/web — running on your own machine. The [Mission](https://github.com/goodgorithm/goodgorithm/wiki/Mission) page has more on what we're looking for.
