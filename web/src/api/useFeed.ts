@@ -5,13 +5,15 @@ import { fetchFeed } from "./client";
 import type { Category } from "./types";
 import { clearCursor, loadCursor, saveCursor } from "../lib/feedCursor";
 
-export function useFeed(category: Category) {
+export function useFeed(category: Category | null) {
+  const categoryKey = category ?? "all";
+
   // Per-category, not a single shared counter: resetting "Arts & Culture"
   // back to the top shouldn't also force "Science & Technology" to the
   // top the next time you switch to it - each category's reset state is
   // independent.
   const [resetGenerations, setResetGenerations] = useState<Record<string, number>>({});
-  const generation = resetGenerations[category] ?? 0;
+  const generation = resetGenerations[categoryKey] ?? 0;
 
   // Recomputed whenever category or that category's reset generation
   // changes - NOT frozen at mount, so switching category actually resumes
@@ -24,7 +26,7 @@ export function useFeed(category: Category) {
   const resumed = initialCursor !== null;
 
   const query = useInfiniteQuery({
-    queryKey: ["feed", category, generation],
+    queryKey: ["feed", categoryKey, generation],
     queryFn: ({ pageParam }: { pageParam: string | null }) => fetchFeed(pageParam, undefined, category),
     initialPageParam: initialCursor,
     getNextPageParam: (lastPage) => lastPage.next_cursor,
@@ -37,7 +39,7 @@ export function useFeed(category: Category) {
 
   const resetToTop = () => {
     clearCursor(category);
-    setResetGenerations((prev) => ({ ...prev, [category]: generation + 1 }));
+    setResetGenerations((prev) => ({ ...prev, [categoryKey]: generation + 1 }));
   };
 
   return { ...query, resumed, resetToTop };

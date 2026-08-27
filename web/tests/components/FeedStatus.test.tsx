@@ -25,4 +25,10 @@ describe("FeedEmpty", () => {
     expect(screen.getByText(/no posts in daily life yet/i)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+
+  it("shows a generic message for the unfiltered feed, with no fallback button", () => {
+    render(<FeedEmpty category={null} />);
+    expect(screen.getByText("No posts yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
 });

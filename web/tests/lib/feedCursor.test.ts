@@ -52,12 +52,27 @@ describe("feedCursor", () => {
     expect(loadCursor("diaries_daily_life")).toBeNull();
   });
 
+  // null (the unfiltered feed, issue #101) round-trips through its own
+  // "all" storage key, same as any real category.
+  it("round-trips a saved cursor for the unfiltered feed (null category)", () => {
+    saveCursor(null, "all-cursor");
+    expect(loadCursor(null)).toBe("all-cursor");
+  });
+
+  it("clears the unfiltered feed's stored cursor", () => {
+    saveCursor(null, "all-cursor");
+    clearCursor(null);
+    expect(loadCursor(null)).toBeNull();
+  });
+
   it("keeps separate categories' cursors independent", () => {
     saveCursor("science_technology", "tech-cursor");
     saveCursor("diaries_daily_life", "diaries_daily_life-cursor");
+    saveCursor(null, "all-cursor");
 
     expect(loadCursor("science_technology")).toBe("tech-cursor");
     expect(loadCursor("diaries_daily_life")).toBe("diaries_daily_life-cursor");
+    expect(loadCursor(null)).toBe("all-cursor");
   });
 
   it("clearing one category's cursor doesn't touch another's", () => {

@@ -30,7 +30,7 @@ describe("useFeed", () => {
   it("starts from the top when no cursor is persisted", async () => {
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse("next-1"));
 
-    renderHook(() => useFeed("arts_culture"), { wrapper: createWrapper() });
+    renderHook(() => useFeed(null), { wrapper: createWrapper() });
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
@@ -38,10 +38,10 @@ describe("useFeed", () => {
   });
 
   it("resumes from a persisted cursor", async () => {
-    saveCursor("arts_culture", "resume-me");
+    saveCursor(null, "resume-me");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
-    renderHook(() => useFeed("arts_culture"), { wrapper: createWrapper() });
+    renderHook(() => useFeed(null), { wrapper: createWrapper() });
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
@@ -51,24 +51,24 @@ describe("useFeed", () => {
   it("persists the next cursor once a page loads", async () => {
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse("next-1"));
 
-    const { result } = renderHook(() => useFeed("arts_culture"), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(loadCursor("arts_culture")).toBe("next-1");
+    expect(loadCursor(null)).toBe("next-1");
   });
 
   it("resetToTop clears the persisted cursor and re-fetches from the top", async () => {
-    saveCursor("arts_culture", "resume-me");
+    saveCursor(null, "resume-me");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
-    const { result } = renderHook(() => useFeed("arts_culture"), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.data).toBeDefined());
     expect(result.current.resumed).toBe(true);
 
     act(() => result.current.resetToTop());
 
     await waitFor(() => expect(result.current.resumed).toBe(false));
-    expect(loadCursor("arts_culture")).toBeNull();
+    expect(loadCursor(null)).toBeNull();
 
     const lastCallUrl = vi.mocked(fetch).mock.calls.at(-1)?.[0] as string;
     expect(lastCallUrl).not.toContain("cursor=");
