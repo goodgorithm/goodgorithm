@@ -41,7 +41,32 @@ function mockUseFeed(pages: FeedPost[][]) {
   } as unknown as ReturnType<typeof useFeedModule.useFeed>);
 }
 
+function mockUseFeedPending() {
+  vi.mocked(useFeedModule.useFeed).mockReturnValue({
+    data: undefined,
+    error: null,
+    isPending: true,
+    isFetchingNextPage: false,
+    fetchNextPage: vi.fn(),
+    hasNextPage: false,
+    resumed: false,
+    resetToTop: vi.fn(),
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof useFeedModule.useFeed>);
+}
+
 describe("Feed", () => {
+  it("shows the skeleton placeholder (not the plain loading line) while the first page is pending", () => {
+    mockUseFeedPending();
+    const { container } = render(<Feed />);
+
+    expect(screen.queryByText("Loading feed…")).not.toBeInTheDocument();
+    expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    // the category selector stays visible during the initial load
+    expect(screen.getByRole("button", { name: "Arts & Culture" })).toBeInTheDocument();
+  });
+
   it("renders each post once when pages don't overlap", () => {
     mockUseFeed([[makePost("1", "First post"), makePost("2", "Second post")]]);
     render(<Feed />);

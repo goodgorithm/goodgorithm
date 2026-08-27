@@ -1,0 +1,73 @@
+/* Loading placeholder for the feed's first paint. Kept dimensionally close
+   to PostCard.module.css's .card (padding / border / radius / margin) so
+   swapping in real posts costs minimal layout shift. Its pre-hydration
+   twin is the static shell in index.html's inline <style> (class names
+   prefixed gg-skel-*) -- there is no SSR, so that copy is authored by hand;
+   keep the two visually in sync. */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin-bottom: 0.75em;
+}
+
+.bar {
+  height: 0.9em;
+  border-radius: 4px;
+  background: var(--color-surface-muted);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.line {
+  margin-bottom: 0.5em;
+}
+
+.pill {
+  width: 4.5em;
+  height: 1.3em;
+  border-radius: 999px;
+}
+
+.short {
+  width: 30%;
+}
+
+.time {
+  width: 3em;
+  margin-left: auto;
+}
+
+.w60 {
+  width: 60%;
+}
+
+.foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.9em;
+}
+
+.footBar {
+  width: 5em;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    animation: none;
+  }
+}
