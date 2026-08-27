@@ -20,9 +20,17 @@ export function ImageGrid({ images, sensitive }: { images: ImageAttachment[]; se
               src={image.thumbnailUrl}
               alt={image.alt ?? ""}
               loading="lazy"
-              style={
-                image.width && image.height ? { aspectRatio: `${image.width} / ${image.height}` } : undefined
-              }
+              // Always reserve the box so a late-loading image never shifts
+              // the feed (Core Web Vitals CLS). Real dimensions when the
+              // source gave them; a 16/9 fallback otherwise -- a
+              // dimensionless image then letterboxes inside that box
+              // (object-fit: contain, see the module CSS) rather than
+              // expanding from zero. Ignored for the count2-4 layouts,
+              // whose cells are already a fixed height.
+              style={{
+                aspectRatio:
+                  image.width && image.height ? `${image.width} / ${image.height}` : "16 / 9",
+              }}
             />
           </a>
         </SensitiveMedia>
