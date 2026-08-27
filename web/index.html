@@ -9,6 +9,152 @@
          native builds. No effect on the web PWA case. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1f9d55" />
+
+    <!-- Critical CSS for the static first-paint shell in <body>. There is no
+         SSR, so this is authored by hand, same as the OG tags below. The
+         palette tokens are copied verbatim from src/theme.css and the
+         skeleton rules mirror components/FeedSkeleton.module.css -- keep all
+         three in sync. Everything here is superseded once the app's own
+         stylesheet loads with the JS bundle. -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --font-sans: "Manrope Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+        --color-accent: #1f9d55;
+        --color-bg: #ffffff;
+        --color-surface: #ffffff;
+        --color-surface-muted: #f3f4f2;
+        --color-border: #dde1de;
+        --color-text: #16211b;
+        --color-text-secondary: #5b665f;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --color-accent: #3ecb79;
+          --color-bg: #121815;
+          --color-surface: #19221e;
+          --color-surface-muted: #1f2a24;
+          --color-border: #2a362f;
+          --color-text: #ecf3ef;
+          --color-text-secondary: #9fada6;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--color-bg);
+        color: var(--color-text);
+        font-family: var(--font-sans);
+      }
+      .gg-shell {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+          max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+      }
+      .gg-shell-wordmark {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3em;
+        font-size: 1.5rem;
+        letter-spacing: -0.01em;
+      }
+      .gg-shell-mark {
+        color: var(--color-accent);
+        flex-shrink: 0;
+      }
+      .gg-shell-good {
+        color: var(--color-accent);
+        font-weight: 700;
+      }
+      .gg-shell-gorithm {
+        color: var(--color-text);
+        font-weight: 400;
+      }
+      .gg-shell-tagline {
+        margin: 0.35rem 0 1rem;
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+      }
+      .gg-shell-catrow {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 0.5em;
+        margin-bottom: 1rem;
+      }
+      .gg-shell-chip {
+        height: 2.1em;
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        background: var(--color-surface-muted);
+      }
+      .gg-skel-card {
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      .gg-skel-row {
+        display: flex;
+        align-items: center;
+        gap: 0.6em;
+        margin-bottom: 0.75em;
+      }
+      .gg-skel-bar {
+        height: 0.9em;
+        border-radius: 4px;
+        background: var(--color-surface-muted);
+        animation: gg-pulse 1.4s ease-in-out infinite;
+      }
+      .gg-skel-line {
+        margin-bottom: 0.5em;
+      }
+      .gg-skel-pill {
+        width: 4.5em;
+        height: 1.3em;
+        border-radius: 999px;
+      }
+      .gg-skel-short {
+        width: 30%;
+      }
+      .gg-skel-time {
+        width: 3em;
+        margin-left: auto;
+      }
+      .gg-skel-w60 {
+        width: 60%;
+      }
+      .gg-skel-foot {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 0.9em;
+      }
+      .gg-skel-footbar {
+        width: 5em;
+      }
+      .gg-visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        border: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      @keyframes gg-pulse {
+        50% {
+          opacity: 0.5;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .gg-skel-bar {
+          animation: none;
+        }
+      }
+    </style>
+
     <title>Goodgorithm — An Open-Source Algorithm for Good News</title>
     <meta
       name="description"
@@ -53,7 +199,93 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Static first-paint shell: a styled placeholder that renders straight
+           from this HTML (no SSR, same as the OG tags above) so a large
+           element paints at ~TTFB instead of after the JS bundle plus a live
+           feed fetch (Core Web Vitals LCP -- see issue #109 / the wiki's Web
+           Internals page). React's createRoot().render() replaces #root's
+           children on its first commit, so this is swapped for the real app
+           automatically. Its React-side twin is components/FeedSkeleton.tsx;
+           its styles are the gg-* rules in the <style> above. Keep the mark,
+           the skeleton and the palette tokens in sync with Wordmark.tsx,
+           FeedSkeleton.module.css and theme.css respectively. -->
+      <div class="gg-shell" aria-hidden="true">
+        <span class="gg-shell-wordmark">
+          <svg class="gg-shell-mark" width="28" height="28" viewBox="0 0 100 100" aria-hidden="true">
+            <path
+              d="M 66.13 44.45 A 20 20 0 1 1 66.13 27.55"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M 55 55 C 57 76, 34 94, 16 82"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="9"
+              stroke-linecap="round"
+            />
+            <circle cx="66.13" cy="44.45" r="6" fill="currentColor" />
+            <circle cx="66.13" cy="27.55" r="6" fill="currentColor" />
+            <circle cx="16" cy="82" r="6" fill="currentColor" />
+          </svg>
+          <span><span class="gg-shell-good">good</span><span class="gg-shell-gorithm">gorithm</span></span>
+        </span>
+        <p class="gg-shell-tagline">Uplifting posts, honestly ranked.</p>
+        <div class="gg-shell-catrow">
+          <div class="gg-shell-chip"></div>
+          <div class="gg-shell-chip"></div>
+          <div class="gg-shell-chip"></div>
+          <div class="gg-shell-chip"></div>
+        </div>
+        <div class="gg-skel-card">
+          <div class="gg-skel-row">
+            <div class="gg-skel-bar gg-skel-pill"></div>
+            <div class="gg-skel-bar gg-skel-short"></div>
+            <div class="gg-skel-bar gg-skel-time"></div>
+          </div>
+          <div class="gg-skel-bar gg-skel-line"></div>
+          <div class="gg-skel-bar gg-skel-line"></div>
+          <div class="gg-skel-bar gg-skel-line gg-skel-w60"></div>
+          <div class="gg-skel-foot">
+            <div class="gg-skel-bar gg-skel-footbar"></div>
+            <div class="gg-skel-bar gg-skel-footbar"></div>
+          </div>
+        </div>
+        <div class="gg-skel-card">
+          <div class="gg-skel-row">
+            <div class="gg-skel-bar gg-skel-pill"></div>
+            <div class="gg-skel-bar gg-skel-short"></div>
+            <div class="gg-skel-bar gg-skel-time"></div>
+          </div>
+          <div class="gg-skel-bar gg-skel-line"></div>
+          <div class="gg-skel-bar gg-skel-line"></div>
+          <div class="gg-skel-bar gg-skel-line gg-skel-w60"></div>
+          <div class="gg-skel-foot">
+            <div class="gg-skel-bar gg-skel-footbar"></div>
+            <div class="gg-skel-bar gg-skel-footbar"></div>
+          </div>
+        </div>
+        <div class="gg-skel-card">
+          <div class="gg-skel-row">
+            <div class="gg-skel-bar gg-skel-pill"></div>
+            <div class="gg-skel-bar gg-skel-short"></div>
+            <div class="gg-skel-bar gg-skel-time"></div>
+          </div>
+          <div class="gg-skel-bar gg-skel-line"></div>
+          <div class="gg-skel-bar gg-skel-line"></div>
+          <div class="gg-skel-bar gg-skel-line gg-skel-w60"></div>
+          <div class="gg-skel-foot">
+            <div class="gg-skel-bar gg-skel-footbar"></div>
+            <div class="gg-skel-bar gg-skel-footbar"></div>
+          </div>
+        </div>
+      </div>
+      <p class="gg-visually-hidden" role="status">Loading feed…</p>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

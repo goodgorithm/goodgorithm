@@ -5,6 +5,7 @@ import { useFeed } from "../api/useFeed";
 import { CategorySelector } from "./CategorySelector";
 import styles from "./Feed.module.css";
 import { FeedEmpty, FeedError, FeedLoading } from "./FeedStatus";
+import { FeedSkeleton } from "./FeedSkeleton";
 import { useCategoryParam } from "../lib/useCategoryParam";
 import { relativeFractions, type RelativeFractions } from "../lib/scoreScale";
 import { PostCard } from "./PostCard";
@@ -75,7 +76,7 @@ export function Feed() {
   return (
     <div>
       <CategorySelector selected={category} onSelect={setCategory} />
-      {isPending && <FeedLoading />}
+      {isPending && <FeedSkeleton />}
       {error && <FeedError message={error.message} onRetry={refetch} />}
       {!isPending && !error && posts.length === 0 && <FeedEmpty category={category} />}
       {!isPending && !error && resumed && (
