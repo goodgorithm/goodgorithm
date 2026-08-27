@@ -25,6 +25,7 @@ describe("useFeed", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     localStorage.clear();
+    delete window.__feedBootstrap;
   });
 
   it("starts from the top when no cursor is persisted", async () => {
@@ -72,6 +73,34 @@ describe("useFeed", () => {
 
     const lastCallUrl = vi.mocked(fetch).mock.calls.at(-1)?.[0] as string;
     expect(lastCallUrl).not.toContain("cursor=");
+  });
+
+  it("adopts the inline-script feed promise for page 1 of the default category", async () => {
+    // The inline <script> in index.html pre-fetches ?category=arts_culture
+    // and parks the promise on window.__feedBootstrap; useFeed's first page
+    // should use it instead of firing its own request.
+    window.__feedBootstrap = {
+      promise: Promise.resolve({ posts: [], next_cursor: "boot-next" }),
+    };
+    vi.mocked(fetch).mockResolvedValue(mockFeedResponse("net-next"));
+
+    const { result } = renderHook(() => useFeed("arts_culture"), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(fetch).not.toHaveBeenCalled();
+    expect(loadCursor("arts_culture")).toBe("boot-next");
+  });
+
+  it("falls back to a normal fetch when the bootstrap category doesn't match", async () => {
+    window.__feedBootstrap = {
+      promise: Promise.resolve({ posts: [], next_cursor: "boot-next" }),
+    };
+    vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
+
+    renderHook(() => useFeed("science_technology"), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect((vi.mocked(fetch).mock.calls[0][0] as string)).toContain("category=science_technology");
   });
 
   it("passes the selected category through to the /feed request", async () => {

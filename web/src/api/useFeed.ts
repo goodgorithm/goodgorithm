@@ -2,6 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchFeed } from "./client";
+import { consumeFeedBootstrap } from "./feedBootstrap";
 import type { Category } from "./types";
 import { clearCursor, loadCursor, saveCursor } from "../lib/feedCursor";
 
@@ -27,7 +28,14 @@ export function useFeed(category: Category | null) {
 
   const query = useInfiniteQuery({
     queryKey: ["feed", categoryKey, generation],
-    queryFn: ({ pageParam }: { pageParam: string | null }) => fetchFeed(pageParam, undefined, category),
+    // First page adopts the request the inline <script> in index.html
+    // already started, when it matches (default category, no resume
+    // cursor). Everything else -- later pages, other categories, resumes,
+    // refetches -- goes straight to fetchFeed. consumeFeedBootstrap is
+    // one-shot, so a retry after a failed adopt falls through here too.
+    queryFn: ({ pageParam }: { pageParam: string | null }) =>
+      (pageParam === initialCursor ? consumeFeedBootstrap(category, pageParam) : null) ??
+      fetchFeed(pageParam, undefined, category),
     initialPageParam: initialCursor,
     getNextPageParam: (lastPage) => lastPage.next_cursor,
   });
