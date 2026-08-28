@@ -44,6 +44,15 @@ export function computeStatus(
   return "ok";
 }
 
+// 503 when degraded, 200 otherwise -- lets /health/strict double as a plain
+// up/down check for an external monitor. Kept off /health itself, which must
+// stay 200 for Railway's deploy-time healthcheck (a degraded ingestion
+// process is still deliberately running). Mirrors processing/'s
+// status_server.strict_status_code.
+export function strictStatusCode(status: "ok" | "degraded"): number {
+  return status === "degraded" ? 503 : 200;
+}
+
 function buildStatus(publicConfig: PublicConfig) {
   const bluesky = getBlueskyState();
   const blueskyLabels = getBlueskyLabelsState();
@@ -60,12 +69,13 @@ function buildStatus(publicConfig: PublicConfig) {
 
 export function startStatusServer(port: number, publicConfig: PublicConfig): void {
   const server = createServer((req, res) => {
-    if (req.url !== "/health") {
+    if (req.url !== "/health" && req.url !== "/health/strict") {
       res.writeHead(404).end();
       return;
     }
-    const body = JSON.stringify(buildStatus(publicConfig));
-    res.writeHead(200, { "Content-Type": "application/json" }).end(body);
+    const status = buildStatus(publicConfig);
+    const code = req.url === "/health/strict" ? strictStatusCode(status.status) : 200;
+    res.writeHead(code, { "Content-Type": "application/json" }).end(JSON.stringify(status));
   });
   server.listen(port, () => {
     console.log(`[ingestion] status server listening on :${port}/health`);

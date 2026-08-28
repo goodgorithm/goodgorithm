@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { computeStatus } from "../src/statusServer";
+import { computeStatus, strictStatusCode } from "../src/statusServer";
 
 const connected = { connected: true };
 const disconnected = { connected: false };
@@ -64,4 +64,9 @@ test("computeStatus is degraded when an instance has only ever failed, never suc
     "always-failing.example": { lastSuccessAt: null, lastErrorAt: new Date(), lastError: "fetch error" },
   };
   assert.equal(computeStatus(connected, labelsConnected, mastodon), "degraded");
+});
+
+test("strictStatusCode maps ok -> 200 and degraded -> 503", () => {
+  assert.equal(strictStatusCode("ok"), 200);
+  assert.equal(strictStatusCode("degraded"), 503);
 });
