@@ -1,6 +1,7 @@
 import { createServer } from "http";
 import { getConnectionState as getBlueskyState } from "./bluesky";
 import { getConnectionState as getBlueskyLabelsState } from "./blueskyLabels";
+import { parseNumberEnv } from "./env";
 import { getInstanceStatus, type InstanceStatus } from "./mastodon";
 import { pendingExclusionCount } from "./pendingExclusions";
 
@@ -20,6 +21,25 @@ interface ConnectionState {
   connected: boolean;
 }
 
+// Fraction of currently-polled Mastodon instances that must be erroring for
+// the whole verdict to flip to "degraded". Default 1.0 = every instance --
+// i.e. only a systemic polling failure (loop wedged, host network, a bad
+// MASTODON_INSTANCES) counts, not the routine churn of one or two public
+// instances 5xx'ing or going down for maintenance (issue #125). Set 0.5 for
+// "majority". A single flaky instance is still visible in /health's
+// per-instance `mastodon` map; it just isn't "degraded".
+export const MASTODON_DEGRADED_ERROR_RATIO = parseNumberEnv("MASTODON_DEGRADED_ERROR_RATIO", 1);
+if (MASTODON_DEGRADED_ERROR_RATIO <= 0 || MASTODON_DEGRADED_ERROR_RATIO > 1) {
+  throw new Error(`MASTODON_DEGRADED_ERROR_RATIO must be in (0, 1], got ${MASTODON_DEGRADED_ERROR_RATIO}`);
+}
+
+// A poll whose most recent attempt errored -- previously worked and then
+// started failing, or every attempt so far has failed. A never-polled
+// instance (neither timestamp) is not counted either way.
+function isCurrentlyErroring(status: InstanceStatus): boolean {
+  return Boolean(status.lastErrorAt) && (!status.lastSuccessAt || status.lastErrorAt! > status.lastSuccessAt);
+}
+
 // A pure function of the three connection-state shapes, so it's directly
 // unit-testable with fake state -- no live connections needed. "degraded"
 // here means "currently disconnected/failing", not "has ever failed" --
@@ -29,17 +49,15 @@ export function computeStatus(
   bluesky: ConnectionState,
   blueskyLabels: ConnectionState & { disabled: boolean },
   mastodon: Record<string, InstanceStatus>,
+  mastodonErrorRatio: number = MASTODON_DEGRADED_ERROR_RATIO,
 ): "ok" | "degraded" {
   if (!bluesky.connected) return "degraded";
   if (!blueskyLabels.disabled && !blueskyLabels.connected) return "degraded";
-  for (const status of Object.values(mastodon)) {
-    // A poll that's never succeeded once isn't necessarily degraded on its
-    // own (it may just not have run yet) -- only a poll whose most recent
-    // attempt was an error, i.e. it previously worked and then started
-    // failing, or every attempt so far has failed.
-    if (status.lastErrorAt && (!status.lastSuccessAt || status.lastErrorAt > status.lastSuccessAt)) {
-      return "degraded";
-    }
+
+  const instances = Object.values(mastodon);
+  const erroring = instances.filter(isCurrentlyErroring).length;
+  if (erroring > 0 && erroring / instances.length >= mastodonErrorRatio) {
+    return "degraded";
   }
   return "ok";
 }
