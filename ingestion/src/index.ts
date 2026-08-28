@@ -4,7 +4,7 @@ import { startBlueskyLabelIngestion } from "./blueskyLabels";
 import { startMastodonIngestion } from "./mastodon";
 import { close } from "./db";
 import { startHeartbeat } from "./heartbeat";
-import { startStatusServer } from "./statusServer";
+import { MASTODON_DEGRADED_ERROR_RATIO, startStatusServer } from "./statusServer";
 
 // Backstop for any async call site that doesn't already have a local
 // try/catch -- today's coverage is complete by discipline (every risky
@@ -45,6 +45,10 @@ startStatusServer(Number(process.env.PORT ?? 8080), {
   disableLabelFilter: Boolean(process.env.DISABLE_LABEL_FILTER),
   mastodonPollIntervalMs: process.env.MASTODON_POLL_INTERVAL_MS ?? "30000",
   mastodonRequestTimeoutMs: process.env.MASTODON_REQUEST_TIMEOUT_MS ?? "10000",
+  // The validated/effective value, not the raw env string (a bad one would
+  // have crashed startup) -- how many of the polled Mastodon instances must
+  // be erroring for `status` to read "degraded". See statusServer.ts.
+  mastodonDegradedErrorRatio: MASTODON_DEGRADED_ERROR_RATIO,
   heartbeatIntervalMs: process.env.HEARTBEAT_INTERVAL_MS ?? "300000",
 });
 
