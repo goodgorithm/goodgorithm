@@ -35,6 +35,23 @@ TOPICALITY_LENGTH_NORM_ALPHA = float(os.environ.get("TOPICALITY_LENGTH_NORM_ALPH
 # it suppressed the repetition itself. Re-validate before changing, same as
 # TOPICALITY_LENGTH_NORM_ALPHA.
 TOPICALITY_DIVERSITY_PENALTY_GAMMA = float(os.environ.get("TOPICALITY_DIVERSITY_PENALTY_GAMMA", "0.5"))
+# An absolute floor on distinct-term count, orthogonal to the two ratio
+# discounts above (which only bite on *repeated* words -- both collapse to
+# 1.0 for a genuinely near-wordless post, where token_count == nnz). A post
+# with fewer than this many surviving distinct terms has its topicality
+# scaled by nnz / this, and is denied the entity-burst boost entirely: one
+# or two rare tokens -- a bare hashtag, a link plus a word, an emoji string
+# -- can't represent a topic no matter how batch-rare they are, and were
+# otherwise scoring the batch *maximum* topicality. Validated at 3 against
+# a production sample (2026-08-28): the nnz<=1 bucket is entirely
+# vacuous/link-only, nnz==2 overwhelmingly so, and nnz>=3 (where ALPHA and
+# the Bluesky/Mastodon parity live) is completely untouched (ramp == 1.0).
+# Re-validate before changing, same as ALPHA/GAMMA.
+TOPICALITY_MIN_DISTINCT_TERMS = int(os.environ.get("TOPICALITY_MIN_DISTINCT_TERMS", "3"))
+if TOPICALITY_MIN_DISTINCT_TERMS < 1:
+    raise ValueError(
+        f"TOPICALITY_MIN_DISTINCT_TERMS ({TOPICALITY_MIN_DISTINCT_TERMS}) must be at least 1"
+    )
 TOPICALITY_BURST_THRESHOLD = int(os.environ.get("TOPICALITY_BURST_THRESHOLD", "5"))
 if TOPICALITY_BURST_THRESHOLD < 1:
     raise ValueError(f"TOPICALITY_BURST_THRESHOLD ({TOPICALITY_BURST_THRESHOLD}) must be at least 1")
@@ -136,9 +153,14 @@ def _top_k_mean(values: np.ndarray, k: int, token_count: int) -> float:
       collapses to 1 same as a genuinely short post would, but token_count
       stays large, so the ratio -- and the discount -- stays large too.
 
-    A genuinely short single-term post has token_count==1 and nnz==1, so
-    both discounts are 1 (`1 ** x == 1`) -- undiscounted, same guarantee the
-    length discount alone has always provided."""
+    Neither ratio discount touches a genuinely near-wordless post:
+    token_count == nnz there, so both collapse to 1 (`1 ** x == 1`). That
+    left a one- or two-distinct-term post (a bare hashtag, a link plus a
+    word) carrying its full batch-relative IDF -- often the batch maximum.
+    TOPICALITY_MIN_DISTINCT_TERMS closes that with an absolute ramp: the
+    result is scaled by min(1, nnz / K), so nnz below K is attenuated in
+    proportion to how few distinct terms survived, and nnz >= K is
+    unaffected."""
     if values.size == 0:
         return 0.0
     top = np.sort(values)[::-1][:k]
@@ -147,7 +169,8 @@ def _top_k_mean(values: np.ndarray, k: int, token_count: int) -> float:
     nnz = values.size
     length_discount = token_count**TOPICALITY_LENGTH_NORM_ALPHA
     diversity_discount = (token_count / nnz) ** TOPICALITY_DIVERSITY_PENALTY_GAMMA
-    return raw_mean / (length_discount * diversity_discount)
+    distinct_term_ramp = min(1.0, nnz / TOPICALITY_MIN_DISTINCT_TERMS)
+    return raw_mean / (length_discount * diversity_discount) * distinct_term_ramp
 
 
 def _top_k_terms(indices: np.ndarray, values: np.ndarray, feature_names: np.ndarray, k: int) -> list[str]:
@@ -157,10 +180,11 @@ def _top_k_terms(indices: np.ndarray, values: np.ndarray, feature_names: np.ndar
     return [str(feature_names[indices[i]]) for i in order]
 
 
-def _compute_tfidf(texts: list[str]) -> tuple[list[float], list[list[str]]]:
+def _compute_tfidf(texts: list[str]) -> tuple[list[float], list[list[str]], list[int]]:
     """Single fit shared by compute_tfidf_scores (score only) and
     score_topicality (score + the actual top-K term strings, which
-    taxonomy.categorize() matches against for rule-based categorization) --
+    taxonomy.categorize() matches against for rule-based categorization,
+    + each doc's nnz, which score_topicality gates the burst boost on) --
     fitting TfidfVectorizer twice per cycle for the same batch would be
     pure waste."""
     normalized = [normalize_text(t) for t in texts]
@@ -172,7 +196,7 @@ def _compute_tfidf(texts: list[str]) -> tuple[list[float], list[list[str]]]:
         matrix = vectorizer.fit_transform(normalized)
     except ValueError:
         # empty vocabulary — e.g. a tiny batch that's all stopwords/URLs
-        return [0.0] * len(texts), [[] for _ in texts]
+        return [0.0] * len(texts), [[] for _ in texts], [0] * len(texts)
 
     feature_names = vectorizer.get_feature_names_out()
     # Reuses the vectorizer's own token_pattern (not a hand-rolled regex) so
@@ -183,19 +207,21 @@ def _compute_tfidf(texts: list[str]) -> tuple[list[float], list[list[str]]]:
     tokenizer = vectorizer.build_tokenizer()
     scores: list[float] = []
     top_terms: list[list[str]] = []
+    nnzs: list[int] = []
     for i in range(matrix.shape[0]):
         row = matrix.getrow(i)
         token_count = len(tokenizer(normalized[i]))
         scores.append(_top_k_mean(row.data, TOPICALITY_TFIDF_TOP_K, token_count))
         top_terms.append(_top_k_terms(row.indices, row.data, feature_names, TOPICALITY_TFIDF_TOP_K))
-    return scores, top_terms
+        nnzs.append(int(row.data.size))
+    return scores, top_terms, nnzs
 
 
 def compute_tfidf_scores(texts: list[str]) -> list[float]:
     """Per-document salience: the mean of each doc's top-K TF-IDF weights,
     so a post is scored by its most distinctive terms rather than diluted
     by its length."""
-    return _compute_tfidf(texts)[0]
+    return _compute_tfidf(texts)[0]  # scores only; top_terms/nnz are for score_topicality
 
 
 class BurstIndex(Protocol):
@@ -265,7 +291,7 @@ def score_topicality(posts: list, index: BurstIndex) -> dict[UUID, TopicalityRes
     Redis burst-bump run once for the whole batch, not once per post. See
     the wiki's Topicality page."""
     texts = [post.text for post in posts]
-    tfidf_scores, tfidf_top_terms = _compute_tfidf(texts)
+    tfidf_scores, tfidf_top_terms, tfidf_nnzs = _compute_tfidf(texts)
     # split_camel_hashtags only, not normalize_text -- NER needs original
     # casing, which normalize_text() lowercases away. _compute_tfidf above
     # already gets this via its own normalize_text() call.
@@ -273,11 +299,17 @@ def score_topicality(posts: list, index: BurstIndex) -> dict[UUID, TopicalityRes
     entity_counts_by_post = index.bump_entities(entities_by_post)
 
     results: dict[UUID, TopicalityResult] = {}
-    for post, tfidf_component, top_terms, entities, entity_counts in zip(
-        posts, tfidf_scores, tfidf_top_terms, entities_by_post, entity_counts_by_post
+    for post, tfidf_component, top_terms, nnz, entities, entity_counts in zip(
+        posts, tfidf_scores, tfidf_top_terms, tfidf_nnzs, entities_by_post, entity_counts_by_post
     ):
         max_count = max(entity_counts.values(), default=0)
         burst_component = min(1.0, max_count / TOPICALITY_BURST_THRESHOLD)
+        # A near-wordless post can't be "trending on a topic" -- it has no
+        # topic, just one or two rare tokens. Deny it the burst boost
+        # entirely (the nnz ramp in _top_k_mean has already attenuated its
+        # tfidf_component). See TOPICALITY_MIN_DISTINCT_TERMS.
+        if nnz < TOPICALITY_MIN_DISTINCT_TERMS:
+            burst_component = 0.0
 
         score = tfidf_component * (1.0 + TOPICALITY_BURST_BOOST_WEIGHT * burst_component)
 
