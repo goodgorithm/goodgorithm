@@ -1,9 +1,15 @@
 # Android release build (Play Console)
 
 How to produce a signed `.aab` and get it onto the Closed Testing track.
-Everything here runs on a machine with Android Studio (JDK + Android SDK)
-installed. Bundles and `key.properties` are gitignored; the keystore lives
-outside the repo.
+Everything here runs on a machine with Android Studio (Android SDK) and
+**JDK 21** — Capacitor 8 compiles `:capacitor-android` at Java 21, so a
+JDK 17 `JAVA_HOME` fails with `compileReleaseJavaWithJavac FAILED`. Run
+the build with `JAVA_HOME=$(/usr/libexec/java_home -v 21)` if your shell
+default isn't 21 (don't use Android Studio's bundled JBR — it's newer than
+AGP expects). Bundles and `key.properties` are gitignored; the keystore
+lives outside the repo.
+
+Store-listing graphics (feature graphic, icon pointer) are in `store/`.
 
 ## One-time setup
 
