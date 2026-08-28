@@ -1,0 +1,58 @@
+name: Android build
+
+# Builds the Capacitor Android app bundle (unsigned) so a web/ change can't
+# silently break the native build between store releases. The app is frozen
+# on the Play Closed Testing track (tag android-v0.1.0) and can't be
+# hotfixed. See issue #123 and web/android/RELEASE.md.
+#
+# Separate from ci.yml and path-filtered: it only runs when web/ changes, so
+# backend-only PRs stay fast. Not a required status check (a non-web PR never
+# triggers it).
+
+on:
+  push:
+    branches: [main, staging, production]
+    paths: ["web/**", ".github/workflows/android-build.yml"]
+  pull_request:
+    paths: ["web/**", ".github/workflows/android-build.yml"]
+
+jobs:
+  build-android-aab:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Capacitor 8 compiles :capacitor-android at Java 21; a lower JDK
+          # fails with compileReleaseJavaWithJavac FAILED.
+          java-version: "21"
+          cache: gradle
+      # Accepts SDK licenses and installs platform/build-tools 36 on demand
+      # (compileSdk/targetSdk = 36 in web/android/variables.gradle).
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      # tsc -b && vite build --mode release (prod api via committed
+      # web/.env.release) && cap sync android
+      - run: npm run build:android
+      # Unsigned: web/android/key.properties is gitignored and absent here,
+      # so the release signingConfig is empty and bundleRelease produces an
+      # unsigned .aab. The check is "does it build + bundle".
+      - run: ./gradlew bundleRelease --no-daemon
+        working-directory: web/android
+      - run: test -f app/build/outputs/bundle/release/app-release.aab
+        working-directory: web/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: web/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 7
+          if-no-files-found: error
