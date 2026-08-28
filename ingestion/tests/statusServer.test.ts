@@ -35,35 +35,31 @@ test("computeStatus is ok for an instance that has never been polled yet", () =>
   assert.equal(computeStatus(connected, labelsConnected, mastodon), "ok");
 });
 
-test("computeStatus is degraded when an instance's most recent poll failed", () => {
-  const now = Date.now();
-  const mastodon = {
-    "failing.example": {
-      lastSuccessAt: new Date(now - 60000),
-      lastErrorAt: new Date(now),
-      lastError: "HTTP 503",
-    },
-  };
-  assert.equal(computeStatus(connected, labelsConnected, mastodon), "degraded");
-});
+const now = Date.now();
+const healthy = { lastSuccessAt: new Date(now), lastErrorAt: null, lastError: null };
+const erroring = { lastSuccessAt: new Date(now - 60000), lastErrorAt: new Date(now), lastError: "HTTP 503" };
+const recovered = { lastSuccessAt: new Date(now), lastErrorAt: new Date(now - 60000), lastError: "HTTP 503" };
+const neverSucceeded = { lastSuccessAt: null, lastErrorAt: new Date(now), lastError: "fetch error" };
 
-test("computeStatus is ok when an instance failed before but has since recovered", () => {
-  const now = Date.now();
-  const mastodon = {
-    "recovered.example": {
-      lastSuccessAt: new Date(now),
-      lastErrorAt: new Date(now - 60000),
-      lastError: "HTTP 503",
-    },
-  };
+test("computeStatus stays ok when only a minority of Mastodon instances are erroring (issue #125)", () => {
+  const mastodon = { a: healthy, b: healthy, c: erroring, d: neverSucceeded };
   assert.equal(computeStatus(connected, labelsConnected, mastodon), "ok");
 });
 
-test("computeStatus is degraded when an instance has only ever failed, never succeeded", () => {
-  const mastodon = {
-    "always-failing.example": { lastSuccessAt: null, lastErrorAt: new Date(), lastError: "fetch error" },
-  };
+test("computeStatus is degraded when EVERY polled Mastodon instance is erroring (systemic)", () => {
+  const mastodon = { a: erroring, b: erroring, c: neverSucceeded };
   assert.equal(computeStatus(connected, labelsConnected, mastodon), "degraded");
+});
+
+test("computeStatus is ok when instances failed before but have all since recovered", () => {
+  const mastodon = { a: recovered, b: recovered, c: healthy };
+  assert.equal(computeStatus(connected, labelsConnected, mastodon), "ok");
+});
+
+test("computeStatus honours a lower MASTODON_DEGRADED_ERROR_RATIO (majority)", () => {
+  const mastodon = { a: erroring, b: erroring, c: erroring, d: healthy }; // 3/4 erroring
+  assert.equal(computeStatus(connected, labelsConnected, mastodon, 1), "ok");
+  assert.equal(computeStatus(connected, labelsConnected, mastodon, 0.5), "degraded");
 });
 
 test("strictStatusCode maps ok -> 200 and degraded -> 503", () => {
