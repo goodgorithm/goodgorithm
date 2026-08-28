@@ -97,7 +97,7 @@ def test_compute_tfidf_top_terms_are_real_terms_from_the_batch():
         "quantum entanglement breakthrough announced by researchers today",
         "solar power panels installed on the community center roof",
     ]
-    _, top_terms = topicality._compute_tfidf(texts)
+    _, top_terms, _ = topicality._compute_tfidf(texts)
     assert len(top_terms) == 2
     assert all(isinstance(term, str) for term in top_terms[0])
     assert set(top_terms[0]).issubset(set(texts[0].split()))
@@ -106,8 +106,9 @@ def test_compute_tfidf_top_terms_are_real_terms_from_the_batch():
 
 def test_compute_tfidf_top_terms_empty_for_empty_vocabulary_batch():
     texts = ["the the the", "a a a"]
-    _, top_terms = topicality._compute_tfidf(texts)
+    _, top_terms, nnzs = topicality._compute_tfidf(texts)
     assert top_terms == [[], []]
+    assert nnzs == [0, 0]
 
 
 def test_score_topicality_result_includes_top_terms():
@@ -138,13 +139,38 @@ def test_score_topicality_burst_upweights_matching_entity():
     assert results[bursting_post.id].score > results[bursting_post.id].tfidf_component
 
 
-def test_top_k_mean_single_token_is_undiscounted():
-    # A genuine single-term post must not be discounted -- 1 ** ALPHA == 1
-    # for any ALPHA, so its score still depends entirely on that term's own
-    # weight. This is what keeps the discount from reopening the
-    # L2-normalization regression (56ee036) that inflated single-word/emoji
-    # posts to a flat ceiling.
-    assert topicality._top_k_mean(np.array([1.0]), 3, token_count=1) == 1.0
+def test_score_topicality_burst_boost_applies_only_above_the_distinct_term_floor():
+    # issue #118: the same spiking entity appears in both posts, but only the
+    # one with enough distinct vocabulary to actually be *about* a topic gets
+    # the boost. A near-wordless post riding a trend is pure trend-surfing --
+    # burst_component is forced to 0 even though "nasa" is spiking.
+    index = InMemoryBurstIndex()
+    for _ in range(topicality.TOPICALITY_BURST_THRESHOLD):
+        index.bump_entities([["nasa"]])
+
+    near_wordless = FakePost(id=uuid4(), text="NASA rocks")  # 2 distinct terms
+    substantive = FakePost(
+        id=uuid4(), text="Scientists at NASA confirmed the new mission timeline today"
+    )
+    results = topicality.score_topicality([near_wordless, substantive], index)
+
+    assert results[near_wordless.id].entities == ["nasa"]  # entity was recognized
+    assert results[near_wordless.id].burst_component == 0.0
+    assert results[near_wordless.id].score == results[near_wordless.id].tfidf_component
+    assert results[substantive.id].burst_component == 1.0
+    assert results[substantive.id].score > results[substantive.id].tfidf_component
+
+
+def test_top_k_mean_single_distinct_term_is_ramped_down():
+    # issue #118: a post with one surviving distinct term (a bare hashtag, a
+    # link plus a word) used to keep its full batch-relative weight -- both
+    # ratio discounts collapse to 1 when token_count == nnz -- and routinely
+    # scored the batch *maximum* topicality. The absolute distinct-term ramp
+    # scales it by nnz / TOPICALITY_MIN_DISTINCT_TERMS. (norm=None already
+    # caps the earlier L2-inflation regression, 56ee036; this is a separate
+    # layer on top.)
+    ramp = 1 / topicality.TOPICALITY_MIN_DISTINCT_TERMS
+    assert topicality._top_k_mean(np.array([1.0]), 3, token_count=1) == 1.0 * ramp
 
 
 def test_top_k_mean_discount_grows_with_token_count():
@@ -166,7 +192,32 @@ def test_top_k_mean_diversity_discount_is_a_noop_when_every_token_is_distinct():
     values = np.array([5.0, 4.0, 3.0])
     with_diversity = topicality._top_k_mean(values, 3, token_count=3)
     length_only = float(np.mean(values)) / (3**topicality.TOPICALITY_LENGTH_NORM_ALPHA)
+    # nnz == 3 sits at (default) TOPICALITY_MIN_DISTINCT_TERMS, so the #118
+    # distinct-term ramp is exactly 1 here and doesn't enter into it.
     assert with_diversity == length_only
+
+
+def test_top_k_mean_ramps_down_below_the_distinct_term_floor():
+    # issue #118: hold token_count == nnz so both ratio discounts stay fixed
+    # at 1 and the only thing moving is the absolute ramp -- linear in nnz
+    # below TOPICALITY_MIN_DISTINCT_TERMS, exactly 1 at or above it.
+    floor = topicality.TOPICALITY_MIN_DISTINCT_TERMS
+    k = topicality.TOPICALITY_TFIDF_TOP_K
+
+    def result_and_baseline(nnz):
+        values = np.array([3.0] * nnz)
+        got = topicality._top_k_mean(values, k, token_count=nnz)
+        raw_mean = float(np.mean(np.sort(values)[::-1][:k]))
+        baseline = raw_mean / (nnz**topicality.TOPICALITY_LENGTH_NORM_ALPHA)
+        return got, baseline
+
+    for nnz in range(1, floor):
+        got, baseline = result_and_baseline(nnz)
+        assert got == baseline * (nnz / floor)
+
+    for nnz in (floor, floor + 3):
+        got, baseline = result_and_baseline(nnz)
+        assert got == baseline
 
 
 def test_top_k_mean_discounts_repetition_even_when_only_one_term_survives():
@@ -184,27 +235,21 @@ def test_top_k_mean_discounts_repetition_even_when_only_one_term_survives():
     nnz = weight.size
     length_discount = 20**topicality.TOPICALITY_LENGTH_NORM_ALPHA
     diversity_discount = (20 / nnz) ** topicality.TOPICALITY_DIVERSITY_PENALTY_GAMMA
-    assert discounted == 5.0 / (length_discount * diversity_discount)
+    # nnz == 1 also puts this below the #118 distinct-term floor, so the ramp
+    # (min(1, nnz / TOPICALITY_MIN_DISTINCT_TERMS)) is a third factor now --
+    # the diversity discount is still what separates this from a genuine
+    # single-term post.
+    distinct_term_ramp = min(1.0, nnz / topicality.TOPICALITY_MIN_DISTINCT_TERMS)
+    assert discounted == 5.0 / (length_discount * diversity_discount) * distinct_term_ramp
 
 
-def test_score_topicality_emoji_spam_score_is_unchanged_by_length_discount():
-    # 56ee036 fixed a real production bug where single-word/emoji posts like
-    # this scored the theoretical max under L2 normalization. The length
-    # discount must not disturb that fix: this text tokenizes to a single
-    # token ("cute" -- the ellipsis and emoji don't match the vectorizer's
-    # token pattern), so its score must come out mathematically identical to
-    # the undiscounted formula -- not just "still low" relative to some other
-    # post, which turns out not to be a stable property to assert (see
-    # below).
-    #
-    # An earlier version of this test asserted the spam post scores below a
-    # substantive one, using a small hand-built batch. That's not actually a
-    # guarantee the shipped (pre-discount) formula makes either: in a small
-    # corpus, singleton terms -- "cute" as much as any specific breakthrough
-    # term -- tend toward the same IDF ceiling (verified empirically), so
-    # that comparison is corpus-size-dependent, not a real invariant. The
-    # single-token no-op property below is the actual guarantee this fix
-    # relies on.
+def test_score_topicality_single_token_emoji_spam_is_ramped_down():
+    # 56ee036 + norm=None keep single-word/emoji posts like this off the L2
+    # ceiling they once hit. issue #118 adds the layer this test now covers:
+    # "cute..." tokenizes to a single term (the ellipsis and emoji don't
+    # match the vectorizer's token pattern), so it has nnz == 1 and is scaled
+    # by min(1, nnz / TOPICALITY_MIN_DISTINCT_TERMS) -- it can no longer sit
+    # at the same salience as a multi-term substantive post.
     spam_text = "cute... 😵‍💫"
     batch = [spam_text, "quantum entanglement breakthrough confirmed today"]
 
@@ -213,9 +258,15 @@ def test_score_topicality_emoji_spam_score_is_unchanged_by_length_discount():
     normalized = [topicality.normalize_text(t) for t in batch]
     vectorizer = topicality.TfidfVectorizer(stop_words="english", min_df=1, norm=None, sublinear_tf=True)
     matrix = vectorizer.fit_transform(normalized)
-    old_score = float(np.mean(np.sort(matrix.getrow(0).data)[::-1][: topicality.TOPICALITY_TFIDF_TOP_K]))
+    row = matrix.getrow(0)
+    token_count = len(vectorizer.build_tokenizer()(normalized[0]))
+    undiscounted = float(np.mean(np.sort(row.data)[::-1][: topicality.TOPICALITY_TFIDF_TOP_K]))
+    ramp = min(1.0, row.data.size / topicality.TOPICALITY_MIN_DISTINCT_TERMS)
 
-    assert new_score == old_score
+    assert row.data.size == 1 and token_count == 1  # premise: one term, one token
+    assert ramp < 1.0
+    assert new_score == undiscounted * ramp
+    assert new_score < undiscounted
 
 
 def test_score_topicality_length_parity_narrows_vs_undiscounted_formula():
