@@ -1,11 +1,8 @@
 import type { FastifyInstance } from "fastify";
 
-import { buildAttachments } from "../attachments";
-import { buildAuthor } from "../author";
 import { fetchFeed } from "../db";
-import { buildEmojis } from "../emoji";
+import { rowToFeedPost } from "../feed-post";
 import { decodeCursor, encodeCursor, type Cursor } from "../pagination";
-import { buildPermalink } from "../permalink";
 import { CATEGORIES } from "../types";
 
 // See the wiki's Configuration page. minimum stays hardcoded at 1 - not a
@@ -73,30 +70,7 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
         hasNext && last ? encodeCursor({ rank_score: last.rank_score, id: last.id }) : null;
 
       return {
-        posts: page.map((row) => {
-          const { attachments, sensitive } = buildAttachments(row);
-          return {
-            id: row.id,
-            source: row.source,
-            author_id: row.author_id,
-            text: row.text,
-            created_at: row.created_at,
-            entities: row.entities ?? [],
-            permalink: buildPermalink(row),
-            author: buildAuthor(row),
-            emojis: buildEmojis(row.mastodon_status_emojis),
-            scores: {
-              sentiment: row.sentiment_score,
-              topicality: row.topicality_score,
-              base: row.base_score,
-              rank: row.rank_score,
-            },
-            pipeline_version: row.pipeline_version,
-            attachments,
-            sensitive,
-            category: row.category,
-          };
-        }),
+        posts: page.map(rowToFeedPost),
         next_cursor,
       };
     },

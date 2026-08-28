@@ -124,6 +124,35 @@ Bump both in `web/android/app/build.gradle`:
 Then `npm run build:android && (cd android && ./gradlew bundleRelease)` and
 upload the new `.aab` to the track.
 
+## Cutting a new store build — the regression guards (issue #123)
+
+The shipped app is frozen (no hotfix path), so CI holds `production` to what
+the *current* store build expects:
+
+- `.github/workflows/android-build.yml` — builds an unsigned `.aab` on every
+  `web/**` change, so a dep/Capacitor/gradle break is caught before the next
+  release.
+- `api/tests/android-contract.test.ts` + `api/tests/contracts/android-feed-contract.ts`
+  — asserts `/v1/feed`'s shape still matches what the frozen client
+  (`web/src/api/client.ts`, which does no runtime validation) needs.
+- `api/tests/cors.test.ts` — `/v1/feed` must keep allowing the native WebView
+  origins (`https://localhost`, `capacitor://localhost`).
+
+When you actually ship a new store build, re-anchor them:
+
+1. Bump `versionCode` / `versionName` (above).
+2. **Re-freeze the contract.** Diff `web/src/api/types.generated.ts` between
+   the previous `android-vX` tag and the release commit. If the `/v1/feed`
+   shape changed, hand-update `api/tests/contracts/android-feed-contract.ts`
+   to the new shape and bump its `_meta` (`tag`, `versionCode`).
+3. **Move the tag.** Delete + recreate `android-vX` (or create `android-vY`)
+   on the new release commit; push it.
+4. Build + upload as above.
+
+A red `build-android-aab` or a failing contract/CORS test *after an
+intentional* `api/` or Capacitor change means "cut a new store build and
+re-freeze" — not "edit the test to pass".
+
 ## iOS
 
 Deferred until the Apple Developer Program payment clears — see issue #30.
