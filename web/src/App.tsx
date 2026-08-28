@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import faqSource from "./content/faq.md?raw";
+import privacySource from "./content/privacy.md?raw";
 import styles from "./App.module.css";
 import { ContentPage } from "./components/ContentPage";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -19,8 +20,14 @@ const queryClient = new QueryClient();
 // Static content pages reachable from the header nav. Adding a new one
 // means adding a content/*.md file and one entry here - App.tsx doesn't
 // otherwise need to change. Mission/Algorithm/Content Policy moved to the
-// GitHub Wiki - FAQ is the one page that stays in-app.
-const CONTENT_PAGES = [{ path: "/faq", label: "FAQ", source: faqSource }];
+// GitHub Wiki; the FAQ and the (store-required) privacy policy are the
+// only pages that stay in-app.
+const CONTENT_PAGES = [
+  { path: "/faq", label: "FAQ", source: faqSource },
+  // Also the public URL the app stores require for their listing / data-safety
+  // sections -- goodgorithm.com/privacy resolves here via the SPA fallback.
+  { path: "/privacy", label: "Privacy", source: privacySource },
+];
 
 export default function App() {
   const [path, navigate] = useLocation();

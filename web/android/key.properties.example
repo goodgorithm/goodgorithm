@@ -1,0 +1,9 @@
+# Copy to key.properties (gitignored) for release-signed Android builds.
+# See RELEASE.md for how to generate the keystore. Do not commit the real
+# file or the .jks it points at.
+
+# Absolute path to the upload keystore, kept OUTSIDE this repo tree.
+storeFile=/absolute/path/to/goodgorithm-upload-key.jks
+storePassword=
+keyAlias=upload
+keyPassword=
