@@ -84,11 +84,16 @@ export function Feed() {
           ↑ Back to top
         </button>
       )}
-      {posts.map((post) => (
+      {posts.map((post, index) => (
         <PostCard
           key={post.id}
           post={post}
           relative={relativeByPostId.get(post.id) ?? NO_RELATIVE}
+          // The first card's image is almost always the LCP element; let it
+          // load eagerly at high priority instead of being lazy-deferred.
+          // Only index 0 -- a text-led feed whose second post carries the
+          // large photo is a known gap, revisit if measurement shows it.
+          priority={index === 0}
         />
       ))}
       <div ref={sentinelRef} />

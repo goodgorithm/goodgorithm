@@ -4,7 +4,17 @@ import { SensitiveMedia } from "./SensitiveMedia";
 
 type ImageAttachment = Extract<Attachment, { kind: "image" }>;
 
-export function ImageGrid({ images, sensitive }: { images: ImageAttachment[]; sensitive: boolean }) {
+export function ImageGrid({
+  images,
+  sensitive,
+  priority = false,
+}: {
+  images: ImageAttachment[];
+  sensitive: boolean;
+  // Set only for the top feed card's grid: its first image is the likely
+  // LCP element, so it loads eagerly at high priority instead of lazy.
+  priority?: boolean;
+}) {
   if (images.length === 0) return null;
 
   const shown = images.slice(0, 4);
@@ -12,29 +22,39 @@ export function ImageGrid({ images, sensitive }: { images: ImageAttachment[]; se
 
   return (
     <div className={`${styles.grid} ${countClass}`}>
-      {shown.map((image) => (
-        <SensitiveMedia key={image.thumbnailUrl} sensitive={sensitive}>
-          <a href={image.fullUrl} target="_blank" rel="noreferrer noopener" className={styles.imageLink}>
-            <img
-              className={styles.image}
-              src={image.thumbnailUrl}
-              alt={image.alt ?? ""}
-              loading="lazy"
-              // Always reserve the box so a late-loading image never shifts
-              // the feed (Core Web Vitals CLS). Real dimensions when the
-              // source gave them; a 16/9 fallback otherwise -- a
-              // dimensionless image then letterboxes inside that box
-              // (object-fit: contain, see the module CSS) rather than
-              // expanding from zero. Ignored for the count2-4 layouts,
-              // whose cells are already a fixed height.
-              style={{
-                aspectRatio:
-                  image.width && image.height ? `${image.width} / ${image.height}` : "16 / 9",
-              }}
-            />
-          </a>
-        </SensitiveMedia>
-      ))}
+      {shown.map((image, i) => {
+        // The very first image of a priority grid is the LCP candidate.
+        const eager = priority && i === 0;
+        return (
+          <SensitiveMedia key={image.thumbnailUrl} sensitive={sensitive}>
+            <a
+              href={image.fullUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className={styles.imageLink}
+            >
+              <img
+                className={styles.image}
+                src={image.thumbnailUrl}
+                alt={image.alt ?? ""}
+                loading={eager ? "eager" : "lazy"}
+                fetchPriority={eager ? "high" : undefined}
+                // Always reserve the box so a late-loading image never shifts
+                // the feed (Core Web Vitals CLS). Real dimensions when the
+                // source gave them; a 16/9 fallback otherwise -- a
+                // dimensionless image then letterboxes inside that box
+                // (object-fit: contain, see the module CSS) rather than
+                // expanding from zero. Ignored for the count2-4 layouts,
+                // whose cells are already a fixed height.
+                style={{
+                  aspectRatio:
+                    image.width && image.height ? `${image.width} / ${image.height}` : "16 / 9",
+                }}
+              />
+            </a>
+          </SensitiveMedia>
+        );
+      })}
     </div>
   );
 }

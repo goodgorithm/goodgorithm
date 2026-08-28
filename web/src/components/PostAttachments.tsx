@@ -16,7 +16,7 @@ function isKind<K extends Attachment["kind"]>(kind: K) {
   return (a: Attachment): a is Extract<Attachment, { kind: K }> => a.kind === kind;
 }
 
-export function PostAttachments({ post }: { post: FeedPost }) {
+export function PostAttachments({ post, priority = false }: { post: FeedPost; priority?: boolean }) {
   if (post.attachments.length === 0) return null;
 
   const images = post.attachments.filter(isKind("image"));
@@ -26,9 +26,18 @@ export function PostAttachments({ post }: { post: FeedPost }) {
 
   return (
     <div>
-      {images.length > 0 && <ImageGrid images={images} sensitive={post.sensitive} />}
-      {links.map((link) => (
-        <LinkCard key={link.url} link={link} sensitive={post.sensitive} />
+      {images.length > 0 && (
+        <ImageGrid images={images} sensitive={post.sensitive} priority={priority} />
+      )}
+      {links.map((link, i) => (
+        <LinkCard
+          key={link.url}
+          link={link}
+          sensitive={post.sensitive}
+          // Only one <img> per card should be prioritized: the first link
+          // thumbnail, and only when there's no image grid ahead of it.
+          priority={priority && i === 0 && images.length === 0}
+        />
       ))}
       {videos.length > 0 && (
         <Suspense fallback={null}>

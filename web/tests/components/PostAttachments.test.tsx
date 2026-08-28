@@ -99,6 +99,53 @@ describe("PostAttachments", () => {
     expect(img).toHaveAttribute("src", image.thumbnailUrl);
   });
 
+  describe("priority (LCP)", () => {
+    const image2: Attachment = {
+      kind: "image",
+      thumbnailUrl: "https://cdn.bsky.app/img/feed_thumbnail/plain/did/cid2@jpeg",
+      fullUrl: "https://cdn.bsky.app/img/feed_fullsize/plain/did/cid2@jpeg",
+      alt: "another photo",
+      width: 640,
+      height: 480,
+    };
+
+    it("lazy-loads every image and sets no fetchpriority by default", () => {
+      const { container } = render(<PostAttachments post={makePost([image, image2])} />);
+      for (const img of container.querySelectorAll("img")) {
+        expect(img).toHaveAttribute("loading", "lazy");
+        expect(img).not.toHaveAttribute("fetchpriority");
+      }
+    });
+
+    it("eager-loads the first image at high priority when priority is set", () => {
+      const { container } = render(
+        <PostAttachments post={makePost([image, image2])} priority />,
+      );
+      const imgs = [...container.querySelectorAll("img")];
+      expect(imgs[0]).toHaveAttribute("loading", "eager");
+      expect(imgs[0]).toHaveAttribute("fetchpriority", "high");
+      // only the first
+      expect(imgs[1]).toHaveAttribute("loading", "lazy");
+      expect(imgs[1]).not.toHaveAttribute("fetchpriority");
+    });
+
+    it("prioritizes a link thumbnail only when there is no image grid ahead of it", () => {
+      const linkOnly = render(<PostAttachments post={makePost([link])} priority />);
+      const linkImg = linkOnly.container.querySelector("img");
+      expect(linkImg).toHaveAttribute("loading", "eager");
+      expect(linkImg).toHaveAttribute("fetchpriority", "high");
+      linkOnly.unmount();
+
+      // image + link on the same priority card: the image wins, the link
+      // thumbnail stays lazy so exactly one <img> is boosted.
+      const { container } = render(<PostAttachments post={makePost([image, link])} priority />);
+      const imgs = [...container.querySelectorAll("img")];
+      expect(imgs[0]).toHaveAttribute("fetchpriority", "high"); // the image
+      expect(imgs[1]).toHaveAttribute("loading", "lazy"); // the link thumbnail
+      expect(imgs[1]).not.toHaveAttribute("fetchpriority");
+    });
+  });
+
   it("renders a link attachment", () => {
     render(<PostAttachments post={makePost([link])} />);
     expect(screen.getByText("An interesting article")).toBeInTheDocument();
