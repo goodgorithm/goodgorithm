@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:native": "tsc -b && vite build --mode staging && cap sync",
+    "build:android": "tsc -b && vite build --mode release && cap sync android",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",

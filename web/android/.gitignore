@@ -52,10 +52,12 @@ captures/
 # Comment next line if keeping position of elements in Navigation Editor is relevant for you
 .idea/navEditor.xml
 
-# Keystore files
-# Uncomment the following lines if you do not want to check your keystore files in.
-#*.jks
-#*.keystore
+# Keystore files -- the upload key is never committed. The keystore itself
+# is kept outside the repo tree; key.properties (which points at it, with
+# passwords) is generated locally from key.properties.example.
+*.jks
+*.keystore
+key.properties
 
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild

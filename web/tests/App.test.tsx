@@ -7,7 +7,7 @@ function mockFeedResponse() {
   return new Response(JSON.stringify({ posts: [], next_cursor: null }), { status: 200 });
 }
 
-describe("App header nav (issue #31: down to FAQ + GitHub icon, no collapse needed)", () => {
+describe("App header nav (issue #31: FAQ + Privacy + GitHub icon, no collapse needed)", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockFeedResponse()));
     window.history.pushState(null, "", "/");
@@ -17,9 +17,10 @@ describe("App header nav (issue #31: down to FAQ + GitHub icon, no collapse need
     vi.unstubAllGlobals();
   });
 
-  it("shows both nav links directly, with no toggle button", () => {
+  it("shows all nav links directly, with no toggle button", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: "FAQ" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Privacy" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "GitHub" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /menu/i })).not.toBeInTheDocument();
   });
@@ -29,6 +30,13 @@ describe("App header nav (issue #31: down to FAQ + GitHub icon, no collapse need
     fireEvent.click(screen.getByRole("button", { name: "FAQ" }));
 
     expect(screen.getByText(/what is goodgorithm/i)).toBeInTheDocument();
+  });
+
+  it("navigates to the Privacy page on click (the app-store listing URL)", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Privacy" }));
+
+    expect(screen.getByText(/no account, no profile, no tracking/i)).toBeInTheDocument();
   });
 });
 
