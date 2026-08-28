@@ -27,9 +27,13 @@ function reportUrl(permalink: string): string {
 export function PostCard({
   post,
   relative,
+  priority = false,
 }: {
   post: FeedPost;
   relative: RelativeFractions;
+  // Set for the top feed card only -- see Feed.tsx. Threads down to the
+  // one image that's the likely LCP element so it isn't lazy-loaded.
+  priority?: boolean;
 }) {
   return (
     <article className={styles.card}>
@@ -57,7 +61,7 @@ export function PostCard({
         permalink={post.permalink}
       />
       <EntityTags entities={post.entities} />
-      <PostAttachments post={post} />
+      <PostAttachments post={post} priority={priority} />
 
       <div className={styles.footer}>
         {post.permalink && (
