@@ -18,6 +18,7 @@ def make_post(
     is_dedup_canonical=True,
     text="a distinct post about nothing in particular",
     context_penalty=1.0,
+    link_share_penalty=1.0,
     source=None,
     author_id=None,
 ):
@@ -36,6 +37,7 @@ def make_post(
         source=source or "bluesky",
         author_id=author_id or str(uuid4()),
         context_penalty=context_penalty,
+        link_share_penalty=link_share_penalty,
     )
 
 
@@ -75,6 +77,14 @@ def test_compute_base_score_applies_context_penalty():
     # multiplier.
     full = make_post(sentiment_score=0.5, topicality_score=2.0, context_penalty=1.0)
     devalued = make_post(sentiment_score=0.5, topicality_score=2.0, context_penalty=0.4)
+    assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.4) < 1e-9
+
+
+def test_compute_base_score_applies_link_share_penalty():
+    # A bare link-share's base_score is scaled down by link_share_penalty,
+    # independently of context_penalty -- both multipliers stack.
+    full = make_post(sentiment_score=0.5, topicality_score=2.0, link_share_penalty=1.0)
+    devalued = make_post(sentiment_score=0.5, topicality_score=2.0, link_share_penalty=0.4)
     assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.4) < 1e-9
 
 
