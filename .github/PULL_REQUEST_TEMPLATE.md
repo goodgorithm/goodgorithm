@@ -8,7 +8,7 @@ Closes #
 
 ## Checklist
 
-- [ ] Branch is named `bug/issue-#-description` or `feature/issue-#-description`
+- [ ] Branch is named `bug/issue-#-description`, `feature/issue-#-description`, or `chore/issue-#-description`
 - [ ] Opened against `main`, not `staging`/`production`
 - [ ] CI passes (`processing/` pytest; `ingestion/`/`api/`/`web/` build + test)
 - [ ] If this touches `web/`, ran `npm run lint` locally (not wired into CI yet)

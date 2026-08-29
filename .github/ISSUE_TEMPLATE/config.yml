@@ -1,4 +1,9 @@
-# Forces a type choice between the two templates above, matching
-# CONTRIBUTING.md's Issue types policy: every issue gets exactly one type
-# (bug or enhancement), no untyped issues.
-blank_issues_enabled: false
+# The three templates above cover the common structured cases (bug, feature,
+# moderation report). Blank issues stay enabled so the other labels
+# (documentation, maintenance, etc.) can be filed without forcing a template
+# that doesn't fit -- see CONTRIBUTING.md's Issue labels section.
+blank_issues_enabled: true
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/goodgorithm/goodgorithm/discussions
+    about: Open questions about the project go here rather than the issue tracker.
