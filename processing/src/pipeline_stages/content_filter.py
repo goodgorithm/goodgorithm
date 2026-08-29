@@ -20,14 +20,14 @@ def has_excluded_hashtag(text: str, suppressed_terms: frozenset[str]) -> bool:
     moderator-curated, refreshed periodically via db.fetch_moderation_lists()'s
     cache, not a module constant. Required, not defaulted, so a caller
     can't silently skip the check by forgetting to pass it. See the wiki's
-    Pipeline Internals page."""
+    Content Filtering page."""
     return any(tag.lower() in suppressed_terms for tag in _HASHTAG_RE.findall(text))
 
 
 def has_excluded_spoiler_text(raw_json: dict, suppressed_terms: frozenset[str]) -> bool:
     """Mastodon's spoiler_text -- a free-text content-warning label, not
     hashtag-formatted, so this matches suppressed_terms as whole words
-    rather than via _HASHTAG_RE. See the wiki's Pipeline Internals page."""
+    rather than via _HASHTAG_RE. See the wiki's Content Filtering page."""
     spoiler_text = (raw_json or {}).get("spoiler_text")
     if not isinstance(spoiler_text, str) or not spoiler_text:
         return False

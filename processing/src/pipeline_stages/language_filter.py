@@ -24,7 +24,7 @@ MODEL_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.f
 MODEL_PATH = Path(tempfile.gettempdir()) / "lid.176.ftz"
 LANGUAGE_FILTER_FETCH_TIMEOUT_SECONDS = int(os.environ.get("LANGUAGE_FILTER_FETCH_TIMEOUT_SECONDS", "30"))
 
-# Tuned against real production text -- see the wiki's Pipeline Internals
+# Tuned against real production text -- see the wiki's Content Filtering
 # page for what this trades off and why 0.3 specifically.
 LANGUAGE_FILTER_CONFIDENCE_THRESHOLD = float(os.environ.get("LANGUAGE_FILTER_CONFIDENCE_THRESHOLD", "0.3"))
 

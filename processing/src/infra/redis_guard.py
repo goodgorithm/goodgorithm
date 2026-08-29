@@ -8,8 +8,8 @@ logger = logging.getLogger("processing")
 # Fallback defaults for a bare enforce() call (tests, a REPL) -- the real
 # production values are config.REDIS_MAX_BYTES/REDIS_SOFT_LIMIT_RATIO,
 # threaded through from pipeline.py's enforce_redis_capacity(). See the
-# wiki's Configuration page for why the account/plan-fact cap lives in
-# config.py rather than as a local env var here.
+# wiki's Processing Infrastructure page for why the account/plan-fact cap
+# lives in config.py rather than as a local env var here.
 DEFAULT_MAX_BYTES = 1024 * 1024 * 1024  # 1GB
 DEFAULT_SOFT_LIMIT_RATIO = 0.85
 
@@ -23,7 +23,8 @@ DEFAULT_SOFT_LIMIT_RATIO = 0.85
 # clearing it early just resets self-dup detection for clusters currently in
 # flight; botvel:* (fixed-window velocity) is untouched, so bot filtering
 # doesn't fully blind itself. A curated safety decision, not a simple
-# tunable -- deliberately not an env var. See the wiki's Configuration page.
+# tunable -- deliberately not an env var. See the wiki's Processing
+# Infrastructure page.
 EXPENDABLE_KEY_PATTERNS = ("burst:entity:*", "cluster:*:authors")
 
 REDIS_GUARD_SCAN_COUNT = int(os.environ.get("REDIS_GUARD_SCAN_COUNT", "500"))

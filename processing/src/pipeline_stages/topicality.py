@@ -60,7 +60,7 @@ TOPICALITY_BURST_TTL_SECONDS = int(os.environ.get("TOPICALITY_BURST_TTL_SECONDS"
 # Caps the burst:entity:* Redis key name length -- entity text comes
 # straight from spaCy NER with no upper bound otherwise. Doesn't affect
 # the `entities` field persisted per post, only the burst-count key. See
-# the wiki's Configuration page's Redis capacity section.
+# the wiki's Configuration: processing page's Redis capacity section.
 TOPICALITY_ENTITY_KEY_MAX_LEN = int(os.environ.get("TOPICALITY_ENTITY_KEY_MAX_LEN", "100"))
 
 # Entity types that plausibly signal a topic/newsworthy subject, not just
