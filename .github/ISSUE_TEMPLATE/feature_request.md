@@ -6,10 +6,9 @@ labels: enhancement
 ---
 
 <!--
-See CONTRIBUTING.md for how issues are typed, branched, and picked up.
-Feature uses GitHub's `enhancement` label, reused deliberately rather
-than adding a redundant `feature` label -- see CONTRIBUTING.md's Issue
-types section.
+See CONTRIBUTING.md's Issue labels section for how issues are labelled,
+branched, and picked up. Feature uses GitHub's `enhancement` label,
+reused deliberately rather than adding a redundant `feature` label.
 -->
 
 ## What and why

@@ -6,8 +6,9 @@ labels: bug
 ---
 
 <!--
-See CONTRIBUTING.md for how issues are typed, branched, and picked up.
-This template's `bug` label is the type -- no other label needed.
+See CONTRIBUTING.md's Issue labels section for how issues are labelled,
+branched, and picked up. This template applies `bug`; add other labels
+(e.g. `good first issue`) if they fit.
 -->
 
 ## What's wrong

@@ -16,14 +16,18 @@ Search the existing issues first — open *and* closed — before opening a new 
 
 All work happens against an issue, however small. Don't start a PR without one open first — the branch naming convention below requires an issue number, so this is that requirement stated plainly rather than left implicit.
 
-## Issue types
+## Issue labels
 
-Every issue gets exactly one type, via GitHub label:
+Label each issue with whatever fits. The kind-of-work labels, roughly in order of how often they come up:
 
-- **Bug** — label `bug`.
-- **Feature** — label `enhancement` (GitHub's default label already covers this — "New feature or request" — so we're reusing it rather than adding a redundant `feature` label).
+- `bug` — something is broken or not behaving as intended.
+- `enhancement` — a new capability or improvement. GitHub's default label already covers this ("New feature or request"), so it's reused rather than adding a redundant `feature` label.
+- `documentation` — changes to docs, the wiki, `README.md`, or `CLAUDE.md`.
+- `maintenance` — recurring upkeep: dependency bumps, suppression-list edits, cleanups.
+- `moderation` — a post or account that shouldn't be in the feed. This is a signal for a human moderator to act on; filing it doesn't remove anything automatically.
+- `question` — an open question about the project. If there's no code or doc change attached, prefer a [GitHub Discussion](https://github.com/goodgorithm/goodgorithm/discussions) over an issue.
 
-That's the whole taxonomy for now, deliberately. No other type labels (`question`, `documentation`, etc.) until the two-type split actually stops being enough — easier to add one later than to unwind label sprawl.
+The orthogonal tags (`good first issue`, `help wanted`, `duplicate`, `invalid`, `wontfix`) combine freely with any of the above. Reach for an existing label before minting a new one — it's easier to add a label later than to unwind label sprawl.
 
 ## Picking up an issue
 
@@ -40,9 +44,10 @@ Work resolving an issue happens on a branch named:
 ```
 bug/issue-<#>-<short-description>
 feature/issue-<#>-<short-description>
+chore/issue-<#>-<short-description>
 ```
 
-e.g. `bug/issue-1-redis-capacity-crash`, `feature/issue-4-category-filter`.
+`bug/` fixes broken behavior, `feature/` adds a capability or improvement, `chore/` covers documentation, maintenance, and moderation follow-ups. e.g. `bug/issue-1-redis-capacity-crash`, `feature/issue-4-category-filter`, `chore/issue-131-refresh-issue-docs`.
 
 All of these branches merge into `main`. From there, promotion to `staging` and `production`, commit message format, and the `Co-Authored-By` convention are covered in [`CLAUDE.md`'s Git conventions](CLAUDE.md#git-conventions) — not repeated here, to avoid the two drifting out of sync.
 
@@ -70,4 +75,4 @@ Pushes to `staging`/`production` additionally deploy (Railway for `ingestion`/`a
 - CI has to pass, and the PR needs at least one approving review, before merge — both enforced by branch protection on `main`.
 - Reference the issue number in the PR description (e.g. `Closes #12`) so it closes automatically on merge.
 
-GitHub surfaces the policies above automatically: opening an issue picks between `.github/ISSUE_TEMPLATE/bug_report.md` and `feature_request.md` (blank issues are disabled, so the type choice is structural, not just a written rule), and `.github/PULL_REQUEST_TEMPLATE.md` pre-fills the checklist above on every PR.
+GitHub surfaces the policies above automatically: opening an issue offers `.github/ISSUE_TEMPLATE/bug_report.md`, `feature_request.md`, and `moderation_report.md` for the common structured cases, plus a blank issue for everything else (`documentation`, `maintenance`, and the rest), and `.github/PULL_REQUEST_TEMPLATE.md` pre-fills the checklist above on every PR.

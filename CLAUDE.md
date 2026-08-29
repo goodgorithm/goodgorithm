@@ -222,7 +222,7 @@ CI (`.github/workflows/ci.yml`) runs `processing`'s pytest suite, and builds/tes
 
 - Commit messages: plain, descriptive. Include a `Co-Authored-By: Claude <noreply@anthropic.com>` trailer on commits produced by/with Claude.
 - Three long-lived branches, promoted in sequence: feature branches merge into `main` first; `main` promotes to `staging`; `staging` promotes to `production`. `staging` and `production` map directly to the matching Railway/Supabase environments — `main` itself isn't deployed anywhere, it's just the integration branch. CI runs tests/build on all three branches; pushes to `staging`/`production` additionally trigger a deploy to the matching Railway environment (per-service) once CI passes.
-- Issue types (`bug`/`enhancement` labels) and the `bug/issue-#-description` / `feature/issue-#-description` branch-naming convention feeding into that `main` merge are in [`CONTRIBUTING.md`](CONTRIBUTING.md), not repeated here.
+- Issue labels and the `bug/` / `feature/` / `chore/` `issue-<#>-<description>` branch-naming convention feeding into that `main` merge are in [`CONTRIBUTING.md`](CONTRIBUTING.md), not repeated here.
 
 ## Docs
 
