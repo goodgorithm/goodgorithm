@@ -5,7 +5,7 @@ quote-posts doesn't scale here -- replies run orders of magnitude higher
 volume than quote-resolution's footprint, and Mastodon replies would mean
 trusting arbitrary, unvetted instances. So each platform gets its own
 policy instead -- exclude outright, or keep the post but down-weight it
-in ranking. See the wiki's Pipeline Internals page for the full
+in ranking. See the wiki's Context and Link-Share page for the full
 per-platform reasoning and the volume/eligibility numbers behind it.
 
 One registry keyed by source platform, not per-platform conditionals
@@ -21,7 +21,7 @@ from typing import Callable, Literal
 Action = Literal["exclude", "devalue", "none"]
 
 # base_score multiplier for a Bluesky reply to a different author -- see
-# the wiki's Pipeline Internals page.
+# the wiki's Context and Link-Share page.
 CONTEXT_DEPENDENCY_BLUESKY_DEVALUE_MULTIPLIER = float(
     os.environ.get("CONTEXT_DEPENDENCY_BLUESKY_DEVALUE_MULTIPLIER", "0.4")
 )
@@ -32,7 +32,7 @@ CONTEXT_DEPENDENCY_BLUESKY_DEVALUE_MULTIPLIER = float(
 # matched directly since the actual signal is "this post's meaning
 # depends on an unstated quoted post," not "Bridgy Fed generated this."
 # Handle-based and DID-based profile URLs both match. See the wiki's
-# Pipeline Internals page.
+# Context and Link-Share page.
 _BLUESKY_QUOTE_REFERENCE_RE = re.compile(r"\bre:\s*https://bsky\.app/profile/\S+/post/\S+", re.IGNORECASE)
 
 
@@ -47,7 +47,7 @@ def _bluesky_action(author_id: str, raw_json: dict, text: str) -> Action:
     # embedded directly in its AT-URI (at://<did>/<collection>/<rkey>), a
     # free structural check with no resolution call needed. Only replies
     # to a *different* author count as context-dependent. See the wiki's
-    # Pipeline Internals page.
+    # Context and Link-Share page.
     parent = reply.get("parent")
     parent_uri = parent.get("uri") if isinstance(parent, dict) else None
     if isinstance(parent_uri, str):

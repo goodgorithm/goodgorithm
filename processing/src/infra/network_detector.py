@@ -9,8 +9,8 @@ logger = logging.getLogger("processing")
 # never auto-blocks anything, same "human-decided" precedent as the
 # blocked_authors moderation blocklist. The signal is same-domain Mastodon
 # accounts whose real account-creation dates cluster tightly, not raw
-# same-domain account count -- see the wiki's Pipeline Internals page for
-# why the obvious-looking "many accounts, one domain" signal was tested
+# same-domain account count -- see the wiki's Processing Infrastructure page
+# for why the obvious-looking "many accounts, one domain" signal was tested
 # and rejected. Starting points, not empirically tuned yet -- treat as
 # unvalidated, same as every other threshold in this codebase.
 NETWORK_DETECTOR_MIN_CLUSTER_ACCOUNTS = int(os.environ.get("NETWORK_DETECTOR_MIN_CLUSTER_ACCOUNTS", "5"))

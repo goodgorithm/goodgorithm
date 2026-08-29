@@ -14,7 +14,7 @@ def extract_quote_uri(raw_json: dict) -> str | None:
     quote: embed.record.uri; recordWithMedia: one level deeper at
     embed.record.record.uri). Only returns URIs that point at an actual
     post, not a list/starter-pack/feed-generator quote. See the wiki's
-    Pipeline Internals page."""
+    Bluesky AppView Resolvers page."""
     record = (raw_json or {}).get("commit", {}).get("record", {})
     if not isinstance(record, dict):
         return None

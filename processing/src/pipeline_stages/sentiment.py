@@ -43,7 +43,7 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     configured, network error, missing/corrupt objects — logs once and
     leaves the VADER path active. score_sentiment() never raises because of
     this and never blocks waiting for R2 to recover mid-run. See the
-    wiki's Pipeline Internals page."""
+    wiki's Sentiment page."""
     global _session, _vocab, SENTIMENT_METHOD, SENTIMENT_MODEL_LOADED_VERSION
 
     if store is None:
@@ -91,7 +91,7 @@ def _score_with_cnn_batch(texts: list[str]) -> list[float]:
     """One ONNX call for the whole batch -- viable because the published
     model's ONNX graph has a dynamic batch dimension. Mirrors
     category_model.py's _categorize_with_model_batch shape exactly. See
-    the wiki's Pipeline Internals page."""
+    the wiki's Sentiment page."""
     encoded = [sentiment_model.encode(sentiment_model.tokenize(text), _vocab) for text in texts]
     input_ids = np.array(encoded, dtype=np.int64)
     # label order 0=negative, 1=neutral, 2=positive — fixed by the training
@@ -108,7 +108,7 @@ def score_sentiment_batch(posts: list) -> dict:
     """Batched form of score_sentiment() -- run_cycle calls this once per
     cycle instead of score_sentiment() in a per-post loop. Mirrors
     category_model.py's categorize_batch() shape exactly. See the wiki's
-    Pipeline Internals page."""
+    Sentiment page."""
     if not posts:
         return {}
 
@@ -128,7 +128,7 @@ def score_sentiment(text: str) -> float:
     The decision is made once, not retried per call, so a single process's
     output never mixes cnn_v1/vader_v1 labels. Single-post convenience
     wrapper -- run_cycle uses score_sentiment_batch() directly. See the
-    wiki's Pipeline Internals page."""
+    wiki's Sentiment page."""
     _ensure_loaded()
 
     if _session is not None:

@@ -127,11 +127,11 @@ def run_cycle(batch_size: int) -> int:
     category_results = category_model.categorize_batch(kept_posts, topicality_results)
 
     # Same batched shape as category_results above -- see the wiki's
-    # Pipeline Internals page.
+    # Sentiment page.
     sentiment_results = sentiment.score_sentiment_batch(kept_posts)
 
     # Batched/deduped resolve, not one call per post -- see the wiki's
-    # Pipeline Internals page.
+    # Bluesky AppView Resolvers page.
     quote_uris_by_post = {post.id: quote_resolver.extract_quote_uri(post.raw_json) for post in kept_posts}
     quote_content_by_uri = quote_resolver.resolve_quotes(
         [uri for uri in quote_uris_by_post.values() if uri is not None],
@@ -269,8 +269,8 @@ def resolve_authors() -> int:
     its candidate population depends on rank_score already being set this
     cycle. Throttled by the caller (main.py), same reasoning as
     recheck_moderation -- this calls an external API in batches, must not
-    compound under a large backlog. See the wiki's Pipeline Internals and
-    Configuration pages."""
+    compound under a large backlog. See the wiki's Bluesky AppView
+    Resolvers and Configuration pages."""
     posts = db.fetch_bluesky_posts_needing_author_resolution(AUTHOR_RESOLVE_BATCH_SIZE)
     if not posts:
         return 0

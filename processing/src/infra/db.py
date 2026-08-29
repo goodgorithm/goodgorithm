@@ -17,10 +17,10 @@ import config
 # mean a cycle claims success while having done nothing -- a more
 # deceptive failure than the loud crash this file's current behavior
 # produces instead. A deliberate choice, not an oversight -- see
-# CLAUDE.md's Service resilience section and the wiki's Pipeline
-# Internals page.
+# CLAUDE.md's Service resilience section and the wiki's Processing
+# Infrastructure page.
 
-# See the wiki's Pipeline Internals page for what each of these controls.
+# See the wiki's Processing Infrastructure page for what each of these controls.
 DB_POOL_MIN_SIZE = int(os.environ.get("DB_POOL_MIN_SIZE", "1"))
 DB_POOL_MAX_SIZE = int(os.environ.get("DB_POOL_MAX_SIZE", "5"))
 if DB_POOL_MIN_SIZE > DB_POOL_MAX_SIZE:
@@ -44,7 +44,7 @@ class RawPost:
 def fetch_unprocessed_posts(batch_size: int) -> list[RawPost]:
     # Newest-first, not FIFO, and NOT EXISTS rather than LEFT JOIN ...
     # WHERE p.id IS NULL -- both deliberate, neither obvious without
-    # production scale. See the wiki's Pipeline Internals page for why.
+    # production scale. See the wiki's Processing Infrastructure page for why.
     with pool.connection() as conn:
         rows = conn.execute(
             """
@@ -207,7 +207,7 @@ def fetch_rankable_posts(since: datetime, min_sentiment: float, pool_size: int) 
     decay moves in that window. rank_posts() still re-filters/re-caps in
     Python too, so behavior stays correct even when it's called with an
     arbitrary post list (tests, a REPL) that didn't come through this
-    query. See the wiki's Pipeline Internals page."""
+    query. See the wiki's Processing Infrastructure page."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
@@ -486,7 +486,7 @@ def fetch_cluster_candidates(
     extraction across the full Mastodon population is too slow at this
     table's scale. Same "promote a frequently-queried field out of raw_json
     into a real column" pattern text/lang/author_id already follow, not a
-    workaround. See the wiki's Pipeline Internals page.
+    workaround. See the wiki's Processing Infrastructure page.
 
     author_id is `{polling_instance}/{acct}` (ingestion/src/mastodon.ts) --
     the same real account seen via more than one of the 8 polled
