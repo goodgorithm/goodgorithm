@@ -84,20 +84,73 @@ class ProcessedPostUpsert:
 
 DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE = int(os.environ.get("DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE", "500"))
 
+_PROCESSED_POSTS_COLUMNS = (
+    "raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
+    "sentiment_score, sentiment_method, topicality_score, entities, "
+    "base_score, rank_score, quote_content, category, category_method, "
+    "context_penalty, generated_thumbnail_url, pipeline_version"
+)
+
+
+# One VALUES row's placeholders, cast to each processed_posts column's type
+# so the (VALUES ...) derived table below has unambiguous column types even
+# when a whole chunk is all-NULL for a column. Same technique as
+# update_rank_scores' own VALUES join.
+_PROCESSED_POSTS_ROW_SQL = (
+    "(%s::uuid, %s::uuid, %s::boolean, %s::boolean, %s::real, "
+    "%s::real, %s::text, %s::real, %s::jsonb, "
+    "%s::real, %s::real, %s::jsonb, %s::text, %s::text, "
+    "%s::real, %s::text, %s::text)"
+)
+
+
+def _build_processed_posts_upsert_sql(row_count: int) -> str:
+    """INSERT ... SELECT ... FROM (VALUES ...) WHERE EXISTS(raw_posts) -- not a
+    plain multi-row VALUES INSERT. A raw_post can be deleted between run_cycle
+    fetching it and this write landing (ingestion/'s blueskyLabels stream
+    retroactively deletes a post Bluesky labels adult-content, mid-scoring),
+    which would FK-violate on processed_posts_raw_post_id_fkey and -- since
+    infra/db.py deliberately has no try/except -- crash-loop the process
+    (issue #128). The WHERE EXISTS drops any such vanished row from the batch
+    atomically: a moderation-deleted post simply gets no processed_posts row,
+    which is correct."""
+    values_sql = ", ".join([_PROCESSED_POSTS_ROW_SQL] * row_count)
+    return f"""
+        INSERT INTO processed_posts ({_PROCESSED_POSTS_COLUMNS})
+        SELECT v.* FROM (VALUES {values_sql}) AS v ({_PROCESSED_POSTS_COLUMNS})
+        WHERE EXISTS (SELECT 1 FROM raw_posts r WHERE r.id = v.raw_post_id)
+        ON CONFLICT (raw_post_id) DO UPDATE SET
+            dedup_cluster_id       = EXCLUDED.dedup_cluster_id,
+            is_dedup_canonical     = EXCLUDED.is_dedup_canonical,
+            is_bot                 = EXCLUDED.is_bot,
+            bot_score              = EXCLUDED.bot_score,
+            sentiment_score        = EXCLUDED.sentiment_score,
+            sentiment_method       = EXCLUDED.sentiment_method,
+            topicality_score       = EXCLUDED.topicality_score,
+            entities               = EXCLUDED.entities,
+            base_score             = EXCLUDED.base_score,
+            rank_score             = EXCLUDED.rank_score,
+            quote_content          = EXCLUDED.quote_content,
+            category               = EXCLUDED.category,
+            category_method        = EXCLUDED.category_method,
+            context_penalty        = EXCLUDED.context_penalty,
+            generated_thumbnail_url = EXCLUDED.generated_thumbnail_url,
+            pipeline_version       = EXCLUDED.pipeline_version,
+            processed_at           = NOW()
+        """
+
 
 def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
     """Bulk-writes a cycle's scored posts in one round trip, not one per
-    post. Mirrors update_rank_scores' chunked-multi-row-VALUES pattern
-    below rather than one giant statement, so param count stays bounded
-    as batch_size grows."""
+    post. Chunked multi-row rather than one giant statement, so param count
+    stays bounded as batch_size grows. See _build_processed_posts_upsert_sql
+    for why it's an INSERT ... SELECT ... WHERE EXISTS, not a plain VALUES
+    INSERT."""
     if not rows:
         return
     with pool.connection() as conn:
         for i in range(0, len(rows), DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE):
             chunk = rows[i : i + DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE]
-            values_sql = ", ".join(
-                ["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(chunk)
-            )
             params = [
                 value
                 for row in chunk
@@ -121,36 +174,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.pipeline_version,
                 )
             ]
-            conn.execute(
-                f"""
-                INSERT INTO processed_posts (
-                    raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score,
-                    sentiment_score, sentiment_method, topicality_score, entities,
-                    base_score, rank_score, quote_content, category, category_method,
-                    context_penalty, generated_thumbnail_url, pipeline_version
-                )
-                VALUES {values_sql}
-                ON CONFLICT (raw_post_id) DO UPDATE SET
-                    dedup_cluster_id       = EXCLUDED.dedup_cluster_id,
-                    is_dedup_canonical     = EXCLUDED.is_dedup_canonical,
-                    is_bot                 = EXCLUDED.is_bot,
-                    bot_score              = EXCLUDED.bot_score,
-                    sentiment_score        = EXCLUDED.sentiment_score,
-                    sentiment_method       = EXCLUDED.sentiment_method,
-                    topicality_score       = EXCLUDED.topicality_score,
-                    entities               = EXCLUDED.entities,
-                    base_score             = EXCLUDED.base_score,
-                    rank_score             = EXCLUDED.rank_score,
-                    quote_content          = EXCLUDED.quote_content,
-                    category               = EXCLUDED.category,
-                    category_method        = EXCLUDED.category_method,
-                    context_penalty        = EXCLUDED.context_penalty,
-                    generated_thumbnail_url = EXCLUDED.generated_thumbnail_url,
-                    pipeline_version       = EXCLUDED.pipeline_version,
-                    processed_at           = NOW()
-                """,
-                params,
-            )
+            conn.execute(_build_processed_posts_upsert_sql(len(chunk)), params)
 
 
 @dataclass

@@ -1,6 +1,20 @@
 from infra import db
 
 
+def test_processed_posts_upsert_sql_skips_rows_whose_raw_post_vanished():
+    # issue #128: a raw_post can be deleted (ingestion's adult-label backstop)
+    # between run_cycle fetching it and this write. The upsert must drop such
+    # a row from the batch in-SQL, not FK-violate and crash-loop the process
+    # -- infra/db.py has no try/except by design. Guard against a future
+    # "simplify back to a plain VALUES INSERT" losing this.
+    sql = db._build_processed_posts_upsert_sql(3)
+    assert "INSERT INTO processed_posts" in sql
+    assert "FROM (VALUES" in sql  # INSERT ... SELECT, not INSERT ... VALUES
+    assert "WHERE EXISTS (SELECT 1 FROM raw_posts r WHERE r.id = v.raw_post_id" in sql
+    assert "ON CONFLICT (raw_post_id) DO UPDATE" in sql
+    assert sql.count("%s") == 3 * 17  # rows x columns, param count still bounded per chunk
+
+
 def _reset_moderation_cache(monkeypatch):
     monkeypatch.setattr(db, "_moderation_lists_cache", None)
     monkeypatch.setattr(db, "_moderation_lists_cached_at", 0.0)
