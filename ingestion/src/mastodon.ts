@@ -68,6 +68,22 @@ export function isDiscoverable(account: { discoverable: boolean | null; indexabl
   return account.discoverable !== false && account.indexable !== false;
 }
 
+// Bridgy Fed federates Bluesky (and web/RSS) content into the fediverse as
+// accounts on *.brid.gy. Skipped here so it never enters raw_posts: it's an
+// unsampled second intake of Bluesky content that bypasses
+// BLUESKY_SAMPLE_RATE, the knob balancing Bluesky volume against
+// processing/'s throughput. suppressed_domains carries 'brid.gy' as the
+// authoritative filter (it also catches a post that merely *links* there);
+// this is just a cheap ingestion-time early-out. See issue #140.
+const BRIDGE_HOST = "brid.gy";
+
+export function isBridgedAccount(acct: string): boolean {
+  const at = acct.lastIndexOf("@");
+  if (at === -1) return false; // local account -- no bridge host to match
+  const host = acct.slice(at + 1).toLowerCase();
+  return host === BRIDGE_HOST || host.endsWith(`.${BRIDGE_HOST}`);
+}
+
 // The common named entities Mastodon's HTML actually emits, plus numeric
 // (decimal and hex) entities - no dependency for this small, bounded
 // parsing job, matching web/'s existing hand-rolled markdown subset.
@@ -158,6 +174,7 @@ async function pollInstance(
     // only English posts
     if (status.language && status.language !== "en") continue;
     if (!isDiscoverable(status.account)) continue;
+    if (isBridgedAccount(status.account.acct)) continue;
 
     const text = stripHtml(status.content);
     if (!text) continue;

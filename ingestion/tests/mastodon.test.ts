@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { getInstanceStatus, isDiscoverable, recordError, recordSuccess, stripHtml } from "../src/mastodon";
+import {
+  getInstanceStatus,
+  isBridgedAccount,
+  isDiscoverable,
+  recordError,
+  recordSuccess,
+  stripHtml,
+} from "../src/mastodon";
 
 test("stripHtml strips tags", () => {
   assert.equal(stripHtml("<p>Hello <strong>world</strong></p>"), "Hello world");
@@ -102,6 +109,18 @@ test("isDiscoverable treats null (unset) fields as opted-in by default", () => {
   assert.equal(isDiscoverable({ discoverable: null, indexable: null }), true);
   assert.equal(isDiscoverable({ discoverable: null, indexable: true }), true);
   assert.equal(isDiscoverable({ discoverable: true, indexable: null }), true);
+});
+
+test("isBridgedAccount matches *.brid.gy hosts, case-insensitively (issue #140)", () => {
+  assert.equal(isBridgedAccount("alice.bsky.social@bsky.brid.gy"), true);
+  assert.equal(isBridgedAccount("some-site.com@web.brid.gy"), true);
+  assert.equal(isBridgedAccount("Alice.BSKY.Social@BSKY.Brid.GY"), true);
+});
+
+test("isBridgedAccount is false for non-bridge accounts and near-misses", () => {
+  assert.equal(isBridgedAccount("bob@mastodon.social"), false);
+  assert.equal(isBridgedAccount("bob@evilbrid.gy"), false); // must be a subdomain, not a suffix
+  assert.equal(isBridgedAccount("localuser"), false); // local account, no @host
 });
 
 test("getInstanceStatus reflects a successful poll", () => {
