@@ -6,22 +6,28 @@ and the wiki's [Content Policy](https://github.com/goodgorithm/goodgorithm/wiki/
 page — this file is just the procedure.
 
 There is no admin UI. Edits are made by hand in the Supabase SQL editor, against **both**
-the production project **and** its `staging` branch. `processing/` reloads all three lists
+the production project **and** its `staging` branch. `processing/` reloads all four lists
 within `MODERATION_LISTS_REFRESH_SECONDS` (default 60s) — no deploy or restart needed.
 
-## The three tables
+## The tables
 
-| Table | Keyed on | Catches |
-|---|---|---|
-| `blocked_authors` | `(source, author_id)` | a specific account |
-| `suppressed_terms` | `term` (lowercase) | posts whose body hashtags / Mastodon `spoiler_text` contain an unambiguous adult-content self-tag |
-| `suppressed_domains` | `domain` (lowercase) | posts linking to the domain (`has_excluded_domain`) **and** Mastodon posts whose account is hosted on it (`has_excluded_home_instance`) |
+| Table | Keyed on | Effect | Catches |
+|---|---|---|---|
+| `blocked_authors` | `(source, author_id)` | hard exclude | a specific account |
+| `suppressed_terms` | `term` (lowercase) | hard exclude | posts whose body hashtags / Mastodon `spoiler_text` contain an unambiguous adult-content self-tag |
+| `suppressed_domains` | `domain` (lowercase) | hard exclude | posts linking to the domain (`has_excluded_domain`) **and** Mastodon posts whose account is hosted on it (`has_excluded_home_instance`) |
+| `aggregator_instances` | `domain` (lowercase) | **demote only** (`base_score` × `AGGREGATOR_DEMOTE_MULTIPLIER`) | Mastodon posts whose account's home instance is a content aggregator that syndicates headline/link reposts (Flipboard etc.) |
 
-All three are **precision over recall, hand-curated**. Add a term/domain only if it is
-*definitionally* off-mission — an unambiguous adult self-tag, an instance dedicated to adult
-/ harassment content, a marketing/affiliate domain. Do **not** add identity or topic terms
-that merely correlate ("young", "cub", a political-viewpoint instance) — those are left to
-the scoring pipeline.
+The three hard-exclude tables are **precision over recall, hand-curated**. Add a term/domain
+only if it is *definitionally* off-mission — an unambiguous adult self-tag, an instance
+dedicated to adult / harassment content, a marketing/affiliate domain. Do **not** add
+identity or topic terms that merely correlate ("young", "cub", a political-viewpoint
+instance) — those are left to the scoring pipeline.
+
+`aggregator_instances` is a separate, lower-stakes call: a listed instance's posts stay in
+the feed, just ranked well down. Add an instance once a measurement pass (see the recurring
+query below) shows it contributing a large share of ranked Mastodon volume as automated
+syndication with no original commentary — not for being merely prolific or tech-leaning.
 
 ## Adding an entry
 
@@ -41,6 +47,11 @@ ON CONFLICT (term) DO NOTHING;
 -- suppressed_domains
 INSERT INTO suppressed_domains (domain, reason) VALUES
   ('example.com', '<reason>, <YYYY-MM-DD>')
+ON CONFLICT (domain) DO NOTHING;
+
+-- aggregator_instances  (demote, not exclude)
+INSERT INTO aggregator_instances (domain, reason) VALUES
+  ('example.com', 'automated syndication, <share>% of ranked Mastodon volume -- <YYYY-MM-DD>')
 ON CONFLICT (domain) DO NOTHING;
 ```
 
@@ -74,6 +85,11 @@ existing rows by hand.
   within one processing cycle automatically. Nothing to do; verify it cleared after ~10 min.
 - **`suppressed_terms` / `suppressed_domains`** — delete manually. **Preview with `SELECT`
   first**, then `DELETE`. `processed_posts` cascades.
+- **`aggregator_instances`** — nothing to purge (it never deleted anything), and nothing to
+  do. `aggregator_penalty` is written once when a post is scored, like `link_share_penalty`;
+  a new entry applies only to posts scored after the cache refreshes (≤60s), and
+  already-scored posts keep their old value until they age out of the 24h retention window.
+  Full effect within a day, no manual step.
 
 ```sql
 -- preview, then swap SELECT ... for DELETE FROM raw_posts r  (keep the WHERE)
@@ -92,10 +108,16 @@ merely mention the domain in a profile bio.
 ## Recurring: new Mastodon instances contributing feed content (#139)
 
 A systematic instance blocklist isn't worth building (see #139 — the off-mission rate in the
-tail is ~1 in several hundred). Instead, run this ~monthly and eyeball the delta for
-anything dedicated-adult / harassment-oriented. Cross-reference only the two small,
-high-consensus prior-art lists — **Oliphant Tier 0** and **Seirdy's FediNuke** — not the
-broader tiers or aggregate lists (too contested for this table's standard).
+tail is ~1 in several hundred). Instead, run this ~monthly and eyeball the delta on two
+fronts:
+
+- **Dedicated-adult / harassment-oriented** → `suppressed_domains` (hard exclude).
+  Cross-reference only the two small, high-consensus prior-art lists — **Oliphant Tier 0**
+  and **Seirdy's FediNuke** — not the broader tiers or aggregate lists (too contested for
+  that table's standard).
+- **A single instance contributing a large share of `ranked` volume as automated
+  headline/link syndication** (high `ranked`, aggregator-shaped content) → `aggregator_instances`
+  (demote). `flipboard.com` was ~34% of ranked Mastodon content when this was added (#141).
 
 ```sql
 WITH masto AS (

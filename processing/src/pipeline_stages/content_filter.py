@@ -71,13 +71,14 @@ def has_excluded_sensitive_media(raw_json: dict) -> bool:
     return not raw_json.get("spoiler_text")
 
 
-def _matches_suppressed_domain(candidate: str, suppressed_domains: frozenset[str]) -> bool:
+def matches_domain_list(candidate: str, domains: frozenset[str]) -> bool:
     """Exact or subdomain match (smile.amazon.com, www.amazon.com both
-    match an amazon.com entry) -- shared by has_excluded_domain (a post's
-    linked URL) and has_excluded_home_instance (a Mastodon account's home
-    server) below, since both are "does this domain match a moderator's
-    entry" checks over the same suppressed_domains set."""
-    return candidate in suppressed_domains or any(candidate.endswith("." + domain) for domain in suppressed_domains)
+    match an amazon.com entry) -- the shared "does this domain match a
+    moderator's list entry" primitive, used by has_excluded_domain (a
+    post's linked URL) and has_excluded_home_instance (a Mastodon account's
+    home server) below over suppressed_domains, and by
+    aggregator_demote.py over the separate aggregator_instances list."""
+    return candidate in domains or any(candidate.endswith("." + domain) for domain in domains)
 
 
 def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domains: frozenset[str]) -> bool:
@@ -94,7 +95,7 @@ def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domai
         netloc = urlsplit(raw_url).netloc.lower()
     except ValueError:
         return False
-    return _matches_suppressed_domain(netloc, suppressed_domains)
+    return matches_domain_list(netloc, suppressed_domains)
 
 
 def has_excluded_home_instance(raw_json: dict, suppressed_domains: frozenset[str]) -> bool:
@@ -117,7 +118,7 @@ def has_excluded_home_instance(raw_json: dict, suppressed_domains: frozenset[str
     if not isinstance(acct, str) or "@" not in acct:
         return False
     home_instance = acct.rsplit("@", 1)[-1].lower()
-    return _matches_suppressed_domain(home_instance, suppressed_domains)
+    return matches_domain_list(home_instance, suppressed_domains)
 
 
 def is_content_excluded(
