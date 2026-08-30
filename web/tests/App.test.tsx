@@ -7,7 +7,7 @@ function mockFeedResponse() {
   return new Response(JSON.stringify({ posts: [], next_cursor: null }), { status: 200 });
 }
 
-describe("App header nav (issue #31: FAQ + Privacy + GitHub icon, no collapse needed)", () => {
+describe("App header nav", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockFeedResponse()));
     window.history.pushState(null, "", "/");
@@ -17,11 +17,15 @@ describe("App header nav (issue #31: FAQ + Privacy + GitHub icon, no collapse ne
     vi.unstubAllGlobals();
   });
 
-  it("shows all nav links directly, with no toggle button", () => {
+  it("shows all nav links inline on a wide viewport, with no burger button", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: "FAQ" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Updates" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Privacy" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "GitHub" })).toBeInTheDocument();
+    // matchMedia is stubbed non-matching in tests/setup.ts, so HeaderNav
+    // renders its wide-viewport branch — the narrow burger is covered in
+    // HeaderNav.test.tsx.
     expect(screen.queryByRole("button", { name: /menu/i })).not.toBeInTheDocument();
   });
 
