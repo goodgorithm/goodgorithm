@@ -19,6 +19,7 @@ def make_post(
     text="a distinct post about nothing in particular",
     context_penalty=1.0,
     link_share_penalty=1.0,
+    aggregator_penalty=1.0,
     source=None,
     author_id=None,
 ):
@@ -38,6 +39,7 @@ def make_post(
         author_id=author_id or str(uuid4()),
         context_penalty=context_penalty,
         link_share_penalty=link_share_penalty,
+        aggregator_penalty=aggregator_penalty,
     )
 
 
@@ -86,6 +88,18 @@ def test_compute_base_score_applies_link_share_penalty():
     full = make_post(sentiment_score=0.5, topicality_score=2.0, link_share_penalty=1.0)
     devalued = make_post(sentiment_score=0.5, topicality_score=2.0, link_share_penalty=0.4)
     assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.4) < 1e-9
+
+
+def test_compute_base_score_applies_aggregator_penalty():
+    # A post from a listed aggregator instance is scaled down by
+    # aggregator_penalty, stacking with the other devalue multipliers.
+    full = make_post(sentiment_score=0.5, topicality_score=2.0, aggregator_penalty=1.0)
+    devalued = make_post(sentiment_score=0.5, topicality_score=2.0, aggregator_penalty=0.3)
+    both = make_post(
+        sentiment_score=0.5, topicality_score=2.0, link_share_penalty=0.4, aggregator_penalty=0.3
+    )
+    assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.3) < 1e-9
+    assert abs(ranking.compute_base_score(both, NOW) - ranking.compute_base_score(full, NOW) * 0.4 * 0.3) < 1e-9
 
 
 def test_filter_eligible_excludes_bots_duplicates_and_low_sentiment():

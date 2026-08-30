@@ -66,6 +66,10 @@ class RankablePost:
     # post's own text adds nothing beyond its link card's title. Same
     # content-derived, non-engagement category as context_penalty.
     link_share_penalty: float = 1.0
+    # aggregator_demote.py's devalue multiplier -- 1.0 unless the post's
+    # Mastodon home instance is a listed content aggregator (Flipboard
+    # etc.). Keyed on the source instance, not on engagement.
+    aggregator_penalty: float = 1.0
 
 
 @dataclass
@@ -95,14 +99,15 @@ def recency_decay(created_at: datetime, now: datetime) -> float:
 
 def compute_base_score(post: RankablePost, now: datetime) -> float:
     """Content-derived only — positivity x topicality x recency x
-    context_penalty x link_share_penalty. No engagement field exists on
-    RankablePost for this to accidentally read."""
+    context_penalty x link_share_penalty x aggregator_penalty. No
+    engagement field exists on RankablePost for this to accidentally read."""
     return (
         positivity(post.sentiment_score)
         * post.topicality_score
         * recency_decay(post.created_at, now)
         * post.context_penalty
         * post.link_share_penalty
+        * post.aggregator_penalty
     )
 
 

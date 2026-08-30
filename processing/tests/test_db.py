@@ -12,7 +12,7 @@ def test_processed_posts_upsert_sql_skips_rows_whose_raw_post_vanished():
     assert "FROM (VALUES" in sql  # INSERT ... SELECT, not INSERT ... VALUES
     assert "WHERE EXISTS (SELECT 1 FROM raw_posts r WHERE r.id = v.raw_post_id" in sql
     assert "ON CONFLICT (raw_post_id) DO UPDATE" in sql
-    assert sql.count("%s") == 3 * 18  # rows x columns, param count still bounded per chunk
+    assert sql.count("%s") == 3 * 19  # rows x columns, param count still bounded per chunk
 
 
 def _reset_moderation_cache(monkeypatch):
@@ -24,19 +24,27 @@ def _reset_moderation_cache(monkeypatch):
 def test_fetch_moderation_lists_caches_within_ttl(monkeypatch):
     _reset_moderation_cache(monkeypatch)
 
-    calls = {"blocked": 0, "terms": 0, "domains": 0}
+    calls = {"blocked": 0, "terms": 0, "domains": 0, "aggregators": 0}
     monkeypatch.setattr(db, "fetch_blocked_authors", lambda: calls.__setitem__("blocked", calls["blocked"] + 1) or {("bluesky", "did:x")})
     monkeypatch.setattr(db, "fetch_suppressed_terms", lambda: calls.__setitem__("terms", calls["terms"] + 1) or frozenset({"nsfw"}))
     monkeypatch.setattr(
         db, "fetch_suppressed_domains", lambda: calls.__setitem__("domains", calls["domains"] + 1) or frozenset({"example.com"})
+    )
+    monkeypatch.setattr(
+        db, "fetch_aggregator_instances", lambda: calls.__setitem__("aggregators", calls["aggregators"] + 1) or frozenset({"flipboard.com"})
     )
     monkeypatch.setattr(db.time, "monotonic", lambda: 1000.0)
 
     first = db.fetch_moderation_lists()
     second = db.fetch_moderation_lists()
 
-    assert first == second == ({("bluesky", "did:x")}, frozenset({"nsfw"}), frozenset({"example.com"}))
-    assert calls == {"blocked": 1, "terms": 1, "domains": 1}
+    assert first == second == (
+        {("bluesky", "did:x")},
+        frozenset({"nsfw"}),
+        frozenset({"example.com"}),
+        frozenset({"flipboard.com"}),
+    )
+    assert calls == {"blocked": 1, "terms": 1, "domains": 1, "aggregators": 1}
 
 
 def test_fetch_moderation_lists_refetches_after_ttl_expires(monkeypatch):
@@ -51,6 +59,7 @@ def test_fetch_moderation_lists_refetches_after_ttl_expires(monkeypatch):
     monkeypatch.setattr(db, "fetch_blocked_authors", fake_fetch_blocked)
     monkeypatch.setattr(db, "fetch_suppressed_terms", lambda: frozenset())
     monkeypatch.setattr(db, "fetch_suppressed_domains", lambda: frozenset())
+    monkeypatch.setattr(db, "fetch_aggregator_instances", lambda: frozenset())
 
     fake_now = [1000.0]
     monkeypatch.setattr(db.time, "monotonic", lambda: fake_now[0])

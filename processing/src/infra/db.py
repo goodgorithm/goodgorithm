@@ -80,6 +80,7 @@ class ProcessedPostUpsert:
     category_method: str | None = None
     context_penalty: float = 1.0
     link_share_penalty: float = 1.0
+    aggregator_penalty: float = 1.0
     generated_thumbnail_url: str | None = None
 
 
@@ -89,7 +90,7 @@ _PROCESSED_POSTS_COLUMNS = (
     "raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
     "sentiment_score, sentiment_method, topicality_score, entities, "
     "base_score, rank_score, quote_content, category, category_method, "
-    "context_penalty, link_share_penalty, generated_thumbnail_url, pipeline_version"
+    "context_penalty, link_share_penalty, aggregator_penalty, generated_thumbnail_url, pipeline_version"
 )
 
 
@@ -101,7 +102,7 @@ _PROCESSED_POSTS_ROW_SQL = (
     "(%s::uuid, %s::uuid, %s::boolean, %s::boolean, %s::real, "
     "%s::real, %s::text, %s::real, %s::jsonb, "
     "%s::real, %s::real, %s::jsonb, %s::text, %s::text, "
-    "%s::real, %s::real, %s::text, %s::text)"
+    "%s::real, %s::real, %s::real, %s::text, %s::text)"
 )
 
 
@@ -136,6 +137,7 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
             category_method        = EXCLUDED.category_method,
             context_penalty        = EXCLUDED.context_penalty,
             link_share_penalty     = EXCLUDED.link_share_penalty,
+            aggregator_penalty     = EXCLUDED.aggregator_penalty,
             generated_thumbnail_url = EXCLUDED.generated_thumbnail_url,
             pipeline_version       = EXCLUDED.pipeline_version,
             processed_at           = NOW()
@@ -173,6 +175,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.category_method,
                     row.context_penalty,
                     row.link_share_penalty,
+                    row.aggregator_penalty,
                     row.generated_thumbnail_url,
                     row.pipeline_version,
                 )
@@ -192,6 +195,7 @@ class RankableRow:
     is_dedup_canonical: bool
     context_penalty: float
     link_share_penalty: float
+    aggregator_penalty: float
     source: str
     author_id: str
 
@@ -213,7 +217,7 @@ def fetch_rankable_posts(since: datetime, min_sentiment: float, pool_size: int) 
             """
             SELECT r.id, r.text, r.created_at, p.sentiment_score, p.topicality_score,
                    p.entities, p.is_bot, p.is_dedup_canonical, p.context_penalty,
-                   p.link_share_penalty, r.source, r.author_id
+                   p.link_share_penalty, p.aggregator_penalty, r.source, r.author_id
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
             WHERE r.created_at >= %s
@@ -414,28 +418,47 @@ def fetch_suppressed_domains() -> frozenset[str]:
     return frozenset(row[0] for row in rows)
 
 
+def fetch_aggregator_instances() -> frozenset[str]:
+    """Whole table -- same pattern as fetch_suppressed_domains, but a
+    separate list: a listed home instance devalues a post's base_score
+    (aggregator_demote.py), it doesn't hard-exclude the post. Called
+    through fetch_moderation_lists()'s cache below, not directly, from
+    run_cycle. See CLAUDE.md's Content moderation section."""
+    with pool.connection() as conn:
+        rows = conn.execute("SELECT domain FROM aggregator_instances").fetchall()
+    return frozenset(row[0] for row in rows)
+
+
 # How long fetch_moderation_lists()'s combined cache stays valid before the
-# next call re-queries all three tables. Optional; defaults apply if unset.
+# next call re-queries all four tables. Optional; defaults apply if unset.
 # See the wiki's Configuration page.
 MODERATION_LISTS_REFRESH_SECONDS = int(os.environ.get("MODERATION_LISTS_REFRESH_SECONDS", "60"))
 
-_moderation_lists_cache: tuple[set[tuple[str, str]], frozenset[str], frozenset[str]] | None = None
+_moderation_lists_cache: (
+    tuple[set[tuple[str, str]], frozenset[str], frozenset[str], frozenset[str]] | None
+) = None
 _moderation_lists_cached_at = 0.0
 
 
-def fetch_moderation_lists() -> tuple[set[tuple[str, str]], frozenset[str], frozenset[str]]:
-    """Combines the three whole-table reads above into one cached result,
-    refreshed at most every MODERATION_LISTS_REFRESH_SECONDS rather than on
-    every call. run_cycle() calls this every processing cycle, which under
-    a real backlog can run every few seconds (bounded only by
-    PROCESSING_BACKLOG_BUFFER_SECONDS) -- re-querying three small,
+def fetch_moderation_lists() -> tuple[set[tuple[str, str]], frozenset[str], frozenset[str], frozenset[str]]:
+    """Combines the four whole-table reads above into one cached result
+    (blocked authors, suppressed terms, suppressed domains, aggregator
+    instances), refreshed at most every MODERATION_LISTS_REFRESH_SECONDS
+    rather than on every call. run_cycle() calls this every processing
+    cycle, which under a real backlog can run every few seconds (bounded
+    only by PROCESSING_BACKLOG_BUFFER_SECONDS) -- re-querying four small,
     rarely-changing tables that often is pure waste. A moderator's edit
     still takes effect within one cache window, not one redeploy, just not
     necessarily on the very next cycle."""
     global _moderation_lists_cache, _moderation_lists_cached_at
     now = time.monotonic()
     if _moderation_lists_cache is None or now - _moderation_lists_cached_at >= MODERATION_LISTS_REFRESH_SECONDS:
-        _moderation_lists_cache = (fetch_blocked_authors(), fetch_suppressed_terms(), fetch_suppressed_domains())
+        _moderation_lists_cache = (
+            fetch_blocked_authors(),
+            fetch_suppressed_terms(),
+            fetch_suppressed_domains(),
+            fetch_aggregator_instances(),
+        )
         _moderation_lists_cached_at = now
     return _moderation_lists_cache
 

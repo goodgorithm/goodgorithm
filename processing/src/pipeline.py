@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import config
 from infra import db, redis_guard
 from pipeline_stages import (
+    aggregator_demote,
     author_resolver,
     bot_filter,
     category_model,
@@ -43,7 +44,7 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
-PIPELINE_VERSION = "v6"
+PIPELINE_VERSION = "v7"
 
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
@@ -77,7 +78,7 @@ def run_cycle(batch_size: int) -> int:
     # so a post is never scored once it's excluded. See the wiki's Content
     # Policy page for the policy behind each, and Pipeline Internals for
     # why this specific order.
-    blocked, suppressed_terms, suppressed_domains = db.fetch_moderation_lists()
+    blocked, suppressed_terms, suppressed_domains, aggregator_instances = db.fetch_moderation_lists()
 
     context_classifications: dict = {}
 
@@ -161,6 +162,9 @@ def run_cycle(batch_size: int) -> int:
         link_share_penalty = link_share.classify(
             post.source, post.raw_json, post.text
         ).devalue_multiplier
+        aggregator_penalty = aggregator_demote.classify(
+            post.source, post.author_id, aggregator_instances
+        ).devalue_multiplier
 
         rankable = ranking.RankablePost(
             id=post.id,
@@ -175,6 +179,7 @@ def run_cycle(batch_size: int) -> int:
             author_id=post.author_id,
             context_penalty=context_penalty,
             link_share_penalty=link_share_penalty,
+            aggregator_penalty=aggregator_penalty,
         )
         base_score = ranking.compute_base_score(rankable, now)
 
@@ -207,6 +212,7 @@ def run_cycle(batch_size: int) -> int:
                 category_method=category_model.CATEGORY_METHOD,
                 context_penalty=context_penalty,
                 link_share_penalty=link_share_penalty,
+                aggregator_penalty=aggregator_penalty,
                 generated_thumbnail_url=generated_thumbnail_url,
             )
         )
@@ -245,6 +251,7 @@ def refresh_rankings() -> int:
             author_id=row.author_id,
             context_penalty=row.context_penalty,
             link_share_penalty=row.link_share_penalty,
+            aggregator_penalty=row.aggregator_penalty,
         )
         for row in rows
     ]
