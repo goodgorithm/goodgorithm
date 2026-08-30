@@ -3,12 +3,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import faqSource from "./content/faq.md?raw";
+import updatesSource from "./content/updates.md?raw";
 import privacySource from "./content/privacy.md?raw";
 import styles from "./App.module.css";
 import { ContentPage } from "./components/ContentPage";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Feed } from "./components/Feed";
-import { GitHubIcon } from "./components/GitHubIcon";
+import { HeaderNav } from "./components/HeaderNav";
 import { ScrollToTopButton } from "./components/ScrollToTopButton";
 import { UpdatePrompt } from "./components/UpdatePrompt";
 import { Wordmark } from "./components/Wordmark";
@@ -24,6 +25,9 @@ const queryClient = new QueryClient();
 // only pages that stay in-app.
 const CONTENT_PAGES = [
   { path: "/faq", label: "FAQ", source: faqSource },
+  // Milestone log; its Atom feed (/updates.atom) is generated from updates.md
+  // at build time by vite.config.ts's updatesFeed plugin.
+  { path: "/updates", label: "Updates", source: updatesSource },
   // Also the public URL the app stores require for their listing / data-safety
   // sections -- goodgorithm.com/privacy resolves here via the SPA fallback.
   { path: "/privacy", label: "Privacy", source: privacySource },
@@ -55,27 +59,7 @@ export default function App() {
             <button type="button" className={styles.logoButton} onClick={() => navigate("/")}>
               <Wordmark />
             </button>
-            <nav className={styles.nav}>
-              {CONTENT_PAGES.filter((p) => p.path !== path).map((p) => (
-                <button
-                  key={p.path}
-                  type="button"
-                  className={styles.navLink}
-                  onClick={() => navigate(p.path)}
-                >
-                  {p.label}
-                </button>
-              ))}
-              <a
-                className={styles.navLink}
-                href="https://github.com/goodgorithm/goodgorithm"
-                target="_blank"
-                rel="noreferrer noopener"
-                aria-label="GitHub"
-              >
-                <GitHubIcon />
-              </a>
-            </nav>
+            <HeaderNav pages={CONTENT_PAGES} activePath={path} onNavigate={navigate} />
           </div>
           <p className={styles.tagline}>Uplifting posts, honestly ranked.</p>
         </header>

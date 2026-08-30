@@ -76,3 +76,10 @@ Pushes to `staging`/`production` additionally deploy (Railway for `ingestion`/`a
 - Reference the issue number in the PR description (e.g. `Closes #12`) so it closes automatically on merge.
 
 GitHub surfaces the policies above automatically: opening an issue offers `.github/ISSUE_TEMPLATE/bug_report.md`, `feature_request.md`, and `moderation_report.md` for the common structured cases, plus a blank issue for everything else (`documentation`, `maintenance`, and the rest), and `.github/PULL_REQUEST_TEMPLATE.md` pre-fills the checklist above on every PR.
+
+## Announcing a milestone
+
+When something user-facing and milestone-worthy ships (a new platform, a major feature, leaving alpha):
+
+1. Add a `## YYYY-MM-DD — Title` entry to the top of `web/src/content/updates.md`, newest first. `/updates.atom` regenerates from that file on every `web/` build — there's no separate feed to edit.
+2. After it deploys, post the same summary to the repo's [Discussions → Announcements](https://github.com/goodgorithm/goodgorithm/discussions/categories/announcements).

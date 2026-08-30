@@ -3,6 +3,8 @@ import { defineConfig, type Plugin, type ResolvedConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+import { updatesFeedPlugin } from "./vite-plugins/updatesFeed.ts";
+
 // Small build/dev HTML transforms that shorten the chain before the first
 // paint (issue #110). No runtime dependency -- this is the "tiny Vite
 // transformIndexHtml hook" the issue calls for. See the wiki's Web
@@ -75,6 +77,7 @@ export default defineConfig({
   plugins: [
     react(),
     prepaintOptimizations(),
+    updatesFeedPlugin(),
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
@@ -109,7 +112,7 @@ export default defineConfig({
         // would otherwise silently serve the cached SPA shell instead of
         // the real file, to any visitor who already has the service worker
         // installed. See the wiki's Web Internals page for the full story.
-        navigateFallbackDenylist: [/^\/robots\.txt$/, /^\/sitemap\.xml$/],
+        navigateFallbackDenylist: [/^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/updates\.atom$/],
         // Deliberately no runtimeCaching entry for the api/ origin. The
         // default generateSW strategy only precaches build output (matched
         // above) and never intercepts cross-origin fetches unless a rule is
