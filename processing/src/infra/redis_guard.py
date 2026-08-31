@@ -10,7 +10,7 @@ logger = logging.getLogger("processing")
 # threaded through from pipeline.py's enforce_redis_capacity(). See the
 # wiki's Processing Infrastructure page for why the account/plan-fact cap
 # lives in config.py rather than as a local env var here.
-DEFAULT_MAX_BYTES = 1024 * 1024 * 1024  # 1GB
+DEFAULT_MAX_BYTES = 3 * 1024 * 1024 * 1024  # 3GB, tracks config.REDIS_MAX_BYTES's default
 DEFAULT_SOFT_LIMIT_RATIO = 0.85
 
 # Cleared, in this order, when the soft limit is hit. Deliberately excludes
