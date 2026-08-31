@@ -1,4 +1,4 @@
-import { insertPost } from "./db";
+import { getBlockedAuthors, insertPost, isBlockedAuthor } from "./db";
 import { parseNumberEnv } from "./env";
 
 // Which instances to poll, and why each one is trusted, is documented on
@@ -168,6 +168,9 @@ async function pollInstance(
 
   sinceId.set(instance, statuses[0].id);
 
+  // Fetched once per poll (cached in-process), not per status -- issue #151.
+  const blocked = await getBlockedAuthors();
+
   let inserted = 0;
   for (const status of statuses) {
     if (status.visibility !== "public") continue;
@@ -175,6 +178,7 @@ async function pollInstance(
     if (status.language && status.language !== "en") continue;
     if (!isDiscoverable(status.account)) continue;
     if (isBridgedAccount(status.account.acct)) continue;
+    if (isBlockedAuthor("mastodon", `${instance}/${status.account.acct}`, blocked)) continue;
 
     const text = stripHtml(status.content);
     if (!text) continue;

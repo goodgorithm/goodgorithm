@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { insertPost } from "./db";
+import { getBlockedAuthors, insertPost, isBlockedAuthor } from "./db";
 import { parseNumberEnv } from "./env";
 import { consumePendingExclusion } from "./pendingExclusions";
 
@@ -146,6 +146,11 @@ export function startBlueskyIngestion(): void {
         console.log(`[bluesky] skipped insert for ${sourceId} -- pending exclusion from label stream`);
         return;
       }
+
+      // Skip a still-active blocked author's stream before it hits raw_posts
+      // (issue #151). Silent, like isBridgedAccount -- these accounts post
+      // constantly, which is the whole reason to catch them here.
+      if (isBlockedAuthor("bluesky", event.did, await getBlockedAuthors())) return;
 
       try {
         await insertPost({
