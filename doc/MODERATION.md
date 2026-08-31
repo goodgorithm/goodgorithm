@@ -141,10 +141,56 @@ ORDER BY ranked DESC;
 ```
 
 Retention is 24h, so a full snapshot only ever covers the last day; run it often enough that
-the windows overlap. Record the date of each review here or in the #139 thread.
+the windows overlap. Log each pass in the review log below; write up what you found in the
+linked issue.
+
+## Recurring: outbound link domains in ranked Mastodon posts
+
+The instance query above is keyed on a post's **home instance**, so it's blind to an account
+on a large, legitimate general instance (`mastodon.social`, …) whose *posts* link out to a
+dedicated adult / spam / marketing domain. A content farm reachable only by its link
+domain — no self-tagged hashtag in `suppressed_terms`, `sensitive` set but the post carries
+a link rather than media, home instance a general one — clears every check
+`is_content_excluded` runs. Run this alongside the instance query; a link host climbing the
+`ranked` column that isn't a normal news/blog/video source is a `suppressed_domains`
+candidate (`has_excluded_domain` matches exact-or-subdomain, so list the registrable domain,
+not the specific subdomain).
+
+```sql
+WITH masto_links AS (
+  SELECT r.id,
+    lower(regexp_replace(
+      substring(COALESCE(NULLIF(r.raw_json->'card'->>'url',''), r.text) FROM 'https?://([^/?#\s]+)'),
+      '^www\.', '')) AS link_host,
+    p.rank_score
+  FROM raw_posts r
+  LEFT JOIN processed_posts p ON p.raw_post_id = r.id
+  WHERE r.source = 'mastodon'
+    AND r.ingested_at > '<last review date>'   -- omit for a full snapshot
+)
+SELECT link_host,
+  count(*) AS raw,
+  count(*) FILTER (WHERE rank_score IS NOT NULL) AS ranked,
+  round(max(rank_score)::numeric, 2) AS max_rank
+FROM masto_links
+WHERE link_host IS NOT NULL
+GROUP BY link_host
+HAVING count(*) FILTER (WHERE rank_score IS NOT NULL) > 0
+ORDER BY ranked DESC;
+```
+
+Most of the top of that list is legitimate (news sites, `youtube.com`, `github.com`); scan
+for the ones that aren't. When one turns up, add it to `suppressed_domains` and purge with
+the preview/DELETE query above.
 
 ### Review log
 
-| Date | Reviewer | Added | Notes |
-|---|---|---|---|
-| 2026-08-30 | initial (#139) | `yiff.life` (`suppressed_domains`) | Full snapshot of ~1,100 instances / 318 ranked-contributing. Only `yiff.life` (dedicated furry-NSFW, 0 ranked, precautionary). `kinkycats.org` reviewed and **not** added — sex-positive general community, benign content. No hate instances present (already defederated upstream by the 8 polled instances). |
+One row per review pass or moderation action. The **why** — what was sampled, what was
+added or rejected and on what evidence — goes in the linked issue or a comment on it, never
+in this table.
+
+| Date | Change | Detail |
+|---|---|---|
+| 2026-08-30 | `yiff.life` → `suppressed_domains` | #139 |
+| 2026-08-31 | `channels.im` → `aggregator_instances` | #141 |
+| 2026-08-31 | `myxlogs.com` → `suppressed_domains`; `myxlogs@mastodon.social` → `blocked_authors` (all 8 polled instances); outbound-link-domain query added above | [#144 (comment)](https://github.com/goodgorithm/goodgorithm/issues/144#issuecomment-5474399794) |
