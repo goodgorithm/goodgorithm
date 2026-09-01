@@ -1,3 +1,4 @@
+import codecs
 import html
 import ipaddress
 import logging
@@ -86,6 +87,23 @@ def _is_safe_public_url(url: str) -> bool:
         return False
 
 
+def _decode_response_body(raw: bytes, encoding: str | None) -> str:
+    """Decode a page body tolerantly. A server can advertise a Content-Type
+    charset that isn't a real Python codec -- e.g. ``utf-8mb4``, a MySQL
+    identifier some stacks leak into the header -- and ``bytes.decode`` on
+    an unknown name raises ``LookupError``, which ``errors="ignore"`` does
+    NOT suppress (the failure is the codec lookup, not a decode error). An
+    unknown or absent charset falls back to UTF-8; og:image extraction is
+    regex over ASCII-ish markup, so a slightly wrong decoding still finds
+    the tag."""
+    if encoding:
+        try:
+            codecs.lookup(encoding)
+        except LookupError:
+            encoding = None
+    return raw.decode(encoding or "utf-8", errors="ignore")
+
+
 def _fetch_html(url: str, depth: int = 0) -> str | None:
     """Manually follows redirects (bounded) rather than requests' own
     allow_redirects=True, so each hop can be re-validated with
@@ -118,8 +136,11 @@ def _fetch_html(url: str, depth: int = 0) -> str | None:
 
         try:
             raw = response.raw.read(THUMBNAIL_RESOLVER_MAX_RESPONSE_BYTES, decode_content=True)
-            return raw.decode(response.encoding or "utf-8", errors="ignore")
-        except (*_FETCH_EXCEPTIONS, UnicodeError) as err:
+            return _decode_response_body(raw, response.encoding)
+        # LookupError (bad charset) is handled inside _decode_response_body;
+        # kept in the net too so a future decode path added here can't
+        # re-break run_cycle the way an unknown codec once did.
+        except (*_FETCH_EXCEPTIONS, UnicodeError, LookupError) as err:
             logger.warning("thumbnail fetch failed reading body for %s: %s", url, err)
             return None
 

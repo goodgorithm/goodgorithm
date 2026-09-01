@@ -162,6 +162,39 @@ def test_resolve_thumbnail_returns_none_on_bare_oserror_from_get(monkeypatch):
     assert thumbnail_resolver.resolve_thumbnail("https://8.8.8.8/article") is None  # must not raise
 
 
+# A page served with Content-Type "text/html; charset=utf-8mb4" (a MySQL
+# identifier, not a Python codec) once crash-looped production: raw.decode()
+# on an unknown codec name raises LookupError, which errors="ignore" does not
+# suppress, and it slipped the body-read except net (#167).
+def test_resolve_thumbnail_tolerates_an_invalid_content_type_charset(monkeypatch):
+    html = b'<meta property="og:image" content="https://example.com/thumb.jpg">'
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **k: FakeResponse(body=html, encoding="utf-8mb4")
+    )
+
+    assert (
+        thumbnail_resolver.resolve_thumbnail("https://8.8.8.8/article")
+        == "https://example.com/thumb.jpg"  # decoded as UTF-8, not raised
+    )
+
+
+def test_resolve_thumbnail_returns_none_on_invalid_charset_with_no_tag(monkeypatch):
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **k: FakeResponse(body=b"<html><head></head></html>", encoding="utf-8mb4"),
+    )
+
+    assert thumbnail_resolver.resolve_thumbnail("https://8.8.8.8/article") is None  # must not raise
+
+
+def test_decode_response_body_falls_back_to_utf8_on_unknown_or_missing_charset():
+    body = "café".encode("utf-8")
+    assert thumbnail_resolver._decode_response_body(body, "utf-8mb4") == "café"
+    assert thumbnail_resolver._decode_response_body(body, None) == "café"
+    assert thumbnail_resolver._decode_response_body(b"\xe9 plain", "latin-1") == "é plain"
+
+
 def test_resolve_thumbnail_rejects_an_unsafe_starting_url(monkeypatch):
     calls = []
     monkeypatch.setattr(requests, "get", lambda *a, **k: calls.append(1))
