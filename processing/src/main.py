@@ -110,7 +110,9 @@ def main() -> None:
         pipeline.resolve_authors()
         pipeline.cleanup_old_data()
         pipeline.purge_blocked_authors()
-        network_detector.record_clusters(network_detector.detect_clusters())
+        network_detector.record_clusters(
+            network_detector.detect_clusters() + network_detector.detect_bluesky_funnel_cluster()
+        )
         db.close()
         return
 
@@ -163,7 +165,9 @@ def main() -> None:
             last_author_resolve_time = now
 
         if now - last_network_detection_time >= args.network_detection_interval:
-            network_detector.record_clusters(network_detector.detect_clusters())
+            network_detector.record_clusters(
+                network_detector.detect_clusters() + network_detector.detect_bluesky_funnel_cluster()
+            )
             last_network_detection_time = now
 
         pipeline.cleanup_old_data()

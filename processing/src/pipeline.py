@@ -92,7 +92,7 @@ def run_cycle(batch_size: int) -> int:
         ):
             db.delete_raw_post(post.id)
             logger.info(
-                "content-filtered post %s (hashtag/self-label/spoiler-text/domain/sensitive-media/home-instance)",
+                "content-filtered post %s (hashtag/bluesky-funnel/self-label/spoiler-text/domain/sensitive-media/home-instance)",
                 post.id,
             )
         elif (

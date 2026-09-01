@@ -198,9 +198,51 @@ def test_has_excluded_home_instance_is_defensive_about_malformed_shapes():
     assert content_filter.has_excluded_home_instance({"account": {"acct": None}}, INSTANCE_DOMAINS) is False
 
 
-def test_is_content_excluded_combines_all_six_checks():
+_FUNNEL = (
+    "not posting it twice, check my bio instead 🤫 "
+    "#egirl #curvymodel #inkedbabe #gothgirl #altstyle #bikini"
+)
+
+
+def test_has_bluesky_funnel_shape_matches_cta_plus_adult_tag_bag():
+    assert content_filter.has_bluesky_funnel_shape("bluesky", _FUNNEL, frozenset()) is True
+
+
+def test_has_bluesky_funnel_shape_requires_both_halves():
+    cta_only = "peek at my bio if you want the real thing 🔥 #art #photography #portrait #print #gallery #forsale"
+    tags_only = "new print drop today #egirl #curvymodel #inkedbabe #gothgirl #altstyle #bikini"
+    assert content_filter.has_bluesky_funnel_shape("bluesky", cta_only, frozenset()) is False
+    assert content_filter.has_bluesky_funnel_shape("bluesky", tags_only, frozenset()) is False
+
+
+def test_has_bluesky_funnel_shape_is_bluesky_only():
+    assert content_filter.has_bluesky_funnel_shape("mastodon", _FUNNEL, frozenset()) is False
+
+
+def test_has_bluesky_funnel_shape_counts_live_suppressed_terms_toward_the_bag():
+    # 3 base-vocab tags + 2 tags a moderator has just added to
+    # suppressed_terms -> reaches the default threshold of 5.
+    text = "link in bio 💌 #egirl #curvymodel #inkedbabe #rotato1 #rotato2"
+    assert content_filter.has_bluesky_funnel_shape("bluesky", text, frozenset()) is False
+    assert content_filter.has_bluesky_funnel_shape(
+        "bluesky", text, frozenset({"rotato1", "rotato2"})
+    ) is True
+
+
+def test_has_bluesky_funnel_shape_does_not_match_legit_link_in_bio():
+    # Real "link in bio" content that must survive: a CTA phrase without
+    # the adult tag bag.
+    musician = "new single out now, link in bio 🎸 #newmusic #indieband #vinyl #tour #synthpop #livemusic"
+    comic = "page 42 is up! link in bio for the full archive #webcomic #comics #art #inktober #indiecomics #ink"
+    mh = "you are not alone -- free confidential support, link in bio #mentalhealth #therapy #crisisline #support"
+    for t in (musician, comic, mh):
+        assert content_filter.has_bluesky_funnel_shape("bluesky", t, frozenset()) is False
+
+
+def test_is_content_excluded_combines_all_seven_checks():
     combined_domains = DOMAINS | INSTANCE_DOMAINS
     hashtag_only = ("mastodon", "free book #nsfw", {"commit": {"record": {}}})
+    bluesky_funnel_only = ("bluesky", _FUNNEL, {"commit": {"record": {}}})
     label_only = (
         "bluesky",
         "a totally normal post",
@@ -221,6 +263,7 @@ def test_is_content_excluded_combines_all_six_checks():
     neither = ("mastodon", "a totally normal post", {"commit": {"record": {}}})
 
     assert content_filter.is_content_excluded(*hashtag_only, TERMS, combined_domains) is True
+    assert content_filter.is_content_excluded(*bluesky_funnel_only, TERMS, combined_domains) is True
     assert content_filter.is_content_excluded(*label_only, TERMS, combined_domains) is True
     assert content_filter.is_content_excluded(*spoiler_only, TERMS, combined_domains) is True
     assert content_filter.is_content_excluded(*domain_only, TERMS, combined_domains) is True

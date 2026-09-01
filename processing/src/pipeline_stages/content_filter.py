@@ -1,7 +1,9 @@
+import os
 import re
 from urllib.parse import urlsplit
 
 import config
+from util import bluesky_funnel
 from util.url_extract import extract_raw_url
 
 # Bluesky's own global label values -- not moderator-curated like
@@ -11,6 +13,16 @@ from util.url_extract import extract_raw_url
 # resolved quote's labels. See the wiki's Bluesky Protocol and Pipeline
 # Internals pages.
 ADULT_LABEL_VALUES = config.BLUESKY_ADULT_LABEL_VALUES
+
+# How many adult/funnel hashtags (util/bluesky_funnel.py's vocabulary, or
+# the live suppressed_terms table) a Bluesky post must carry ALONGSIDE a
+# funnel call-to-action phrase for has_bluesky_funnel_shape to hard-exclude
+# it. Validated against a 24h production sample (zero false positives at
+# 4-6) -- the same "confirm high-precision, then hard-exclude" bar as
+# has_excluded_sensitive_media. The account-cluster flag in
+# infra/network_detector.py runs a deliberately looser threshold; see its
+# comment for why.
+FUNNEL_MIN_ADULT_HASHTAGS = int(os.environ.get("CONTENT_FILTER_FUNNEL_MIN_ADULT_HASHTAGS", "5"))
 
 _HASHTAG_RE = re.compile(r"#(\w+)")
 
@@ -98,6 +110,27 @@ def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domai
     return matches_domain_list(netloc, suppressed_domains)
 
 
+def has_bluesky_funnel_shape(source: str, text: str, suppressed_terms: frozenset[str]) -> bool:
+    """Bluesky-only: a coordinated OnlyFans/"funnel" post -- a funnel
+    call-to-action phrase in the caption ("...in my bio", "one tap away",
+    ...) AND at least FUNNEL_MIN_ADULT_HASHTAGS hashtags drawn from
+    util/bluesky_funnel.py's adult/funnel vocabulary or the live
+    suppressed_terms table. Neither half alone is safe to hard-exclude on:
+    the CTA phrase is heavily used by musicians / comic creators / support
+    services, and the individual hashtags are ordinary goth / cosplay /
+    fitness vocabulary -- but the conjunction had zero false positives
+    across a 24h production sample. Mastodon rows never match (source
+    guard). suppressed_terms is already threaded through
+    is_content_excluded, so this needs no new argument. See the wiki's
+    Content Filtering page, and infra/network_detector.py for the
+    account-level flag that shares this same vocabulary."""
+    if source != "bluesky":
+        return False
+    if not bluesky_funnel.has_funnel_cta(text):
+        return False
+    return bluesky_funnel.count_adult_funnel_hashtags(text, suppressed_terms) >= FUNNEL_MIN_ADULT_HASHTAGS
+
+
 def has_excluded_home_instance(raw_json: dict, suppressed_domains: frozenset[str]) -> bool:
     """Mastodon-only: excludes every post from an account whose own home
     instance is a listed domain -- distinct from has_excluded_domain
@@ -126,6 +159,7 @@ def is_content_excluded(
 ) -> bool:
     return (
         has_excluded_hashtag(text, suppressed_terms)
+        or has_bluesky_funnel_shape(source, text, suppressed_terms)
         or has_excluded_self_label(raw_json)
         or has_excluded_spoiler_text(raw_json, suppressed_terms)
         or has_excluded_domain(source, raw_json, text, suppressed_domains)
