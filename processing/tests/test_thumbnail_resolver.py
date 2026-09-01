@@ -1,4 +1,5 @@
 import requests
+import urllib3
 
 from pipeline_stages import thumbnail_resolver
 
@@ -45,12 +46,20 @@ class FakeRaw:
         return self._body
 
 
+class RaisingRaw:
+    def __init__(self, exc: BaseException):
+        self._exc = exc
+
+    def read(self, size, decode_content=True):
+        raise self._exc
+
+
 class FakeResponse:
-    def __init__(self, status_code=200, body=b"", headers=None, encoding="utf-8"):
+    def __init__(self, status_code=200, body=b"", headers=None, encoding="utf-8", raw=None):
         self.status_code = status_code
         self.headers = headers or {}
         self.encoding = encoding
-        self.raw = FakeRaw(body)
+        self.raw = raw if raw is not None else FakeRaw(body)
 
     @property
     def is_redirect(self):
@@ -120,6 +129,33 @@ def test_resolve_thumbnail_returns_none_on_non_200(monkeypatch):
 def test_resolve_thumbnail_returns_none_on_network_failure(monkeypatch):
     def raise_error(*a, **k):
         raise requests.ConnectionError("network unreachable")
+
+    monkeypatch.setattr(requests, "get", raise_error)
+
+    assert thumbnail_resolver.resolve_thumbnail("https://8.8.8.8/article") is None  # must not raise
+
+
+# response.raw.read() bypasses requests' exception translation, so a mid-body
+# read timeout escapes as a raw urllib3 / socket error, not a
+# requests.RequestException -- resolve_thumbnail must swallow those too (#155).
+def test_resolve_thumbnail_returns_none_on_urllib3_read_timeout(monkeypatch):
+    exc = urllib3.exceptions.ReadTimeoutError(None, "https://8.8.8.8/article", "Read timed out.")
+    monkeypatch.setattr(requests, "get", lambda *a, **k: FakeResponse(raw=RaisingRaw(exc)))
+
+    assert thumbnail_resolver.resolve_thumbnail("https://8.8.8.8/article") is None  # must not raise
+
+
+def test_resolve_thumbnail_returns_none_on_bare_socket_timeout(monkeypatch):
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **k: FakeResponse(raw=RaisingRaw(TimeoutError("The read operation timed out")))
+    )
+
+    assert thumbnail_resolver.resolve_thumbnail("https://8.8.8.8/article") is None  # must not raise
+
+
+def test_resolve_thumbnail_returns_none_on_bare_oserror_from_get(monkeypatch):
+    def raise_error(*a, **k):
+        raise OSError("connection reset by peer")
 
     monkeypatch.setattr(requests, "get", raise_error)
 
