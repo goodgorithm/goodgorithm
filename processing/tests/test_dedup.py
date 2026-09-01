@@ -24,12 +24,17 @@ class InMemoryDedupIndex:
         self.signatures: dict[str, dedup.MinHash] = {}
         self.clusters: dict[str, str] = {}
 
-    def find_candidates(self, hashes: list[str], url_hash: str | None) -> tuple[set[str], set[str]]:
-        lsh_result: set[str] = set()
-        for h in hashes:
-            lsh_result |= self.bands.get(h, set())
-        url_result = set(self.url_index.get(url_hash, set())) if url_hash else set()
-        return lsh_result, url_result
+    def find_candidates_batch(
+        self, queries: list[tuple[list[str], str | None]]
+    ) -> list[tuple[set[str], set[str]]]:
+        out: list[tuple[set[str], set[str]]] = []
+        for hashes, url_hash in queries:
+            lsh_result: set[str] = set()
+            for h in hashes:
+                lsh_result |= self.bands.get(h, set())
+            url_result = set(self.url_index.get(url_hash, set())) if url_hash else set()
+            out.append((lsh_result, url_result))
+        return out
 
     def get_signatures(self, post_ids: set[str]) -> dict[str, dedup.MinHash | None]:
         return {post_id: self.signatures.get(post_id) for post_id in post_ids}
@@ -37,20 +42,16 @@ class InMemoryDedupIndex:
     def get_clusters(self, post_ids: list[str]) -> dict[str, str | None]:
         return {post_id: self.clusters.get(post_id) for post_id in post_ids}
 
-    def record(
-        self,
-        post_id: str,
-        mh: dedup.MinHash,
-        hashes: list[str],
-        cluster_id: str,
-        url_hash: str | None,
+    def record_batch(
+        self, entries: list[tuple[str, dedup.MinHash, list[str], str, str | None]]
     ) -> None:
-        for h in hashes:
-            self.bands.setdefault(h, set()).add(post_id)
-        if url_hash is not None:
-            self.url_index.setdefault(url_hash, set()).add(post_id)
-        self.signatures[post_id] = mh
-        self.clusters[post_id] = cluster_id
+        for post_id, mh, hashes, cluster_id, url_hash in entries:
+            for h in hashes:
+                self.bands.setdefault(h, set()).add(post_id)
+            if url_hash is not None:
+                self.url_index.setdefault(url_hash, set()).add(post_id)
+            self.signatures[post_id] = mh
+            self.clusters[post_id] = cluster_id
 
 
 def test_normalize_text_strips_urls_and_mentions():
@@ -285,6 +286,66 @@ def test_url_matched_posts_with_dissimilar_commentary_stay_separate():
     assert results[posts[1].id].is_canonical is True
 
 
+def test_transitive_near_duplicates_in_one_batch_share_a_cluster():
+    # A -> A' (near-dup of A) -> A'' (near-dup of A'): all one cluster, only
+    # the first canonical. Exercises the in-memory cluster overlay carrying
+    # an assignment forward across more than two posts in a single batch.
+    index = InMemoryDedupIndex()
+    base = "Volunteers planted three hundred oak saplings along the river trail this morning"
+    posts = [
+        FakePost(id=uuid4(), text=base),
+        FakePost(id=uuid4(), text=base + " , organisers said"),
+        FakePost(id=uuid4(), text=base + " , organisers said !! 🌳"),
+    ]
+    results = dedup.dedup_posts(posts, index)
+
+    clusters = {results[p.id].cluster_id for p in posts}
+    assert len(clusters) == 1
+    assert [results[p.id].is_canonical for p in posts] == [True, False, False]
+
+
+def test_dedup_posts_batches_redis_calls_regardless_of_post_count():
+    # The optimisation's contract: Redis is touched a small fixed number of
+    # times for the whole batch, not once per post.
+    class CountingIndex(InMemoryDedupIndex):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls: dict[str, int] = {
+                "find_candidates_batch": 0,
+                "get_signatures": 0,
+                "get_clusters": 0,
+                "record_batch": 0,
+            }
+
+        def find_candidates_batch(self, queries):
+            self.calls["find_candidates_batch"] += 1
+            return super().find_candidates_batch(queries)
+
+        def get_signatures(self, post_ids):
+            self.calls["get_signatures"] += 1
+            return super().get_signatures(post_ids)
+
+        def get_clusters(self, post_ids):
+            self.calls["get_clusters"] += 1
+            return super().get_clusters(post_ids)
+
+        def record_batch(self, entries):
+            self.calls["record_batch"] += 1
+            return super().record_batch(entries)
+
+    index = CountingIndex()
+    posts = [
+        FakePost(id=uuid4(), text=f"Distinct headline number {i} about a local community event")
+        for i in range(12)
+    ]
+    dedup.dedup_posts(posts, index)
+
+    assert index.calls["find_candidates_batch"] == 1
+    assert index.calls["record_batch"] == 1
+    assert index.calls["get_signatures"] <= 1
+    assert index.calls["get_clusters"] <= 1
+
+
 def test_distinct_posts_get_different_clusters():
     index = InMemoryDedupIndex()
     posts = [
@@ -305,7 +366,24 @@ def test_distinct_posts_get_different_clusters():
 
 
 class RaisingPipeline:
+    """Queues like a real pipeline; the failure surfaces from .exec()."""
+
     def execute(self, command):
+        return self
+
+    def get(self, *args, **kwargs):
+        return self
+
+    def set(self, *args, **kwargs):
+        return self
+
+    def sadd(self, *args, **kwargs):
+        return self
+
+    def smembers(self, *args, **kwargs):
+        return self
+
+    def expire(self, *args, **kwargs):
         return self
 
     def exec(self):
@@ -317,16 +395,15 @@ class RaisingClient:
         return RaisingPipeline()
 
 
-def test_redis_dedup_index_degrades_on_find_candidates_failure(monkeypatch):
+def test_redis_dedup_index_degrades_on_find_candidates_batch_failure(monkeypatch):
     from infra import degradation, redis_client
 
     monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
     index = dedup.RedisDedupIndex()
 
-    lsh_candidates, url_candidates = index.find_candidates(["0:abc"], "urlhash")
+    result = index.find_candidates_batch([(["0:abc"], "urlhash"), (["1:def"], None)])
 
-    assert lsh_candidates == set()
-    assert url_candidates == set()
+    assert result == [(set(), set()), (set(), set())]
     assert "dedup" in degradation.snapshot()
 
 
@@ -350,13 +427,13 @@ def test_redis_dedup_index_degrades_on_get_clusters_failure(monkeypatch):
     assert "dedup" in degradation.snapshot()
 
 
-def test_redis_dedup_index_degrades_on_record_failure(monkeypatch):
+def test_redis_dedup_index_degrades_on_record_batch_failure(monkeypatch):
     from infra import degradation, redis_client
 
     monkeypatch.setattr(redis_client, "get_client", lambda: RaisingClient())
     index = dedup.RedisDedupIndex()
     mh = dedup.compute_minhash("some post text")
 
-    index.record("post-id", mh, ["0:abc"], "cluster-id", None)  # must not raise
+    index.record_batch([("post-id", mh, ["0:abc"], "cluster-id", None)])  # must not raise
 
     assert "dedup" in degradation.snapshot()

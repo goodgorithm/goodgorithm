@@ -132,11 +132,13 @@ def deserialize_minhash(data: str) -> MinHash | None:
 
 
 class DedupIndex(Protocol):
-    def find_candidates(self, hashes: list[str], url_hash: str | None) -> tuple[set[str], set[str]]: ...
+    def find_candidates_batch(
+        self, queries: list[tuple[list[str], str | None]]
+    ) -> list[tuple[set[str], set[str]]]: ...
     def get_signatures(self, post_ids: set[str]) -> dict[str, MinHash | None]: ...
     def get_clusters(self, post_ids: list[str]) -> dict[str, str | None]: ...
-    def record(
-        self, post_id: str, mh: MinHash, hashes: list[str], cluster_id: str, url_hash: str | None
+    def record_batch(
+        self, entries: list[tuple[str, MinHash, list[str], str, str | None]]
     ) -> None: ...
 
 
@@ -148,39 +150,50 @@ class RedisDedupIndex:
     def __init__(self) -> None:
         self.client = redis_client.get_client()
 
-    def find_candidates(self, hashes: list[str], url_hash: str | None) -> tuple[set[str], set[str]]:
-        # Band lookups and the URL lookup are pipelined together into one
-        # round trip, not two separate ones -- same discipline as batching
-        # the band lookups themselves below.
+    def find_candidates_batch(
+        self, queries: list[tuple[list[str], str | None]]
+    ) -> list[tuple[set[str], set[str]]]:
+        """Every post's band lookups and URL lookup for the whole batch,
+        pipelined into one round trip. Result i is (lsh_candidates,
+        url_candidates) for queries[i].
+
+        Degrades to "no candidates found" for every entry -- each post then
+        looks canonical/unique against prior cycles for the outage's
+        duration, so real cross-cycle duplicates flood through unfiltered
+        (posts can still dedup against each other within this batch, in
+        memory). A real cost, not a free degrade, but the alternative is a
+        total processing outage -- nothing scored at all. Self-resolving
+        once Redis recovers. See the wiki's Pipeline Internals page."""
+        if not queries:
+            return []
         try:
             pipe = self.client.pipeline()
-            for h in hashes:
-                pipe.smembers(f"lsh:band:{h}")
-            if url_hash is not None:
-                pipe.smembers(f"dedup:url:{url_hash}")
+            for hashes, url_hash in queries:
+                for h in hashes:
+                    pipe.smembers(f"lsh:band:{h}")
+                if url_hash is not None:
+                    pipe.smembers(f"dedup:url:{url_hash}")
             results = pipe.exec()
         except Exception as exc:
-            # Degrades to "no candidates found" -- every post in the batch
-            # looks canonical/unique for the outage's duration, so real
-            # duplicates flood through unfiltered. A real cost, not a free
-            # degrade, but the alternative (today's behavior) is a total
-            # processing outage instead -- nothing gets scored at all,
-            # including the genuinely unique content that would be fine.
-            # Self-resolving once Redis recovers. See the wiki's Pipeline
-            # Internals page.
             degradation.record("dedup", str(exc))
-            return set(), set()
+            return [(set(), set()) for _ in queries]
 
         degradation.clear("dedup")
-        lsh_candidates: set[str] = set()
-        for members in results[: len(hashes)]:
-            lsh_candidates.update(members or [])
+        out: list[tuple[set[str], set[str]]] = []
+        offset = 0
+        for hashes, url_hash in queries:
+            lsh_candidates: set[str] = set()
+            for members in results[offset : offset + len(hashes)]:
+                lsh_candidates.update(members or [])
+            offset += len(hashes)
 
-        url_candidates: set[str] = set()
-        if url_hash is not None:
-            url_candidates.update(results[len(hashes)] or [])
+            url_candidates: set[str] = set()
+            if url_hash is not None:
+                url_candidates.update(results[offset] or [])
+                offset += 1
 
-        return lsh_candidates, url_candidates
+            out.append((lsh_candidates, url_candidates))
+        return out
 
     def get_signatures(self, post_ids: set[str]) -> dict[str, MinHash | None]:
         if not post_ids:
@@ -192,9 +205,9 @@ class RedisDedupIndex:
                 pipe.get(f"mh:{post_id}")
             results = pipe.exec()
         except Exception as exc:
-            # Same degrade shape as find_candidates -- an empty result here
-            # means no candidate is ever confirmed a match, same end effect
-            # as returning None for every id.
+            # Same degrade shape as find_candidates_batch -- an empty result
+            # here means no candidate is ever confirmed a match, same end
+            # effect as returning None for every id.
             degradation.record("dedup", str(exc))
             return {}
 
@@ -219,31 +232,40 @@ class RedisDedupIndex:
         degradation.clear("dedup")
         return dict(zip(post_ids, results))
 
-    def record(
-        self, post_id: str, mh: MinHash, hashes: list[str], cluster_id: str, url_hash: str | None
+    def record_batch(
+        self, entries: list[tuple[str, MinHash, list[str], str, str | None]]
     ) -> None:
+        """Writes the whole batch's LSH/URL band membership, MinHash
+        signatures and cluster assignments in one round trip. Each entry is
+        (post_id, mh, band_hashes, cluster_id, url_hash).
+
+        Distinct from the read-path degrade above: a failure here leaves
+        every post in the batch invisible to future dedup lookups too, not
+        just unmatched against past ones -- it compounds forward for as long
+        as the outage lasts."""
+        if not entries:
+            return
         try:
             pipe = self.client.pipeline()
-            for h in hashes:
-                key = f"lsh:band:{h}"
-                pipe.sadd(key, post_id)
-                # nx=True: only the band's first member sets the TTL -- see
-                # the wiki's Deduplication page for why a rolling TTL here
-                # is unsafe.
-                pipe.expire(key, DEDUP_BAND_TTL_SECONDS, nx=True)
-            if url_hash is not None:
-                url_key = f"dedup:url:{url_hash}"
-                pipe.sadd(url_key, post_id)
-                pipe.expire(url_key, DEDUP_BAND_TTL_SECONDS, nx=True)
-            pipe.set(f"mh:{post_id}", serialize_minhash(mh), ex=DEDUP_BAND_TTL_SECONDS)
-            pipe.set(f"dedup:cluster:{post_id}", cluster_id, ex=DEDUP_BAND_TTL_SECONDS)
+            for post_id, mh, hashes, cluster_id, url_hash in entries:
+                for h in hashes:
+                    key = f"lsh:band:{h}"
+                    pipe.sadd(key, post_id)
+                    # nx=True: only the band's first member sets the TTL -- see
+                    # the wiki's Deduplication page for why a rolling TTL here
+                    # is unsafe.
+                    pipe.expire(key, DEDUP_BAND_TTL_SECONDS, nx=True)
+                if url_hash is not None:
+                    url_key = f"dedup:url:{url_hash}"
+                    pipe.sadd(url_key, post_id)
+                    pipe.expire(url_key, DEDUP_BAND_TTL_SECONDS, nx=True)
+                pipe.set(f"mh:{post_id}", serialize_minhash(mh), ex=DEDUP_BAND_TTL_SECONDS)
+                pipe.set(f"dedup:cluster:{post_id}", cluster_id, ex=DEDUP_BAND_TTL_SECONDS)
             pipe.exec()
         except Exception as exc:
-            # Distinct from the read-path degrades above: a failure here
-            # means *this* post becomes invisible to future dedup lookups
-            # too, not just unmatched against past ones -- it compounds
-            # forward for as long as the outage lasts.
-            degradation.record("dedup", f"record() failed, post now unmatchable: {exc}")
+            degradation.record(
+                "dedup", f"record_batch() failed, {len(entries)} posts now unmatchable: {exc}"
+            )
             return
 
         degradation.clear("dedup")
@@ -271,35 +293,105 @@ def dedup_posts(
     same link with a different hashtag set or attribution tail, which fall
     well short of jaccard_threshold on text alone. A candidate
     reachable both ways gets the lower threshold, since the URL match is
-    itself corroborating evidence. Mutates `index` as it goes, so posts
-    within the same batch can match each other, not just posts from prior
-    cycles. See the wiki's Deduplication page."""
-    results: dict[UUID, DedupResult] = {}
+    itself corroborating evidence.
 
+    Redis is touched four times for the whole batch -- prior-cycle candidate
+    lookup, signature fetch, cluster fetch, write-back -- not once per post.
+    A post can still match an earlier post in the *same* batch: the two
+    in-order passes below each carry an in-memory overlay (`local_*`) of what
+    earlier posts in the batch contributed, checked alongside the prefetched
+    prior-cycle state. See the wiki's Deduplication page."""
+    results: dict[UUID, DedupResult] = {}
+    if not posts:
+        return results
+
+    # Phase 1 (pure CPU): MinHash signature, LSH band hashes, source-URL hash
+    # for every post.
+    prepared: list[tuple] = []
     for post in posts:
         mh = compute_minhash(post.text)
         hashes = band_hashes(mh)
         url = extract_dedup_url(post)
         url_hash = hashlib.sha1(url.encode("utf8")).hexdigest() if url else None
+        prepared.append((post, mh, hashes, url_hash))
 
-        lsh_candidate_ids, url_candidate_ids = index.find_candidates(hashes, url_hash)
-        candidate_ids = (lsh_candidate_ids | url_candidate_ids) - {str(post.id)}
-        candidate_signatures = index.get_signatures(candidate_ids)
+    batch_ids = {str(post.id) for post, _, _, _ in prepared}
 
-        # Cluster lookups for every Jaccard-matching candidate are batched
-        # into one round trip, not fetched one at a time as each match is
-        # found -- the LSH/Jaccard steps above only narrow candidates down,
-        # they don't rank them, so there's no ordering benefit to checking
-        # clusters one by one.
-        matching_ids = [
-            candidate_id
-            for candidate_id, candidate_mh in candidate_signatures.items()
-            if candidate_mh is not None
-            and mh.jaccard(candidate_mh)
-            >= (url_jaccard_threshold if candidate_id in url_candidate_ids else jaccard_threshold)
-        ]
-        clusters = index.get_clusters(matching_ids)
-        matched_cluster = next((clusters[cid] for cid in matching_ids if clusters.get(cid)), None)
+    # Phase 2 (1 round trip): every post's prior-cycle LSH/URL candidates.
+    prior_candidates = index.find_candidates_batch(
+        [(hashes, url_hash) for _, _, hashes, url_hash in prepared]
+    )
+
+    # Phase 3 (1 round trip): MinHash signatures for the whole prior-cycle
+    # candidate union. Same-batch candidates live in `local_signatures` below.
+    signature_union: set[str] = set()
+    for lsh_ids, url_ids in prior_candidates:
+        signature_union |= lsh_ids | url_ids
+    signature_union -= batch_ids
+    prior_signatures = index.get_signatures(signature_union)
+
+    # Phase 4 (pure CPU, in post order): Jaccard-confirm each post's
+    # candidates against prior-cycle signatures and earlier posts in this
+    # batch; stash the confirmed matches for the cluster pass.
+    local_bands: dict[str, set[str]] = {}
+    local_url: dict[str, set[str]] = {}
+    local_signatures: dict[str, MinHash] = {}
+    per_post_matches: list[list[str]] = []
+
+    for (post, mh, hashes, url_hash), (lsh_prior, url_prior) in zip(prepared, prior_candidates):
+        pid = str(post.id)
+
+        url_ids = set(url_prior)
+        if url_hash is not None:
+            url_ids |= local_url.get(url_hash, set())
+
+        candidate_ids = set(lsh_prior) | url_ids
+        for h in hashes:
+            candidate_ids |= local_bands.get(h, set())
+        candidate_ids.discard(pid)
+
+        matching_ids: list[str] = []
+        for cid in candidate_ids:
+            cand_mh = local_signatures.get(cid)
+            if cand_mh is None:
+                cand_mh = prior_signatures.get(cid)
+            if cand_mh is None:
+                continue
+            threshold = url_jaccard_threshold if cid in url_ids else jaccard_threshold
+            if mh.jaccard(cand_mh) >= threshold:
+                matching_ids.append(cid)
+        per_post_matches.append(matching_ids)
+
+        for h in hashes:
+            local_bands.setdefault(h, set()).add(pid)
+        if url_hash is not None:
+            local_url.setdefault(url_hash, set()).add(pid)
+        local_signatures[pid] = mh
+
+    # Phase 5 (1 round trip): cluster ids for every prior-cycle post that
+    # matched something. Same-batch matches resolve from `local_clusters`.
+    cluster_union = {
+        cid for matches in per_post_matches for cid in matches if cid not in batch_ids
+    }
+    prior_clusters = index.get_clusters(list(cluster_union))
+
+    # Phase 6 (pure CPU, in post order): assign each post its cluster,
+    # carrying this batch's own assignments forward so a later duplicate
+    # joins the cluster an earlier post in the batch just created.
+    local_clusters: dict[str, str] = {}
+    to_record: list[tuple[str, MinHash, list[str], str, str | None]] = []
+
+    for (post, mh, hashes, url_hash), matching_ids in zip(prepared, per_post_matches):
+        pid = str(post.id)
+
+        matched_cluster: str | None = None
+        for cid in matching_ids:
+            c = local_clusters.get(cid)
+            if c is None:
+                c = prior_clusters.get(cid)
+            if c:
+                matched_cluster = c
+                break
 
         if matched_cluster:
             cluster_id = UUID(matched_cluster)
@@ -308,7 +400,12 @@ def dedup_posts(
             cluster_id = uuid4()
             is_canonical = True
 
-        index.record(str(post.id), mh, hashes, str(cluster_id), url_hash)
+        local_clusters[pid] = str(cluster_id)
+        to_record.append((pid, mh, hashes, str(cluster_id), url_hash))
         results[post.id] = DedupResult(cluster_id=cluster_id, is_canonical=is_canonical)
+
+    # Phase 7 (1 round trip): write the whole batch's band membership,
+    # signatures and cluster assignments.
+    index.record_batch(to_record)
 
     return results
