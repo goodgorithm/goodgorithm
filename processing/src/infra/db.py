@@ -565,6 +565,89 @@ def fetch_cluster_candidates(
     return [ClusterCandidate(*row) for row in rows]
 
 
+@dataclass
+class BlueskyFunnelCluster:
+    dids: list[str]
+    post_count: int
+    earliest_created_at: datetime
+    latest_created_at: datetime
+    sample_captions: list[str]
+
+
+def fetch_bluesky_funnel_cluster(
+    window_hours: int,
+    min_adult_hashtags: int,
+    min_dids: int,
+    cta_pattern: str,
+    adult_vocab: list[str],
+) -> BlueskyFunnelCluster | None:
+    """Bluesky analogue of fetch_cluster_candidates -- an aggregate over
+    raw_posts source='bluesky' within a created_at window. Bluesky has no
+    home instance to cluster on, so the unit is "every DID that posted the
+    coordinated funnel shape in the window": a caption (hashtags stripped)
+    matching cta_pattern AND at least min_adult_hashtags distinct hashtags
+    that are in adult_vocab OR the live suppressed_terms table -- so a
+    moderator topping up suppressed_terms per doc/MODERATION.md
+    strengthens this detector too. Both regex arguments come from
+    util/bluesky_funnel.py, threaded through infra/network_detector.py, so
+    this file needs no import from there.
+
+    Returns None (no cluster) when fewer than min_dids distinct DIDs match.
+    raw_posts has no account-creation timestamp for Bluesky, so
+    earliest/latest_created_at are the matched posts' created_at range --
+    the honest fill for the caller's NOT NULL earliest/
+    latest_account_created_at columns. Retention keeps raw_posts to 24h,
+    so any window_hours > 24 is effectively 24."""
+    with pool.connection() as conn:
+        row = conn.execute(
+            """
+            WITH bsky AS (
+                SELECT
+                    r.id,
+                    r.author_id AS did,
+                    r.text,
+                    r.created_at,
+                    btrim(regexp_replace(r.text, '#[[:alnum:]_]+', '', 'g')) AS caption
+                FROM raw_posts r
+                WHERE r.source = 'bluesky'
+                  AND r.created_at >= NOW() - make_interval(hours => %s)
+            ),
+            adult_vocab AS (
+                SELECT lower(t) AS term FROM unnest(%s::text[]) AS t
+                UNION
+                SELECT lower(term) AS term FROM suppressed_terms
+            ),
+            funnel_posts AS (
+                SELECT b.did, b.created_at, b.caption
+                FROM bsky b
+                CROSS JOIN LATERAL regexp_matches(b.text, '#([[:alnum:]_]+)', 'g') AS m(match)
+                JOIN adult_vocab av ON av.term = lower(m.match[1])
+                WHERE b.caption ~* %s
+                GROUP BY b.id, b.did, b.created_at, b.caption
+                HAVING count(DISTINCT lower(m.match[1])) >= %s
+            )
+            SELECT
+                array_agg(DISTINCT did)                       AS dids,
+                count(*)                                      AS post_count,
+                min(created_at)                               AS earliest_created_at,
+                max(created_at)                               AS latest_created_at,
+                (array_agg(DISTINCT left(caption, 120)))[1:5] AS sample_captions
+            FROM funnel_posts
+            HAVING count(DISTINCT did) >= %s
+            """,
+            (window_hours, adult_vocab, cta_pattern, min_adult_hashtags, min_dids),
+        ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return BlueskyFunnelCluster(
+        dids=list(row[0]),
+        post_count=row[1],
+        earliest_created_at=row[2],
+        latest_created_at=row[3],
+        sample_captions=list(row[4] or []),
+    )
+
+
 def upsert_flagged_clusters(candidates: list[ClusterCandidate]) -> None:
     """Refreshes flagged_author_clusters from the latest detect_clusters()
     pass. ON CONFLICT deliberately never touches dismissed_at -- a

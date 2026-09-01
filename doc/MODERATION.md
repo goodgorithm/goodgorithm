@@ -232,6 +232,68 @@ ordinary content, leave the tag out.
 `suppressed_terms` has no retroactive sweep — after adding, purge the network's
 already-scored posts with the preview/DELETE query in "Purging content already in the DB".
 
+## Recurring: Bluesky funnel-network cluster review (#162)
+
+`processing/` hard-excludes a Bluesky funnel post per-post (a funnel call-to-action
+phrase — "…in my bio", "one tap away" — plus a bag of adult/funnel hashtags), and
+`network_detector` separately writes the **DIDs** of accounts posting that shape into
+`flagged_author_clusters` so the whole accounts can be blocked wholesale — taking out
+their non-funnel posts too and pre-empting the next caption/tag rotation. It **never
+auto-blocks**. Check whenever the processing log shows a `bluesky funnel cluster: N DID(s)`
+line, or on the same ~monthly cadence as the review above.
+
+The cluster is stored as one row keyed `home_domain = 'bluesky:funnel-network'` (Bluesky
+has no home instance; there is one known network — a second would get a second synthetic
+key):
+
+```sql
+SELECT author_ids, account_count, post_count,
+       earliest_account_created_at, latest_account_created_at, updated_at, dismissed_at
+FROM flagged_author_clusters
+WHERE home_domain = 'bluesky:funnel-network';
+```
+
+For this row only, `author_ids` is a list of bare **DIDs**, and
+`earliest_/latest_account_created_at` hold the matched posts' `created_at` range (Bluesky
+has no account-creation timestamp, and those columns are `NOT NULL`). Spot-check before
+blocking:
+
+```sql
+SELECT author_id, created_at, left(text, 200) AS text
+FROM raw_posts
+WHERE source = 'bluesky' AND author_id = ANY (
+  SELECT unnest(author_ids) FROM flagged_author_clusters
+  WHERE home_domain = 'bluesky:funnel-network')
+ORDER BY author_id, created_at DESC;
+```
+
+Confirm the coordination — shared verbatim captions across distinct DIDs ("not posting it
+twice, check my bio instead 🤫"), near-identical adult tag bags, a bio call-to-action. If
+it checks out, bulk-block — one `blocked_authors` row per DID (a Bluesky `author_id` is a
+bare DID; no 8-instance `unnest` like Mastodon):
+
+```sql
+INSERT INTO blocked_authors (source, author_id, reason)
+SELECT 'bluesky', s.did,
+       'Manual moderation: coordinated funnel network (funnel CTA + adult tag bag), <YYYY-MM-DD>'
+FROM (
+  SELECT unnest(author_ids) AS did FROM flagged_author_clusters
+  WHERE home_domain = 'bluesky:funnel-network'
+) s
+ON CONFLICT (source, author_id) DO NOTHING;
+```
+
+`purge_blocked_authors()` clears the blocked DIDs' already-ingested posts within one cycle
+— nothing to do manually. On the next detection pass the cluster falls below its DID floor
+and the row stops refreshing (it keeps its last non-empty counts, same as the Mastodon
+path). Once the block has landed, set `dismissed_at = NOW()` on the row to clear it from
+your review view.
+
+**Caveat:** there is one `bluesky:funnel-network` row for the whole signal, so
+`dismissed_at` on it silences **all** Bluesky funnel detection until cleared back to
+`NULL` — only set it after blocking, or if the detector itself is misfiring. To ignore an
+individual false-positive DID, just don't block that DID.
+
 ### Review log
 
 One row per review pass or moderation action. The **why** — what was sampled, what was
@@ -244,3 +306,4 @@ in this table.
 | 2026-08-31 | `channels.im` → `aggregator_instances` | #141 |
 | 2026-08-31 | `myxlogs.com` → `suppressed_domains`; `myxlogs@mastodon.social` → `blocked_authors` (all 8 polled instances); outbound-link-domain query added above | [#144 (comment)](https://github.com/goodgorithm/goodgorithm/issues/144#issuecomment-5474399794) |
 | 2026-09-01 | 19 adult/funnel hashtags → `suppressed_terms`; Bluesky funnel-hashtag review query added above | #156 |
+| 2026-09-01 | Bluesky funnel-network detector + per-post funnel-shape hard-exclude; cluster review section added above | #162 |
