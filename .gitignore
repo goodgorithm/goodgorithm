@@ -42,6 +42,10 @@ web/playwright-report/
 /data/
 /models/
 
+# cProfile output from processing/profiling/profile_pipeline.py
+processing/profiling/.profiles/
+*.prof
+
 # Supabase CLI local state (linked project ref, service version caches) -
 # machine/session-specific, not shared across checkouts
 supabase/.temp/
