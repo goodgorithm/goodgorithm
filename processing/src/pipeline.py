@@ -74,20 +74,17 @@ def run_cycle(batch_size: int) -> int:
     if not posts:
         return 0
 
-    # Four hard-exclude checks below, cheapest/most-likely-to-match first,
+    # Three hard-exclude checks below, cheapest/most-likely-to-match first,
     # so a post is never scored once it's excluded. See the wiki's Content
     # Policy page for the policy behind each, and Pipeline Internals for
     # why this specific order.
-    blocked, suppressed_terms, suppressed_domains, aggregator_instances = db.fetch_moderation_lists()
+    suppressed_terms, suppressed_domains, aggregator_instances = db.fetch_moderation_lists()
 
     context_classifications: dict = {}
 
     kept_posts = []
     for post in posts:
-        if (post.source, post.author_id) in blocked:
-            db.delete_raw_post(post.id)
-            logger.info("moderation-blocked post %s (author %s/%s)", post.id, post.source, post.author_id)
-        elif content_filter.is_content_excluded(
+        if content_filter.is_content_excluded(
             post.source, post.text, post.raw_json, suppressed_terms, suppressed_domains
         ):
             db.delete_raw_post(post.id)

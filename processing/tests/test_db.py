@@ -24,8 +24,7 @@ def _reset_moderation_cache(monkeypatch):
 def test_fetch_moderation_lists_caches_within_ttl(monkeypatch):
     _reset_moderation_cache(monkeypatch)
 
-    calls = {"blocked": 0, "terms": 0, "domains": 0, "aggregators": 0}
-    monkeypatch.setattr(db, "fetch_blocked_authors", lambda: calls.__setitem__("blocked", calls["blocked"] + 1) or {("bluesky", "did:x")})
+    calls = {"terms": 0, "domains": 0, "aggregators": 0}
     monkeypatch.setattr(db, "fetch_suppressed_terms", lambda: calls.__setitem__("terms", calls["terms"] + 1) or frozenset({"nsfw"}))
     monkeypatch.setattr(
         db, "fetch_suppressed_domains", lambda: calls.__setitem__("domains", calls["domains"] + 1) or frozenset({"example.com"})
@@ -39,12 +38,11 @@ def test_fetch_moderation_lists_caches_within_ttl(monkeypatch):
     second = db.fetch_moderation_lists()
 
     assert first == second == (
-        {("bluesky", "did:x")},
         frozenset({"nsfw"}),
         frozenset({"example.com"}),
         frozenset({"flipboard.com"}),
     )
-    assert calls == {"blocked": 1, "terms": 1, "domains": 1, "aggregators": 1}
+    assert calls == {"terms": 1, "domains": 1, "aggregators": 1}
 
 
 def test_fetch_moderation_lists_refetches_after_ttl_expires(monkeypatch):
@@ -52,12 +50,11 @@ def test_fetch_moderation_lists_refetches_after_ttl_expires(monkeypatch):
 
     calls = {"n": 0}
 
-    def fake_fetch_blocked():
+    def fake_fetch_terms():
         calls["n"] += 1
-        return set()
+        return frozenset()
 
-    monkeypatch.setattr(db, "fetch_blocked_authors", fake_fetch_blocked)
-    monkeypatch.setattr(db, "fetch_suppressed_terms", lambda: frozenset())
+    monkeypatch.setattr(db, "fetch_suppressed_terms", fake_fetch_terms)
     monkeypatch.setattr(db, "fetch_suppressed_domains", lambda: frozenset())
     monkeypatch.setattr(db, "fetch_aggregator_instances", lambda: frozenset())
 

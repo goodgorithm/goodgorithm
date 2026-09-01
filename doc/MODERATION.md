@@ -6,8 +6,12 @@ and the wiki's [Content Policy](https://github.com/goodgorithm/goodgorithm/wiki/
 page — this file is just the procedure.
 
 There is no admin UI. Edits are made by hand in the Supabase SQL editor, against **both**
-the production project **and** its `staging` branch. `processing/` reloads all four lists
-within `MODERATION_LISTS_REFRESH_SECONDS` (default 60s) — no deploy or restart needed.
+the production project **and** its `staging` branch. An edit to any of the four tables
+takes effect within `MODERATION_LISTS_REFRESH_SECONDS` (default 60s) — no deploy or restart
+needed. `suppressed_terms` / `suppressed_domains` / `aggregator_instances` are cached whole
+by `processing/`'s `fetch_moderation_lists()`; `blocked_authors` is read by `ingestion/`'s
+own same-window cache (to keep new posts out of `raw_posts`) and swept from already-ingested
+rows by `purge_blocked_authors()`.
 
 ## The tables
 

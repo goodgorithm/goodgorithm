@@ -75,11 +75,11 @@ def main() -> None:
         default=int(os.environ.get("MODERATION_RECHECK_INTERVAL_SECONDS", 10)),
     )
     # A cheap, well-indexed DB-only join (see the wiki's Pipeline Internals
-    # page) -- throttled anyway, since blocklist entries are rare and
-    # run_cycle()'s own per-post check already blocks all *future* posts
-    # from a newly-blocked author instantly. This only governs how quickly
-    # already-ingested backlog gets swept, where a short delay is a
-    # non-issue.
+    # page) -- throttled anyway, since blocklist entries are rare and this
+    # only governs how quickly a newly-blocked author's already-ingested
+    # backlog gets swept, where a short delay is a non-issue. Their *future*
+    # posts are already kept out of raw_posts by ingestion/'s own pre-insert
+    # skip (bounded by its MODERATION_LISTS_REFRESH_SECONDS cache).
     parser.add_argument(
         "--purge-blocked-authors-interval",
         type=int,
