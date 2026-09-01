@@ -389,21 +389,11 @@ def mark_authors_resolved(results: list[tuple[UUID, dict | None]]) -> None:
             )
 
 
-def fetch_blocked_authors() -> set[tuple[str, str]]:
-    """Whole table -- the moderation blocklist is small (manual entries +
-    Bluesky bot-label auto-inserts), cheaper than a per-post query. Called
-    through fetch_moderation_lists()'s cache below, not directly, from
-    run_cycle. See CLAUDE.md's Content moderation section."""
-    with pool.connection() as conn:
-        rows = conn.execute("SELECT source, author_id FROM blocked_authors").fetchall()
-    return {(row[0], row[1]) for row in rows}
-
-
 def fetch_suppressed_terms() -> frozenset[str]:
-    """Whole table -- same "cheaper than a per-post query, moderatable
-    without a service restart" pattern as fetch_blocked_authors. Called
-    through fetch_moderation_lists()'s cache below, not directly, from
-    run_cycle. See CLAUDE.md's Content moderation section."""
+    """Whole table -- the "cheaper than a per-post query, moderatable
+    without a service restart" pattern the other moderation-list reads
+    follow. Called through fetch_moderation_lists()'s cache below, not
+    directly, from run_cycle. See CLAUDE.md's Content moderation section."""
     with pool.connection() as conn:
         rows = conn.execute("SELECT term FROM suppressed_terms").fetchall()
     return frozenset(row[0] for row in rows)
@@ -430,31 +420,33 @@ def fetch_aggregator_instances() -> frozenset[str]:
 
 
 # How long fetch_moderation_lists()'s combined cache stays valid before the
-# next call re-queries all four tables. Optional; defaults apply if unset.
+# next call re-queries all three tables. Optional; defaults apply if unset.
 # See the wiki's Configuration page.
 MODERATION_LISTS_REFRESH_SECONDS = int(os.environ.get("MODERATION_LISTS_REFRESH_SECONDS", "60"))
 
-_moderation_lists_cache: (
-    tuple[set[tuple[str, str]], frozenset[str], frozenset[str], frozenset[str]] | None
-) = None
+_moderation_lists_cache: tuple[frozenset[str], frozenset[str], frozenset[str]] | None = None
 _moderation_lists_cached_at = 0.0
 
 
-def fetch_moderation_lists() -> tuple[set[tuple[str, str]], frozenset[str], frozenset[str], frozenset[str]]:
-    """Combines the four whole-table reads above into one cached result
-    (blocked authors, suppressed terms, suppressed domains, aggregator
-    instances), refreshed at most every MODERATION_LISTS_REFRESH_SECONDS
-    rather than on every call. run_cycle() calls this every processing
-    cycle, which under a real backlog can run every few seconds (bounded
-    only by PROCESSING_BACKLOG_BUFFER_SECONDS) -- re-querying four small,
+def fetch_moderation_lists() -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
+    """Combines the three whole-table reads above into one cached result
+    (suppressed terms, suppressed domains, aggregator instances), refreshed
+    at most every MODERATION_LISTS_REFRESH_SECONDS rather than on every
+    call. run_cycle() calls this every processing cycle, which under a real
+    backlog can run every few seconds (bounded only by
+    PROCESSING_BACKLOG_BUFFER_SECONDS) -- re-querying three small,
     rarely-changing tables that often is pure waste. A moderator's edit
     still takes effect within one cache window, not one redeploy, just not
-    necessarily on the very next cycle."""
+    necessarily on the very next cycle.
+
+    blocked_authors is not in here: it's enforced at ingestion time
+    (ingestion/ skips a match before writing raw_posts) and retroactively
+    by purge_blocked_authors()'s own DELETE, not as a per-post run_cycle
+    check."""
     global _moderation_lists_cache, _moderation_lists_cached_at
     now = time.monotonic()
     if _moderation_lists_cache is None or now - _moderation_lists_cached_at >= MODERATION_LISTS_REFRESH_SECONDS:
         _moderation_lists_cache = (
-            fetch_blocked_authors(),
             fetch_suppressed_terms(),
             fetch_suppressed_domains(),
             fetch_aggregator_instances(),
