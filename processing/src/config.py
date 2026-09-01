@@ -11,9 +11,10 @@ REDIS_URL = os.environ.get("REDIS_URL")
 # The self-hosted Redis/Valkey instance's own configured maxmemory for this
 # environment, and the fraction of it that triggers proactive cleanup -- see
 # redis_guard.py. Must track goodgorithm-redis's `--maxmemory` start-command
-# flag (3gb in both environments). Optional; defaults apply if unset. See the
-# wiki's Configuration page.
-REDIS_MAX_BYTES = int(os.environ.get("REDIS_MAX_BYTES", 3 * 1024 * 1024 * 1024))
+# flag (5gb in both environments; the container is 8GB and RDB persistence is
+# disabled with `--save ''`, so there's no fork/COW headroom to reserve).
+# Optional; defaults apply if unset. See the wiki's Configuration page.
+REDIS_MAX_BYTES = int(os.environ.get("REDIS_MAX_BYTES", 5 * 1024 * 1024 * 1024))
 if REDIS_MAX_BYTES <= 0:
     raise ValueError(f"REDIS_MAX_BYTES ({REDIS_MAX_BYTES}) must be greater than 0")
 # A soft limit meant to trigger before the real maxmemory wall should assume
