@@ -7,8 +7,17 @@ import socket
 from urllib.parse import urljoin, urlparse
 
 import requests
+import urllib3
 
 logger = logging.getLogger("processing")
+
+# response.raw.read() below bypasses requests' own exception translation,
+# so a slow or misbehaving third-party page surfaces bare urllib3 / socket
+# errors (ReadTimeoutError, ProtocolError, OSError/TimeoutError) rather
+# than requests.RequestException. This tuple must stay exhaustive across
+# both fetch call sites: resolve_thumbnail's "never raises" contract -- and
+# run_cycle not crashing on a flaky external host -- depend on it.
+_FETCH_EXCEPTIONS = (requests.RequestException, urllib3.exceptions.HTTPError, OSError)
 
 # Fills in a link-card thumbnail when the source platform didn't capture
 # one (a poster's Bluesky client with no OG-fetch of its own, or a
@@ -93,7 +102,7 @@ def _fetch_html(url: str, depth: int = 0) -> str | None:
             stream=True,
             allow_redirects=False,
         )
-    except requests.RequestException as err:
+    except _FETCH_EXCEPTIONS as err:
         logger.warning("thumbnail fetch failed for %s: %s", url, err)
         return None
 
@@ -110,7 +119,7 @@ def _fetch_html(url: str, depth: int = 0) -> str | None:
         try:
             raw = response.raw.read(THUMBNAIL_RESOLVER_MAX_RESPONSE_BYTES, decode_content=True)
             return raw.decode(response.encoding or "utf-8", errors="ignore")
-        except (requests.RequestException, UnicodeError) as err:
+        except (*_FETCH_EXCEPTIONS, UnicodeError) as err:
             logger.warning("thumbnail fetch failed reading body for %s: %s", url, err)
             return None
 

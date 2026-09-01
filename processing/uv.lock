@@ -333,6 +333,7 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "spacy" },
+    { name = "urllib3" },
     { name = "vadersentiment" },
 ]
 
@@ -358,6 +359,7 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.9.0" },
     { name = "scipy", specifier = ">=1.16.0" },
     { name = "spacy", specifier = ">=3.8.15" },
+    { name = "urllib3", specifier = ">=2.0.0" },
     { name = "vadersentiment", specifier = ">=3.3.2" },
 ]
 
