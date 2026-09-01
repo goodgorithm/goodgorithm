@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/check-incident-narration.js\" 2>/dev/null || true",
+            "statusMessage": "Checking for incident-narration in docs/comments"
+          }
+        ]
+      }
+    ]
+  }
+}
