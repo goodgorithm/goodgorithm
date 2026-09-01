@@ -183,6 +183,55 @@ Most of the top of that list is legitimate (news sites, `youtube.com`, `github.c
 for the ones that aren't. When one turns up, add it to `suppressed_domains` and purge with
 the preview/DELETE query above.
 
+## Recurring: rotating adult / funnel hashtags on Bluesky (#156)
+
+A cross-account OnlyFans/"funnel" pattern on Bluesky — image + short coy caption + a large
+bag of hashtags, an "…in my bio" / "one tap away" call to action — rotates its individual
+tags faster than any single `suppressed_terms` entry stays current, and its per-post shape
+(hashtag count, caption length) is indistinguishable from a legitimate art / photography
+tag-dump, so it can't be caught by scoring. `suppressed_terms` is the tool; it needs
+periodic topping-up. Run this ~monthly: it lists hashtags co-occurring on Bluesky posts
+that already carry a known adult self-tag or a funnel caption, minus the ones already
+listed.
+
+```sql
+WITH bsky AS (
+  SELECT r.id, r.text
+  FROM raw_posts r
+  WHERE r.source = 'bluesky'
+    AND r.ingested_at > '<last review date>'   -- omit for a full snapshot (last 24h)
+),
+post_tags AS (
+  SELECT b.id, lower((regexp_matches(b.text, '#([[:alnum:]_]+)', 'g'))[1]) AS tag
+  FROM bsky b
+),
+funnel_posts AS (
+  SELECT DISTINCT pt.id FROM post_tags pt JOIN suppressed_terms s ON s.term = pt.tag
+  UNION
+  SELECT b.id FROM bsky b WHERE lower(b.text) ~ '(in my bio|one tap away|link in bio)'
+)
+SELECT pt.tag, count(DISTINCT pt.id) AS posts
+FROM post_tags pt
+JOIN funnel_posts fp ON fp.id = pt.id
+LEFT JOIN suppressed_terms s ON s.term = pt.tag
+WHERE s.term IS NULL
+GROUP BY pt.tag
+HAVING count(DISTINCT pt.id) >= 5
+ORDER BY posts DESC;
+```
+
+The same precision bar as the table itself: **add only the unambiguous adult / funnel
+self-tags** (`egirl`, `curvymodel`, `inkedbabe`, `temptress`, …). The list also surfaces
+generic subculture vocabulary the network borrows — `goth`, `gothgirl`, `cosplay`,
+`cosplaygirl`, `tattoo`, `tattoolover`, `bikini`, `gym`, `curvy`, `petite`, `altstyle` —
+which legitimate goth / cosplay / tattoo / fitness / body-positive accounts also use.
+**Do not add those.** When in doubt, check the tag in isolation: pull recent posts
+carrying it whose other tags and caption *don't* match the funnel shape; if any are
+ordinary content, leave the tag out.
+
+`suppressed_terms` has no retroactive sweep — after adding, purge the network's
+already-scored posts with the preview/DELETE query in "Purging content already in the DB".
+
 ### Review log
 
 One row per review pass or moderation action. The **why** — what was sampled, what was
@@ -194,3 +243,4 @@ in this table.
 | 2026-08-30 | `yiff.life` → `suppressed_domains` | #139 |
 | 2026-08-31 | `channels.im` → `aggregator_instances` | #141 |
 | 2026-08-31 | `myxlogs.com` → `suppressed_domains`; `myxlogs@mastodon.social` → `blocked_authors` (all 8 polled instances); outbound-link-domain query added above | [#144 (comment)](https://github.com/goodgorithm/goodgorithm/issues/144#issuecomment-5474399794) |
+| 2026-09-01 | 19 adult/funnel hashtags → `suppressed_terms`; Bluesky funnel-hashtag review query added above | #156 |
