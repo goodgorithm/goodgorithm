@@ -27,6 +27,19 @@ if DEDUP_NUM_PERM % DEDUP_NUM_BANDS != 0:
     )
 ROWS_PER_BAND = DEDUP_NUM_PERM // DEDUP_NUM_BANDS  # derived, not independently configurable
 DEDUP_SHINGLE_SIZE = int(os.environ.get("DEDUP_SHINGLE_SIZE", "4"))
+# Below this many normalized words, compute_minhash shingles into bigrams
+# instead of DEDUP_SHINGLE_SIZE-grams. A word at position i falls inside up
+# to min(k, n-k+1) of the k-grams; for n <= 2k-1 that's the whole window
+# set, so a single differing token (an emoji, a stray "*", a swapped
+# hashtag) blankets every shingle and forces the pair's Jaccard to 0 (a
+# 7-word post at k=4 hits this). At n = 2k the single-token case is gone
+# but the common two-edit shape still blankets all k+1 windows, so the
+# bound is <= 2k, not < 2k. Derived from DEDUP_SHINGLE_SIZE rather than its
+# own env var: the fragility is purely a function of k, so a second
+# independent knob would only be something to keep in sync (swap to
+# os.environ.get if that ever stops being true). See the wiki's
+# Deduplication page.
+DEDUP_SHORT_TEXT_MAX_WORDS = 2 * DEDUP_SHINGLE_SIZE
 DEDUP_JACCARD_THRESHOLD = float(os.environ.get("DEDUP_JACCARD_THRESHOLD", "0.7"))
 # Lower bar applied only to candidates that also share a normalized source
 # URL (see extract_dedup_url below) -- catches cross-"persona" syndication
@@ -53,9 +66,21 @@ def shingles(text: str, k: int = DEDUP_SHINGLE_SIZE) -> set[str]:
     return {" ".join(words[i : i + k]) for i in range(len(words) - k + 1)}
 
 
+def _minhash_shingles(text: str) -> set[str]:
+    """Shingle set fed to the MinHash. Short texts use bigrams rather than
+    DEDUP_SHINGLE_SIZE-grams -- see DEDUP_SHORT_TEXT_MAX_WORDS for why one
+    differing token otherwise zeroes a short pair's overlap. shingles()
+    itself stays a pure k-gram function; only this feed adapts. A text of
+    0-1 words shingles identically either way (shingles() returns the whole
+    text as one shingle below its k), so no separate ultra-short case."""
+    if len(text.split()) <= DEDUP_SHORT_TEXT_MAX_WORDS:
+        return shingles(text, k=2)
+    return shingles(text)
+
+
 def compute_minhash(text: str) -> MinHash:
     mh = MinHash(num_perm=DEDUP_NUM_PERM)
-    for shingle in shingles(normalize_text(text)):
+    for shingle in _minhash_shingles(normalize_text(text)):
         mh.update(shingle.encode("utf8"))
     return mh
 
