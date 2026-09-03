@@ -286,6 +286,95 @@ def test_url_matched_posts_with_dissimilar_commentary_stay_separate():
     assert results[posts[1].id].is_canonical is True
 
 
+def test_short_text_crosspost_with_shared_url_merges():
+    # A native Bluesky post and its federated Mastodon copy of the same
+    # short toot, differing only by one emoji token. At DEDUP_SHINGLE_SIZE
+    # word windows every shingle contains that token so text Jaccard is 0;
+    # bigram shingling for <= DEDUP_SHORT_TEXT_MAX_WORDS-word texts recovers
+    # ~0.5, which clears DEDUP_URL_JACCARD_THRESHOLD since both resolve to
+    # the same youtube watch URL.
+    index = InMemoryDedupIndex()
+    yt = "https://www.youtube.com/watch?v=QYB3eD5NTJo"
+    posts = [
+        FakePost(
+            id=uuid4(),
+            source="bluesky",
+            text="The Good Life 🎵 #FrankSinatra",
+            raw_json={
+                "commit": {
+                    "record": {
+                        "embed": {"$type": "app.bsky.embed.external", "external": {"uri": yt}}
+                    }
+                }
+            },
+        ),
+        FakePost(id=uuid4(), source="mastodon", text=f"The Good Life ✨ #FrankSinatra {yt}"),
+    ]
+    assert dedup.extract_dedup_url(posts[0]) == dedup.extract_dedup_url(posts[1])
+
+    results = dedup.dedup_posts(posts, index)
+
+    assert results[posts[0].id].cluster_id == results[posts[1].id].cluster_id
+    assert results[posts[0].id].is_canonical is True
+    assert results[posts[1].id].is_canonical is False
+
+
+def test_short_text_different_posts_sharing_url_stay_separate():
+    # Short-text analogue of the dissimilar-commentary guard: two genuinely
+    # different one-liners linking the same article. They are URL-tier
+    # candidates, but bigram shingling still leaves them at Jaccard ~0, well
+    # under DEDUP_URL_JACCARD_THRESHOLD -- bigrams must not blur short
+    # distinct posts into one cluster just because a URL matches.
+    index = InMemoryDedupIndex()
+    posts = [
+        FakePost(id=uuid4(), text="This headline is wild https://example.com/news/big-story"),
+        FakePost(
+            id=uuid4(),
+            text="Absolutely not surprised by this https://example.com/news/big-story",
+        ),
+    ]
+    assert dedup.extract_dedup_url(posts[0]) == dedup.extract_dedup_url(posts[1])
+
+    results = dedup.dedup_posts(posts, index)
+
+    assert results[posts[0].id].cluster_id != results[posts[1].id].cluster_id
+    assert results[posts[0].id].is_canonical is True
+    assert results[posts[1].id].is_canonical is True
+
+
+def test_short_text_near_duplicate_without_shared_url_does_not_merge():
+    # Same one-emoji difference as the crosspost case, but neither post
+    # carries a URL. Bigram Jaccard ~0.5 is below DEDUP_JACCARD_THRESHOLD,
+    # so with nothing to corroborate the pair the two stay in their own
+    # clusters -- the recovered short-text similarity only lands a merge
+    # when the URL tier's lower bar applies.
+    index = InMemoryDedupIndex()
+    posts = [
+        FakePost(id=uuid4(), text="The Good Life 🎵 #FrankSinatra"),
+        FakePost(id=uuid4(), text="The Good Life ✨ #FrankSinatra"),
+    ]
+    assert dedup.extract_dedup_url(posts[0]) is None
+
+    results = dedup.dedup_posts(posts, index)
+
+    assert results[posts[0].id].cluster_id != results[posts[1].id].cluster_id
+    assert results[posts[0].id].is_canonical is True
+    assert results[posts[1].id].is_canonical is True
+
+
+def test_minhash_shingles_switches_window_at_short_text_boundary():
+    assert dedup.DEDUP_SHORT_TEXT_MAX_WORDS == 2 * dedup.DEDUP_SHINGLE_SIZE
+
+    at_boundary = "one two three four five six seven eight"  # 8 words -> bigrams
+    over_boundary = "one two three four five six seven eight nine"  # 9 -> DEDUP_SHINGLE_SIZE-grams
+    assert dedup._minhash_shingles(at_boundary) == dedup.shingles(at_boundary, k=2)
+    assert dedup._minhash_shingles(over_boundary) == dedup.shingles(over_boundary)
+    assert dedup._minhash_shingles(at_boundary) != dedup.shingles(at_boundary)
+
+    # shingles() itself is untouched -- still k-grams at every length.
+    assert dedup.shingles("a b c d e", k=4) == {"a b c d", "b c d e"}
+
+
 def test_transitive_near_duplicates_in_one_batch_share_a_cluster():
     # A -> A' (near-dup of A) -> A'' (near-dup of A'): all one cluster, only
     # the first canonical. Exercises the in-memory cluster overlay carrying
