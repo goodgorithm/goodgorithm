@@ -193,6 +193,7 @@ def run_cycle(batch_size: int) -> int:
         upserts.append(
             db.ProcessedPostUpsert(
                 raw_post_id=post.id,
+                source=post.source,
                 dedup_cluster_id=cluster.cluster_id,
                 sentiment_score=sentiment_score,
                 sentiment_method=sentiment.SENTIMENT_METHOD,

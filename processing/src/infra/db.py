@@ -64,6 +64,7 @@ def fetch_unprocessed_posts(batch_size: int) -> list[RawPost]:
 @dataclass
 class ProcessedPostUpsert:
     raw_post_id: UUID
+    source: str
     dedup_cluster_id: UUID
     sentiment_score: float
     sentiment_method: str
@@ -87,7 +88,7 @@ class ProcessedPostUpsert:
 DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE = int(os.environ.get("DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE", "500"))
 
 _PROCESSED_POSTS_COLUMNS = (
-    "raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
+    "raw_post_id, source, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
     "sentiment_score, sentiment_method, topicality_score, entities, "
     "base_score, rank_score, quote_content, category, category_method, "
     "context_penalty, link_share_penalty, aggregator_penalty, generated_thumbnail_url, pipeline_version"
@@ -99,7 +100,7 @@ _PROCESSED_POSTS_COLUMNS = (
 # when a whole chunk is all-NULL for a column. Same technique as
 # update_rank_scores' own VALUES join.
 _PROCESSED_POSTS_ROW_SQL = (
-    "(%s::uuid, %s::uuid, %s::boolean, %s::boolean, %s::real, "
+    "(%s::uuid, %s::text, %s::uuid, %s::boolean, %s::boolean, %s::real, "
     "%s::real, %s::text, %s::real, %s::jsonb, "
     "%s::real, %s::real, %s::jsonb, %s::text, %s::text, "
     "%s::real, %s::real, %s::real, %s::text, %s::text)"
@@ -122,6 +123,7 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
         SELECT v.* FROM (VALUES {values_sql}) AS v ({_PROCESSED_POSTS_COLUMNS})
         WHERE EXISTS (SELECT 1 FROM raw_posts r WHERE r.id = v.raw_post_id)
         ON CONFLICT (raw_post_id) DO UPDATE SET
+            source                 = EXCLUDED.source,
             dedup_cluster_id       = EXCLUDED.dedup_cluster_id,
             is_dedup_canonical     = EXCLUDED.is_dedup_canonical,
             is_bot                 = EXCLUDED.is_bot,
@@ -160,6 +162,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                 for row in chunk
                 for value in (
                     row.raw_post_id,
+                    row.source,
                     row.dedup_cluster_id,
                     row.is_dedup_canonical,
                     row.is_bot,
@@ -289,15 +292,23 @@ def fetch_unchecked_bluesky_posts(batch_size: int) -> list[UncheckedBlueskyPost]
     backstop against ingestion/'s real-time label-stream listener racing
     Jetstream's own insert. No time window needed -- moderation_checked_at
     is set exactly once and never re-derived, same contract as
-    quote_content/generated_thumbnail_url."""
+    quote_content/generated_thumbnail_url.
+
+    Filters and orders on processed_posts alone (source is denormalised
+    there) so processed_posts_moderation_pending_idx serves the whole
+    query. Ordering by raw_posts.created_at or filtering on r.source
+    instead drives the plan off raw_posts_created_at_idx and, whenever the
+    pending set is smaller than batch_size, scans the entire Bluesky
+    raw_posts set rather than stopping at LIMIT -- raw_posts is joined
+    here only for the two columns the AppView call needs."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
             SELECT p.raw_post_id, r.source_id, r.author_id
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
-            WHERE r.source = 'bluesky' AND p.moderation_checked_at IS NULL
-            ORDER BY r.created_at DESC
+            WHERE p.source = 'bluesky' AND p.moderation_checked_at IS NULL
+            ORDER BY p.processed_at DESC
             LIMIT %s
             """,
             (batch_size,),
@@ -340,15 +351,21 @@ def fetch_bluesky_posts_needing_author_resolution(batch_size: int) -> list[Unres
     only a small fraction of ingested Bluesky posts ever get ranked/shown
     at all, so resolving author info for the rest would be pure waste. No
     time window needed -- author_resolved_at is set exactly once and
-    never re-derived, same contract as moderation_checked_at."""
+    never re-derived, same contract as moderation_checked_at.
+
+    Filters and orders on processed_posts alone (source is denormalised
+    there) so processed_posts_author_pending_idx serves the whole query;
+    see fetch_unchecked_bluesky_posts for why ordering by
+    raw_posts.created_at instead is a full-scan trap. raw_posts is joined
+    only for the two columns the AppView call needs."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
             SELECT p.raw_post_id, r.source_id, r.author_id
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
-            WHERE r.source = 'bluesky' AND p.rank_score IS NOT NULL AND p.author_resolved_at IS NULL
-            ORDER BY r.created_at DESC
+            WHERE p.source = 'bluesky' AND p.rank_score IS NOT NULL AND p.author_resolved_at IS NULL
+            ORDER BY p.processed_at DESC
             LIMIT %s
             """,
             (batch_size,),

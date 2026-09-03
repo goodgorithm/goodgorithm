@@ -1,3 +1,5 @@
+import inspect
+
 from infra import db
 
 
@@ -12,7 +14,24 @@ def test_processed_posts_upsert_sql_skips_rows_whose_raw_post_vanished():
     assert "FROM (VALUES" in sql  # INSERT ... SELECT, not INSERT ... VALUES
     assert "WHERE EXISTS (SELECT 1 FROM raw_posts r WHERE r.id = v.raw_post_id" in sql
     assert "ON CONFLICT (raw_post_id) DO UPDATE" in sql
-    assert sql.count("%s") == 3 * 19  # rows x columns, param count still bounded per chunk
+    assert sql.count("%s") == 3 * 20  # rows x columns, param count still bounded per chunk
+
+
+def test_resolver_candidate_queries_filter_and_order_on_processed_posts():
+    # issue #173: both resolver sweeps must decide "pending" from
+    # processed_posts alone so a partial index serves the query. Filtering
+    # r.source or ordering by raw_posts.created_at drives the plan off
+    # raw_posts_created_at_idx and full-scans raw_posts every sweep once
+    # the pending set drops below batch_size.
+    for fn in (
+        db.fetch_unchecked_bluesky_posts,
+        db.fetch_bluesky_posts_needing_author_resolution,
+    ):
+        src = inspect.getsource(fn)
+        assert "WHERE p.source = 'bluesky'" in src
+        assert "ORDER BY p.processed_at DESC" in src
+        assert "WHERE r.source" not in src
+        assert "ORDER BY r.created_at" not in src
 
 
 def _reset_moderation_cache(monkeypatch):
