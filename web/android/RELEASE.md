@@ -124,7 +124,7 @@ Bump both in `web/android/app/build.gradle`:
 Then `npm run build:android && (cd android && ./gradlew bundleRelease)` and
 upload the new `.aab` to the track.
 
-## Cutting a new store build — the regression guards (issue #123)
+## Cutting a new store build — the regression guards
 
 The shipped app is frozen (no hotfix path), so CI holds `production` to what
 the *current* store build expects:
@@ -155,4 +155,4 @@ re-freeze" — not "edit the test to pass".
 
 ## iOS
 
-Deferred until the Apple Developer Program payment clears — see issue #30.
+Deferred until the Apple Developer Program payment clears.

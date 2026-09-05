@@ -54,7 +54,7 @@ Every training run publishes its artifacts to `category-classifier/<version>/` i
 
 ## Rolling back
 
-Identical to the sentiment model: `uv run python r2_release.py --model category list`, then `uv run python r2_release.py --model category publish <previous-version>`. If no version has ever been published, `category_model.py` fails open into keyword-only mode automatically — the genuine zero-risk floor, today's exact pre-classifier behavior.
+Identical to the sentiment model: `uv run python r2_release.py --model category list`, then `uv run python r2_release.py --model category publish <previous-version>`. If no version has ever been published, `category_model.py` fails open into keyword-only mode automatically — the genuine zero-risk floor.
 
 ## Guardrails this skill exists to protect
 
