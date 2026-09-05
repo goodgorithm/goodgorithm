@@ -113,8 +113,8 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
     fetching it and this write landing (ingestion/'s blueskyLabels stream
     retroactively deletes a post Bluesky labels adult-content, mid-scoring),
     which would FK-violate on processed_posts_raw_post_id_fkey and -- since
-    infra/db.py deliberately has no try/except -- crash-loop the process
-    (issue #128). The WHERE EXISTS drops any such vanished row from the batch
+    infra/db.py deliberately has no try/except -- crash-loop the process.
+    The WHERE EXISTS drops any such vanished row from the batch
     atomically: a moderation-deleted post simply gets no processed_posts row,
     which is correct."""
     values_sql = ", ".join([_PROCESSED_POSTS_ROW_SQL] * row_count)
@@ -517,8 +517,8 @@ def fetch_cluster_candidates(
     raw_json->'account'->>'created_at' at query time -- that JSON-path
     extraction across the full Mastodon population is too slow at this
     table's scale. Same "promote a frequently-queried field out of raw_json
-    into a real column" pattern text/lang/author_id already follow, not a
-    workaround. See the wiki's Processing Infrastructure page.
+    into a real column" pattern text/lang/author_id already follow. See
+    the wiki's Processing Infrastructure page.
 
     author_id is `{polling_instance}/{acct}` (ingestion/src/mastodon.ts) --
     the same real account seen via more than one of the 8 polled
