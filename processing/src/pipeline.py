@@ -1,9 +1,13 @@
+import gzip
+import hashlib
+import json
 import logging
 import os
+import tempfile
 from datetime import datetime, timedelta, timezone
 
 import config
-from infra import db, redis_guard
+from infra import corpus_store, db, redis_guard
 from pipeline_stages import (
     aggregator_demote,
     author_resolver,
@@ -11,6 +15,7 @@ from pipeline_stages import (
     category_model,
     content_filter,
     context_dependency,
+    corpus_export,
     dedup,
     language_filter,
     link_share,
@@ -53,6 +58,16 @@ MODERATION_RECHECK_BATCH_SIZE = int(os.environ.get("MODERATION_RECHECK_BATCH_SIZ
 # Batch size for resolve_authors()'s sweep -- see the wiki's Configuration
 # page.
 AUTHOR_RESOLVE_BATCH_SIZE = int(os.environ.get("AUTHOR_RESOLVE_BATCH_SIZE", "500"))
+
+# Corpus export -- see the wiki's Configuration page and Processing
+# Infrastructure's "Corpus export" section.
+EXPORT_CORPUS_BATCH_SIZE = int(os.environ.get("EXPORT_CORPUS_BATCH_SIZE", "2000"))
+# How long a scored post is held back from the archive so every
+# retroactive-exclusion path has fired first. Well inside RETENTION_HOURS.
+EXPORT_CORPUS_MIN_AGE_HOURS = int(os.environ.get("EXPORT_CORPUS_MIN_AGE_HOURS", "6"))
+# Key prefix inside the goodgorithm-corpus bucket; `raw/` and `shards/`
+# live under it.
+CORPUS_R2_PREFIX = os.environ.get("CORPUS_R2_PREFIX", "corpus")
 
 
 def enforce_redis_capacity() -> None:
@@ -357,3 +372,101 @@ def cleanup_old_data() -> int:
     if deleted:
         logger.info("cleaned up %d posts older than %dh", deleted, RETENTION_HOURS)
     return deleted
+
+
+def export_corpus() -> int:
+    """Appends dedup-canonical, moderation-final post text to the
+    long-lived goodgorithm-corpus R2 bucket before RETENTION_HOURS deletes
+    the raw_posts row. Gated by the caller on config.CORPUS_EXPORT_ENABLED
+    (off outside production) and config.corpus_r2_configured().
+
+    Mirrors recheck_moderation's shape: fetch a bounded batch, do the work,
+    mark done -- but the "done" mark (exported_at) is only written for rows
+    whose R2 PUT actually succeeded, so a failed object is re-selected and
+    retried next sweep. Runs after purge_blocked_authors in the loop so a
+    same-cycle block has already removed its rows before this reads
+    candidates; the monthly compaction pass is the backstop for a re-export
+    inside the retry window or a post excluded after it was archived. See
+    the wiki's Processing Infrastructure page."""
+    posts = db.fetch_unexported_posts(EXPORT_CORPUS_BATCH_SIZE, EXPORT_CORPUS_MIN_AGE_HOURS)
+    if not posts:
+        return 0
+
+    store = corpus_store.CorpusStore()
+    exported_ids: list = []
+    for obj in corpus_export.build_objects(CORPUS_R2_PREFIX, posts):
+        try:
+            store.put_bytes(obj.key, obj.data)
+        except Exception:
+            logger.exception("corpus export failed for %s -- retrying next sweep", obj.key)
+            continue
+        exported_ids.extend(obj.raw_post_ids)
+
+    db.mark_exported(exported_ids)
+    if exported_ids:
+        logger.info("exported %d/%d swept posts to the corpus", len(exported_ids), len(posts))
+    return len(exported_ids)
+
+
+def compact_corpus() -> int:
+    """For every complete month with `raw/` objects and no shard yet,
+    stream its records, drop exact-text duplicates, and write a single
+    `shards/YYYY-MM.ndjson.gz`. This is what makes the export sweep's
+    exactly-once semantics a non-issue -- re-exports in the retry window,
+    mid-batch restarts, a stray write, and the same text from two sources
+    all collapse here. Does not delete `raw/` objects; a consumer reads
+    `shards/` plus the current month's `raw/`.
+
+    A completed month never gets new `raw/` objects (export only writes
+    objects dated to a post's own processed_at, which is at most hours
+    old), so a month that already has a shard is skipped. The caller runs
+    this once per UTC day, so that skip is what keeps the daily check
+    cheap -- a couple of list calls on every day except the one after a
+    month rolls over.
+
+    Deduplication holds a set of 16-byte text hashes for the month in
+    memory (~0.5 GB at current volume) -- the scaling limit; a sort-based
+    external dedup replaces it if corpus volume grows an order of
+    magnitude. Gated by the caller, same as export_corpus. See the wiki's
+    Processing Infrastructure page."""
+    store = corpus_store.CorpusStore()
+    raw_prefix = f"{CORPUS_R2_PREFIX}/raw/"
+    shard_prefix = f"{CORPUS_R2_PREFIX}/shards/"
+    keys_by_month: dict[str, list[str]] = {}
+    for key in store.list_keys(raw_prefix):
+        # <prefix>/raw/YYYY/MM/DD/<file>
+        parts = key[len(raw_prefix) :].split("/")
+        if len(parts) >= 3:
+            keys_by_month.setdefault(f"{parts[0]}-{parts[1]}", []).append(key)
+
+    existing_shards = {
+        key[len(shard_prefix) :].removesuffix(".ndjson.gz") for key in store.list_keys(shard_prefix)
+    }
+    current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+    compacted = 0
+    for month, keys in sorted(keys_by_month.items()):
+        if month >= current_month or month in existing_shards:
+            continue  # still being written to, or already compacted
+        seen: set[bytes] = set()
+        kept = 0
+        with tempfile.NamedTemporaryFile(suffix=".ndjson.gz") as tmp:
+            with gzip.GzipFile(fileobj=tmp, mode="wb") as gz:
+                for key in sorted(keys):
+                    for record in corpus_export.iter_records(store.get_bytes(key)):
+                        digest = hashlib.blake2b(
+                            corpus_export.dedup_key(record).encode("utf-8"), digest_size=16
+                        ).digest()
+                        if digest in seen:
+                            continue
+                        seen.add(digest)
+                        gz.write(
+                            (json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n").encode(
+                                "utf-8"
+                            )
+                        )
+                        kept += 1
+            tmp.seek(0)
+            store.put_fileobj(f"{CORPUS_R2_PREFIX}/shards/{month}.ndjson.gz", tmp)
+        logger.info("compacted corpus month %s: %d unique records", month, kept)
+        compacted += 1
+    return compacted

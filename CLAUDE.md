@@ -63,6 +63,8 @@ Alpha-stage cap, not a correctness requirement: both Postgres and Redis only ret
 
 `ranking.py`'s `RANKING_MMR_WINDOW_HOURS` (env-configurable, default `72.0`) is effectively capped at 24h by retention today (a post can't survive long enough to hit the 72h boundary) — left at `72.0` rather than lowered to match, so it becomes meaningful again automatically if retention is ever raised. Don't "fix" this mismatch without understanding why it's there first.
 
+The one store that deliberately outlives the 24h window is the **text corpus** (`processing/src/pipeline_stages/corpus_export.py`, `infra/corpus_store.py`): a `pipeline.export_corpus()` sweep copies dedup-canonical, moderation-final post text into a dedicated R2 bucket (`goodgorithm-corpus`) before `cleanup_old_data()` deletes the `raw_posts` row, for training the project's own embeddings. Off unless `CORPUS_EXPORT_ENABLED` is set **and** all four `R2_CORPUS_*` vars are present — production only; staging and local dev never accumulate a corpus. Gated behind `EXPORT_CORPUS_MIN_AGE_HOURS` (default 6) so every retroactive-exclusion path has fired before a post is archived; a monthly `pipeline.compact_corpus()` pass exact-text-dedups each finished month into `shards/YYYY-MM.ndjson.gz`. Records are text + light metadata (`source`, `category`, `created_at`, `pipeline_version`, `dedup_cluster_id`) — never `sentiment_score` (circular), author, or engagement. `infra/r2.py` holds the boto3 client factory shared by `model_store.py` (the `R2_*` models set) and `corpus_store.py` (the `R2_CORPUS_*` set).
+
 ### Post attachments & embeds
 
 `api/src/attachments.ts` parses each post's images, link cards, video, and quote-post content into a normalized `Attachment[]` the frontend renders — the `Attachment` union is hand-duplicated in `web/src/api/types.ts` (no shared package across the API/web boundary in this repo). Images and link cards are pure string-templating off `raw_json` (Bluesky's CDN URLs, Mastodon's own media URLs) with zero network calls at serve time.
@@ -207,7 +209,7 @@ Bluesky Jetstream (public WebSocket firehose, filtered to `app.bsky.feed.post` c
 - **Healthchecks.io** — dead-man's-switch heartbeat monitoring for `processing`/`ingestion`, 4 checks. See Monitoring & observability above.
 - **Better Stack** — external uptime checks on `/health` and `web/`'s root, staging + production. See Monitoring & observability above.
 
-Env var names are documented in `.env.example` at the repo root — never commit actual values. Real values live in Railway's environment variables (set separately per service, per environment) and nowhere else in this repo. Each service only needs a subset — `ingestion/` and `api/` just need `DATABASE_URL`; `processing/` additionally needs the Redis and R2 vars.
+Env var names are documented in `.env.example` at the repo root — never commit actual values. Real values live in Railway's environment variables (set separately per service, per environment) and nowhere else in this repo. Each service only needs a subset — `ingestion/` and `api/` just need `DATABASE_URL`; `processing/` additionally needs the Redis and R2 vars (and, only where corpus export is switched on, the `R2_CORPUS_*` set).
 
 ## Development
 

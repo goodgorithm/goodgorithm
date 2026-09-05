@@ -406,6 +406,78 @@ def mark_authors_resolved(results: list[tuple[UUID, dict | None]]) -> None:
             )
 
 
+@dataclass
+class ExportablePost:
+    raw_post_id: UUID
+    source: str
+    text: str
+    created_at: datetime
+    category: str | None
+    category_method: str | None
+    pipeline_version: str
+    dedup_cluster_id: UUID
+    processed_at: datetime
+
+
+def fetch_unexported_posts(batch_size: int, min_age_hours: int) -> list[ExportablePost]:
+    """Bounded batch of dedup-canonical, moderation-final posts the corpus
+    export sweep hasn't archived yet. Set exactly once via exported_at,
+    never re-derived -- same contract as moderation_checked_at.
+
+    min_age_hours holds a post back until every retroactive-exclusion path
+    (moderation_recheck's one-shot label check, the real-time label stream,
+    and purge_blocked_authors' unbounded re-run) has had ample time to fire
+    -- 6h in production, well inside the 24h retention window. Bluesky rows
+    additionally require moderation_checked_at IS NOT NULL as a direct
+    signal that the async label backstop has run.
+
+    Ordered oldest-first (unlike the resolver sweeps' DESC): this sweep
+    races retention, so it drains toward the delete cutoff rather than
+    staying near the freshest rows. The exported_at IS NULL AND
+    is_dedup_canonical predicate matches processed_posts_export_pending_idx
+    (0020); the age and Bluesky-label conditions filter on top of it. The
+    raw_posts join is only for text/source/created_at, which don't live on
+    processed_posts."""
+    with pool.connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.raw_post_id, r.source, r.text, r.created_at,
+                   p.category, p.category_method, p.pipeline_version,
+                   p.dedup_cluster_id, p.processed_at
+            FROM processed_posts p
+            JOIN raw_posts r ON r.id = p.raw_post_id
+            WHERE p.exported_at IS NULL
+              AND p.is_dedup_canonical
+              AND p.processed_at < NOW() - (%s * INTERVAL '1 hour')
+              AND (r.source <> 'bluesky' OR p.moderation_checked_at IS NOT NULL)
+            ORDER BY p.processed_at ASC
+            LIMIT %s
+            """,
+            (min_age_hours, batch_size),
+        ).fetchall()
+    return [ExportablePost(*row) for row in rows]
+
+
+def mark_exported(raw_post_ids: list[UUID]) -> None:
+    """Bulk-writes exported_at = NOW() -- chunked multi-row UPDATE, same
+    shape as mark_moderation_checked."""
+    if not raw_post_ids:
+        return
+    with pool.connection() as conn:
+        for i in range(0, len(raw_post_ids), DB_RANK_SCORE_UPDATE_CHUNK_SIZE):
+            chunk = raw_post_ids[i : i + DB_RANK_SCORE_UPDATE_CHUNK_SIZE]
+            values_sql = ", ".join(["(%s::uuid)"] * len(chunk))
+            conn.execute(
+                f"""
+                UPDATE processed_posts AS p
+                SET exported_at = NOW()
+                FROM (VALUES {values_sql}) AS v(raw_post_id)
+                WHERE p.raw_post_id = v.raw_post_id
+                """,
+                chunk,
+            )
+
+
 def fetch_suppressed_terms() -> frozenset[str]:
     """Whole table -- the "cheaper than a per-post query, moderatable
     without a service restart" pattern the other moderation-list reads
