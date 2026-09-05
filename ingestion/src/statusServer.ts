@@ -25,7 +25,7 @@ interface ConnectionState {
 // the whole verdict to flip to "degraded". Default 1.0 = every instance --
 // i.e. only a systemic polling failure (loop wedged, host network, a bad
 // MASTODON_INSTANCES) counts, not the routine churn of one or two public
-// instances 5xx'ing or going down for maintenance (issue #125). Set 0.5 for
+// instances 5xx'ing or going down for maintenance. Set 0.5 for
 // "majority". A single flaky instance is still visible in /health's
 // per-instance `mastodon` map; it just isn't "degraded".
 export const MASTODON_DEGRADED_ERROR_RATIO = parseNumberEnv("MASTODON_DEGRADED_ERROR_RATIO", 1);

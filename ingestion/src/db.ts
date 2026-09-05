@@ -70,11 +70,11 @@ export async function blockAuthor(
   `;
 }
 
-// Forward blocked-author skip (issue #151). processing/'s run_cycle already
+// Forward blocked-author skip. processing/'s run_cycle already
 // checks blocked_authors before scoring; this is a cheap ingestion-time
 // early-out so a still-active blocked author's ongoing stream never enters
 // raw_posts at all (the aggregator/spam-bot case), mirroring
-// isBridgedAccount's #145 early-out but DB-backed instead of hardcoded.
+// isBridgedAccount's early-out but DB-backed instead of hardcoded.
 // processing/ stays authoritative and purge_blocked_authors still handles
 // the retroactive case (a newly-blocked author's already-ingested rows).
 
@@ -100,7 +100,7 @@ export function blockedAuthorsCacheStale(cachedAt: number, now: number): boolean
 // fails OPEN on any query error -- serve the last good snapshot, or an
 // empty set on a cold start -- because processing/'s own blocked_authors
 // check is the authoritative one: a stale or missing blocklist here just
-// means a post is caught one stage later, exactly as before this existed.
+// means a post is caught one stage later, at processing/'s authoritative check.
 // cachedAt is bumped even on failure so a sustained DB outage doesn't
 // re-query on every ingested message.
 export async function getBlockedAuthors(now: number = Date.now()): Promise<Set<string>> {
