@@ -21,4 +21,4 @@ An acknowledgment as soon as we see it — this is a small project, not a 24/7 o
 
 ## Scope
 
-This covers the code and infrastructure in this repo and its deployed services (Railway, Cloudflare, Supabase, Upstash — see `CLAUDE.md`'s Infra section). It doesn't cover the third-party platforms Goodgorithm reads from (Bluesky, Mastodon) — report issues with those platforms themselves to their own security teams.
+This covers the code and infrastructure in this repo and its deployed services (Railway, Cloudflare, Supabase, self-hosted Valkey — see `CLAUDE.md`'s Infra section). It doesn't cover the third-party platforms Goodgorithm reads from (Bluesky, Mastodon) — report issues with those platforms themselves to their own security teams.

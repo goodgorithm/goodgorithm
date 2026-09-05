@@ -35,7 +35,7 @@ Full project context for anyone (human or Claude) picking this up lives in [`CLA
 - **[Infrastructure](https://github.com/goodgorithm/goodgorithm/wiki/Infrastructure)** — hosting/tooling and why.
 - **[Content Policy](https://github.com/goodgorithm/goodgorithm/wiki/Content-Policy)** — what's excluded from the feed, and why.
 
-The app itself only surfaces a condensed FAQ in-app (`web/src/content/faq.md`, live at `/faq`) plus a link to this repo — the wiki is where the full docs live, not the app's own navigation (issue #31). Notion is internal-only now: decisions log, research, planning — not public.
+The app itself only surfaces a condensed FAQ in-app (`web/src/content/faq.md`, live at `/faq`) plus a link to this repo — the wiki is where the full docs live, not the app's own navigation. Notion is internal-only: decisions log, research, planning — not public.
 
 ## A note on LLMs
 

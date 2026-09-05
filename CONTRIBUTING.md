@@ -66,7 +66,7 @@ Pushes to `staging`/`production` additionally deploy (Railway for `ingestion`/`a
 
 `web/`'s `npm run lint` (oxlint) exists as a local script but isn't wired into CI yet — run it yourself before opening a PR that touches `web/`.
 
-`web/`'s multi-browser E2E suite (`npm run test:e2e`, Chromium/Firefox/WebKit via Playwright) is deliberately **not** in CI either — real-browser E2E is slower and more flake-prone than Vitest, and this project doesn't have the infrastructure for real mobile WebView testing anyway (see issue #69), so it's a documented pre-push/pre-merge check instead of a gate. Run it before pushing a PR or merging to `main` that touches `web/`'s rendering, video/media, theming, or scroll/pagination behavior — issue #66 (a Chromium-specific bug invisible to Vitest's JSDOM environment) is exactly the failure mode this exists to catch. One-time setup: `npx playwright install --with-deps chromium firefox webkit` from `web/` (browser binaries aren't committed to the repo).
+`web/`'s multi-browser E2E suite (`npm run test:e2e`, Chromium/Firefox/WebKit via Playwright) is deliberately **not** in CI either — real-browser E2E is slower and more flake-prone than Vitest, and this project doesn't have the infrastructure for real mobile WebView testing anyway, so it's a documented pre-push/pre-merge check instead of a gate. Run it before pushing a PR or merging to `main` that touches `web/`'s rendering, video/media, theming, or scroll/pagination behavior — it catches Chromium-specific bugs invisible to Vitest's JSDOM environment. One-time setup: `npx playwright install --with-deps chromium firefox webkit` from `web/` (browser binaries aren't committed to the repo).
 
 ## Pull requests
 
