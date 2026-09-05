@@ -1,9 +1,8 @@
 import json
 from typing import Protocol
 
-import boto3
-
 import config
+from infra import r2
 
 
 class ModelStore(Protocol):
@@ -22,12 +21,10 @@ class R2ModelStore:
 
     def __init__(self, prefix: str) -> None:
         self.prefix = prefix
-        self.client = boto3.client(
-            "s3",
-            endpoint_url=f"https://{config.R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
-            aws_access_key_id=config.R2_ACCESS_KEY_ID,
-            aws_secret_access_key=config.R2_SECRET_ACCESS_KEY,
-            region_name="auto",
+        self.client = r2.client(
+            config.R2_ACCOUNT_ID,
+            config.R2_ACCESS_KEY_ID,
+            config.R2_SECRET_ACCESS_KEY,
         )
         self.bucket = config.R2_BUCKET_NAME
 

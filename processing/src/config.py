@@ -32,6 +32,22 @@ R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
 SENTIMENT_MODEL_VERSION = os.environ.get("SENTIMENT_MODEL_VERSION")
 CATEGORY_MODEL_VERSION = os.environ.get("CATEGORY_MODEL_VERSION")
 
+# Text-corpus export — a separate R2 bucket and access key from the models
+# set above, kept independent so each store's config is self-contained.
+# R2_CORPUS_ACCOUNT_ID carries the same value as R2_ACCOUNT_ID (one
+# Cloudflare account); the duplication keeps the credential sets fully
+# parallel.
+#
+# CORPUS_EXPORT_ENABLED is the master switch: the export and compaction
+# sweeps do nothing unless it is truthy AND corpus_r2_configured(). Off in
+# .env.example, off in local dev, off in staging; set to true only in the
+# production Railway env. See the wiki's Configuration page.
+CORPUS_EXPORT_ENABLED = os.environ.get("CORPUS_EXPORT_ENABLED", "").strip().lower() in ("1", "true", "yes")
+R2_CORPUS_ACCOUNT_ID = os.environ.get("R2_CORPUS_ACCOUNT_ID")
+R2_CORPUS_ACCESS_KEY_ID = os.environ.get("R2_CORPUS_ACCESS_KEY_ID")
+R2_CORPUS_SECRET_ACCESS_KEY = os.environ.get("R2_CORPUS_SECRET_ACCESS_KEY")
+R2_CORPUS_BUCKET_NAME = os.environ.get("R2_CORPUS_BUCKET_NAME")
+
 # Optional dead-man's-switch heartbeat. See the wiki's Configuration page.
 HEARTBEAT_URL_PROCESSING = os.environ.get("HEARTBEAT_URL_PROCESSING")
 
@@ -63,3 +79,12 @@ def validate() -> None:
 
 def r2_configured() -> bool:
     return bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME)
+
+
+def corpus_r2_configured() -> bool:
+    return bool(
+        R2_CORPUS_ACCOUNT_ID
+        and R2_CORPUS_ACCESS_KEY_ID
+        and R2_CORPUS_SECRET_ACCESS_KEY
+        and R2_CORPUS_BUCKET_NAME
+    )
