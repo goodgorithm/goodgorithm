@@ -74,7 +74,7 @@ export function isDiscoverable(account: { discoverable: boolean | null; indexabl
 // BLUESKY_SAMPLE_RATE, the knob balancing Bluesky volume against
 // processing/'s throughput. suppressed_domains carries 'brid.gy' as the
 // authoritative filter (it also catches a post that merely *links* there);
-// this is just a cheap ingestion-time early-out. See issue #140.
+// this is just a cheap ingestion-time early-out.
 const BRIDGE_HOST = "brid.gy";
 
 export function isBridgedAccount(acct: string): boolean {
@@ -168,7 +168,7 @@ async function pollInstance(
 
   sinceId.set(instance, statuses[0].id);
 
-  // Fetched once per poll (cached in-process), not per status -- issue #151.
+  // Fetched once per poll (cached in-process), not per status.
   const blocked = await getBlockedAuthors();
 
   let inserted = 0;

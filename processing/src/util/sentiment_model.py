@@ -38,8 +38,8 @@ def _split_camel_hashtags(text: str) -> str:
     Must run before _TOKEN_RE ever sees the text, on the original-case
     string -- case boundaries are the whole signal, and once split, a
     hashtag's words fall through to the ordinary `word`/`num` token paths
-    below like any other text, so _TOKEN_RE no longer needs its own
-    hashtag-matching branch at all."""
+    below like any other text, so _TOKEN_RE needs no hashtag-matching
+    branch of its own."""
     return _HASHTAG_RE.sub(lambda m: ". " + _CAMEL_BOUNDARY_RE.sub(" ", m.group(1)), text)
 
 

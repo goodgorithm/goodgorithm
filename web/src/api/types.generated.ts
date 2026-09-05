@@ -70,7 +70,7 @@ export interface FeedPostAuthor {
 // own. "not_found" covers deleted/blocked/detached alike (getPosts, the
 // batch endpoint used to resolve these, doesn't distinguish which - only
 // per-thread embed views do, and resolving each quote's own thread just
-// to get that distinction wasn't worth the extra AppView calls).
+// for that distinction isn't worth the extra AppView calls.
 export type QuoteContent =
   | {
       status: "available";

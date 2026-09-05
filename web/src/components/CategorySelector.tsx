@@ -13,7 +13,7 @@ export function CategorySelector({
   onSelect,
 }: {
   // Category | null so it type-checks against useCategoryParam's widened
-  // state (issue #101's hidden ?category=all) - but onSelect deliberately
+  // state (the hidden ?category=all full-feed value) - but onSelect deliberately
   // stays Category-only, since this component must never be capable of
   // producing a null selection itself. No chip ever matches null, so
   // nothing gets the .selected style when the unfiltered feed is active -

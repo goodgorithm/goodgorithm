@@ -15,7 +15,7 @@ Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the 
 
 `goodgorithm-models` itself is a **private** R2 bucket (no public URL) — so on its own, uploading there does not fulfill the "we open-source model weights" commitment (the Mission/Algorithm pages on the GitHub Wiki). `training/r2_release.py`'s `publish` step closes that gap: promoting a version to live also mirrors its three artifacts to a public GitHub Release (`sentiment-cnn-<version>`, via the `gh` CLI). This only happens through `r2_release.py` — see step 6 below.
 
-`r2_release.py` is generalized across model types (a `category` type exists alongside `sentiment`, added when the category classifier adopted this same release shape) via a required `--model` flag — every command below needs `--model sentiment` explicitly now, not just `current`/`list`/`publish` on their own.
+`r2_release.py` is generalized across model types (a `category` type exists alongside `sentiment`) via a required `--model` flag — every command below needs `--model sentiment` explicitly.
 
 ## Steps
 
@@ -40,7 +40,7 @@ Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the 
 6. **Promote to live only if step 4 looks good, via `r2_release.py`** — the only path that also makes the version public:
    - `cd training && uv run python r2_release.py --model sentiment publish <version>` (needs the R2 env vars, e.g. from a local `.env` or exported in your shell, *and* an authenticated `gh` CLI with access to `goodgorithm/goodgorithm`).
    - This flips `sentiment-cnn/latest.json` **and** creates a public GitHub Release (`sentiment-cnn-<version>`) mirroring the three artifacts from R2, since `goodgorithm-models` itself is a private bucket — see "The release model" above.
-   - The notebook's `PUBLISH_AS_LATEST = True` cell still exists and flips `latest.json`, but Colab has no `gh`/repo access, so it **cannot** create the public release. If you use that cell, you still need to run `r2_release.py --model sentiment publish <version>` afterward (it's idempotent on the `latest.json` flip and will just create the missing release). Prefer `r2_release.py` as the single step going forward.
+   - The notebook's `PUBLISH_AS_LATEST = True` cell flips `latest.json`, but Colab has no `gh`/repo access, so it **cannot** create the public release. If you use that cell, you still need to run `r2_release.py --model sentiment publish <version>` afterward (it's idempotent on the `latest.json` flip and will just create the missing release). Prefer `r2_release.py` as the single step going forward.
 
 7. **Verify:** `uv run python r2_release.py --model sentiment current` should print the new version, and `gh release view sentiment-cnn-<version> --repo goodgorithm/goodgorithm` should show the public release. `processing/` picks the model up the next time a process starts — it resolves the live version once per process, on the first sentiment score, not continuously — so a running deployment needs a restart (a normal Railway redeploy) to pick up a newly-promoted version.
 

@@ -20,10 +20,10 @@ not touch `web/`'s own dependencies):
 cd .claude/skills/run-web && npm install
 ```
 
-This installs Playwright. Chromium's browser binary was already present
-on this machine when verified (no `npx playwright install chromium`
-needed) - if `driver.mjs` fails to launch with a "browser not found"
-error on a different machine, run that install command once.
+This installs Playwright. Chromium's browser binary is already present
+on this machine (no `npx playwright install chromium` needed) - if
+`driver.mjs` fails to launch with a "browser not found" error on a
+different machine, run that install command once.
 
 `web/`'s own deps still need the usual `npm install` at `web/` root if
 not already done.

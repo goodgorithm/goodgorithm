@@ -109,10 +109,10 @@ WHERE r.raw_json->'account'->>'acct' ~* '@(baddomain\.net)$'          -- home in
 Match the post's **own** link, not `raw_json::text` — the latter also hits accounts that
 merely mention the domain in a profile bio.
 
-## Recurring: new Mastodon instances contributing feed content (#139)
+## Recurring: new Mastodon instances contributing feed content
 
-A systematic instance blocklist isn't worth building (see #139 — the off-mission rate in the
-tail is ~1 in several hundred). Instead, run this ~monthly and eyeball the delta on two
+A systematic instance blocklist isn't worth building — the off-mission rate in the
+tail is ~1 in several hundred. Instead, run this ~monthly and eyeball the delta on two
 fronts:
 
 - **Dedicated-adult / harassment-oriented** → `suppressed_domains` (hard exclude).
@@ -121,7 +121,7 @@ fronts:
   that table's standard).
 - **A single instance contributing a large share of `ranked` volume as automated
   headline/link syndication** (high `ranked`, aggregator-shaped content) → `aggregator_instances`
-  (demote). `flipboard.com` was ~34% of ranked Mastodon content when this was added (#141).
+  (demote). An aggregator instance can reach roughly a third of ranked Mastodon volume.
 
 ```sql
 WITH masto AS (
@@ -145,8 +145,7 @@ ORDER BY ranked DESC;
 ```
 
 Retention is 24h, so a full snapshot only ever covers the last day; run it often enough that
-the windows overlap. Log each pass in the review log below; write up what you found in the
-linked issue.
+the windows overlap. Record any resulting table edit in its row's dated `reason` column.
 
 ## Recurring: outbound link domains in ranked Mastodon posts
 
@@ -187,7 +186,7 @@ Most of the top of that list is legitimate (news sites, `youtube.com`, `github.c
 for the ones that aren't. When one turns up, add it to `suppressed_domains` and purge with
 the preview/DELETE query above.
 
-## Recurring: rotating adult / funnel hashtags on Bluesky (#156)
+## Recurring: rotating adult / funnel hashtags on Bluesky
 
 A cross-account OnlyFans/"funnel" pattern on Bluesky — image + short coy caption + a large
 bag of hashtags, an "…in my bio" / "one tap away" call to action — rotates its individual
@@ -236,7 +235,7 @@ ordinary content, leave the tag out.
 `suppressed_terms` has no retroactive sweep — after adding, purge the network's
 already-scored posts with the preview/DELETE query in "Purging content already in the DB".
 
-## Recurring: Bluesky funnel-network cluster review (#162)
+## Recurring: Bluesky funnel-network cluster review
 
 `processing/` hard-excludes a Bluesky funnel post per-post (a funnel call-to-action
 phrase — "…in my bio", "one tap away" — plus a bag of adult/funnel hashtags), and
@@ -298,16 +297,4 @@ your review view.
 `NULL` — only set it after blocking, or if the detector itself is misfiring. To ignore an
 individual false-positive DID, just don't block that DID.
 
-### Review log
-
-One row per review pass or moderation action. The **why** — what was sampled, what was
-added or rejected and on what evidence — goes in the linked issue or a comment on it, never
-in this table.
-
-| Date | Change | Detail |
-|---|---|---|
-| 2026-08-30 | `yiff.life` → `suppressed_domains` | #139 |
-| 2026-08-31 | `channels.im` → `aggregator_instances` | #141 |
-| 2026-08-31 | `myxlogs.com` → `suppressed_domains`; `myxlogs@mastodon.social` → `blocked_authors` (all 8 polled instances); outbound-link-domain query added above | [#144 (comment)](https://github.com/goodgorithm/goodgorithm/issues/144#issuecomment-5474399794) |
-| 2026-09-01 | 19 adult/funnel hashtags → `suppressed_terms`; Bluesky funnel-hashtag review query added above | #156 |
-| 2026-09-01 | Bluesky funnel-network detector + per-post funnel-shape hard-exclude; cluster review section added above | #162 |
+Moderation actions are recorded in each affected row's `reason` column and in git history.

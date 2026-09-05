@@ -147,8 +147,8 @@ export function startBlueskyIngestion(): void {
         return;
       }
 
-      // Skip a still-active blocked author's stream before it hits raw_posts
-      // (issue #151). Silent, like isBridgedAccount -- these accounts post
+      // Skip a still-active blocked author's stream before it hits raw_posts.
+      // Silent, like isBridgedAccount -- these accounts post
       // constantly, which is the whole reason to catch them here.
       if (isBlockedAuthor("bluesky", event.did, await getBlockedAuthors())) return;
 

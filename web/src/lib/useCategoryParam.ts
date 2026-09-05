@@ -16,7 +16,7 @@ const DEFAULT_CATEGORY: Category = "arts_culture";
 // revert to the default on every reload. Giving it its own value makes it
 // survive a refresh like any real category does. Never surfaced in the UI -
 // CategorySelector has no control that ever produces null - so this is
-// reachable only by knowing the URL. See issue #101.
+// reachable only by knowing the URL.
 const FULL_FEED_PARAM = "all";
 
 function readCategory(): Category | null {

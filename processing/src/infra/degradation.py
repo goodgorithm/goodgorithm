@@ -21,10 +21,9 @@ _last_cycle_success_at: datetime | None = None
 
 
 def record(subsystem: str, message: str) -> None:
-    """Called from a Redis call site's except block instead of a bare
-    logger.warning -- keeps the failure visible in logs (as before) while
-    also making it readable by the status endpoint without waiting for
-    someone to go looking through logs first."""
+    """Records the failure for the status endpoint to surface, so it's
+    readable without going looking through logs first, and also logs it
+    at warning level."""
     _last_degradation[subsystem] = DegradationEvent(message, datetime.now(timezone.utc))
     logger.warning("degraded: %s - %s", subsystem, message)
 

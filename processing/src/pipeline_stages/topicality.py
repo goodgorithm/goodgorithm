@@ -22,8 +22,8 @@ TOPICALITY_LENGTH_NORM_ALPHA = float(os.environ.get("TOPICALITY_LENGTH_NORM_ALPH
 # Separate from the length discount above: penalizes a post whose token
 # count is large relative to its surviving distinct-term count -- i.e. text
 # dominated by one or a few repeated words/stopwords rather than varied
-# vocabulary. Validated against a random 4,000-post production sample
-# (2026-08-26): real posts' token_count/nnz ratio maxes out around 14 even
+# vocabulary. Validated against a random 4,000-post production sample:
+# real posts' token_count/nnz ratio maxes out around 14 even
 # at the 99th percentile (median ~1.6), while a post degenerating to a
 # single repeated term sits at 20+ -- genuinely outside the real
 # distribution, unlike raw length, which many real posts share with such
@@ -43,7 +43,7 @@ TOPICALITY_DIVERSITY_PENALTY_GAMMA = float(os.environ.get("TOPICALITY_DIVERSITY_
 # or two rare tokens -- a bare hashtag, a link plus a word, an emoji string
 # -- can't represent a topic no matter how batch-rare they are, and were
 # otherwise scoring the batch *maximum* topicality. Validated at 3 against
-# a production sample (2026-08-28): the nnz<=1 bucket is entirely
+# a production sample: the nnz<=1 bucket is entirely
 # vacuous/link-only, nnz==2 overwhelmingly so, and nnz>=3 (where ALPHA and
 # the Bluesky/Mastodon parity live) is completely untouched (ramp == 1.0).
 # Re-validate before changing, same as ALPHA/GAMMA.
