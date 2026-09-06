@@ -22,11 +22,11 @@ class R2ModelStore:
     def __init__(self, prefix: str) -> None:
         self.prefix = prefix
         self.client = r2.client(
-            config.R2_ACCOUNT_ID,
-            config.R2_ACCESS_KEY_ID,
-            config.R2_SECRET_ACCESS_KEY,
+            config.R2_MODELS_ACCOUNT_ID,
+            config.R2_MODELS_ACCESS_KEY_ID,
+            config.R2_MODELS_SECRET_ACCESS_KEY,
         )
-        self.bucket = config.R2_BUCKET_NAME
+        self.bucket = config.R2_MODELS_BUCKET_NAME
 
     def get_json(self, key: str) -> dict:
         body = self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
