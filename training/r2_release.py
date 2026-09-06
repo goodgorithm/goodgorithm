@@ -45,8 +45,8 @@ MODEL_REGISTRY below) under their plain names, e.g. `model.onnx`,
 
 Requires the same R2_MODELS_ACCOUNT_ID / R2_MODELS_ACCESS_KEY_ID /
 R2_MODELS_SECRET_ACCESS_KEY / R2_MODELS_BUCKET_NAME env vars processing/
-uses (the legacy unprefixed R2_* names are accepted as a fallback) -- see
-.env.example in the repo root. Mirrors processing/src/infra/model_store.py's registry layout exactly:
+uses -- see .env.example in the repo root. Mirrors
+processing/src/infra/model_store.py's registry layout exactly:
 <prefix>/<version>/{artifacts...}, plus a single mutable
 <prefix>/latest.json pointer, per model type.
 """
@@ -75,34 +75,29 @@ MODEL_REGISTRY = {
     },
 }
 
-# (R2_MODELS_* name, legacy unprefixed R2_* fallback) per credential.
-_ENV_NAMES = [
-    ("R2_MODELS_ACCOUNT_ID", "R2_ACCOUNT_ID"),
-    ("R2_MODELS_ACCESS_KEY_ID", "R2_ACCESS_KEY_ID"),
-    ("R2_MODELS_SECRET_ACCESS_KEY", "R2_SECRET_ACCESS_KEY"),
-    ("R2_MODELS_BUCKET_NAME", "R2_BUCKET_NAME"),
+_REQUIRED_ENV = [
+    "R2_MODELS_ACCOUNT_ID",
+    "R2_MODELS_ACCESS_KEY_ID",
+    "R2_MODELS_SECRET_ACCESS_KEY",
+    "R2_MODELS_BUCKET_NAME",
 ]
 
 
-def _env(name: str, legacy: str) -> str | None:
-    return os.environ.get(name) or os.environ.get(legacy)
-
-
 def _client():
-    missing = [name for name, legacy in _ENV_NAMES if not _env(name, legacy)]
+    missing = [name for name in _REQUIRED_ENV if not os.environ.get(name)]
     if missing:
         sys.exit(f"missing required env vars: {', '.join(missing)}")
     return boto3.client(
         "s3",
-        endpoint_url=f"https://{_env(*_ENV_NAMES[0])}.r2.cloudflarestorage.com",
-        aws_access_key_id=_env(*_ENV_NAMES[1]),
-        aws_secret_access_key=_env(*_ENV_NAMES[2]),
+        endpoint_url=f"https://{os.environ['R2_MODELS_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+        aws_access_key_id=os.environ["R2_MODELS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_MODELS_SECRET_ACCESS_KEY"],
         region_name="auto",
     )
 
 
 def _bucket() -> str:
-    return _env(*_ENV_NAMES[3])
+    return os.environ["R2_MODELS_BUCKET_NAME"]
 
 
 def current(client, prefix: str) -> str | None:

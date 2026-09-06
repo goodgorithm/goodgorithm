@@ -23,7 +23,7 @@ Check-and-report only — never auto-install anything:
 
 2. **Local Redis**: `docker run -d --name goodgorithm-valkey -p 6379:6379 valkey/valkey:8-alpine` (skip if a container with that name already exists and is running — check `docker ps` first). Checkpoint: `docker exec goodgorithm-valkey valkey-cli ping` → `PONG`.
 
-3. **R2**: don't configure it. Leave the `R2_MODELS_*` vars (and their legacy unprefixed `R2_*` fallbacks) unset in `processing/.env` — this is the normal local-dev path, not a shortcut. Tell the user this means VADER/keyword-taxonomy fallbacks, not the real trained models.
+3. **R2**: don't configure it. Leave the `R2_MODELS_*` vars unset in `processing/.env` — this is the normal local-dev path, not a shortcut. Tell the user this means VADER/keyword-taxonomy fallbacks, not the real trained models.
 
 4. **Wire `.env` per service** — three separate files, each in its own service directory (not a shared root `.env`):
    - `ingestion/.env`: `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`, `BLUESKY_SAMPLE_RATE=0.05`
