@@ -23,7 +23,7 @@ Every training run publishes its artifacts to `category-classifier/<version>/` i
    - `TEXT_NORMALIZE_COMMIT` — the SHA from step 1.
    - `VERSION` (near the R2 upload cell) — bump it (e.g. `v1` → `v2`). Versions are immutable once published.
 
-3. **Run all cells top to bottom.** Provide R2 credentials the same way as the sentiment model (Colab/Kaggle Secrets if running there, or local `.env`/shell export otherwise — same `R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/`R2_BUCKET_NAME` vars).
+3. **Run all cells top to bottom.** Provide R2 credentials the same way as the sentiment model (Colab/Kaggle Secrets if running there, or local `.env`/shell export otherwise — same `R2_MODELS_ACCOUNT_ID`/`R2_MODELS_ACCESS_KEY_ID`/`R2_MODELS_SECRET_ACCESS_KEY`/`R2_MODELS_BUCKET_NAME` vars, with the legacy unprefixed `R2_*` names still read as a fallback).
 
 4. **Before considering promotion, check the notebook's own output — this model has more to check than the sentiment CNN does, because of class imbalance:**
    - **Per-label positive counts** printed right after loading the training split. Support varies meaningfully across the 4 kept categories (see `CLAUDE.md` for current counts) — a thinner category isn't a bug, but its numbers deserve less confidence than a well-supported one.
@@ -38,7 +38,7 @@ Every training run publishes its artifacts to `category-classifier/<version>/` i
 5. **The notebook always uploads the versioned artifacts** (`category-classifier/<version>/model.onnx`, `config.json`) regardless of the decision in step 4 — safe and reversible on its own. If the notebook was run somewhere other than an interactive session with R2 access (e.g. artifacts produced elsewhere and handed off as local files), upload them manually instead: `cd training && uv run python r2_release.py --model category upload <version> --path <local-dir>` — `<local-dir>` needs exactly `model.onnx` and `config.json` under those plain names.
 
 6. **Promote to live only if step 4 looks good:**
-   - `cd training && uv run python r2_release.py --model category publish <version>` (needs the R2 env vars and an authenticated `gh` CLI with access to `goodgorithm/goodgorithm`, same as the sentiment model).
+   - `cd training && uv run python r2_release.py --model category publish <version>` (needs the `R2_MODELS_*` env vars — legacy unprefixed `R2_*` still accepted — and an authenticated `gh` CLI with access to `goodgorithm/goodgorithm`, same as the sentiment model).
    - This flips `category-classifier/latest.json` **and** creates a public GitHub Release (`category-classifier-<version>`).
 
 7. **Verify:** `uv run python r2_release.py --model category current` should print the new version, and `gh release view category-classifier-<version> --repo goodgorithm/goodgorithm` should show the public release. `processing/` picks up the model the next time a process starts (resolved once per process, on first categorization) — a running deployment needs a restart to pick up a newly-promoted version.

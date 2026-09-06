@@ -25,7 +25,7 @@ Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the 
    - `SENTIMENT_MODEL_COMMIT` — the SHA from step 1.
    - `VERSION` (near the R2 upload cell) — bump it (e.g. `v1` → `v2`). Versions are immutable once published; reusing a version string to publish different weights defeats the point of versioning.
 
-3. **Run all cells top to bottom.** Provide R2 credentials via Colab Secrets or Kaggle Secrets (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` — same values as `processing/`'s Railway env vars, see `.env.example`). The manual-paste fallback cell exists but secrets are strongly preferred — never commit real credentials into the notebook's saved output.
+3. **Run all cells top to bottom.** Provide R2 credentials via Colab Secrets or Kaggle Secrets (`R2_MODELS_ACCOUNT_ID`, `R2_MODELS_ACCESS_KEY_ID`, `R2_MODELS_SECRET_ACCESS_KEY`, `R2_MODELS_BUCKET_NAME` — same values as `processing/`'s Railway env vars, see `.env.example`; the notebook still reads the legacy unprefixed `R2_*` secret names as a fallback). The manual-paste fallback cell exists but secrets are strongly preferred — never commit real credentials into the notebook's saved output.
 
 4. **Before considering promotion, check the notebook's own output:**
    - Macro-F1 on the held-out test split from the combined training pool.
@@ -38,7 +38,7 @@ Every training run publishes its artifacts to `sentiment-cnn/<version>/` in the 
 5. **The notebook always uploads the versioned artifacts** (`sentiment-cnn/<version>/model.onnx`, `vocab.json`, `config.json`) regardless of the decision in step 4 — that part is safe and reversible on its own. If the notebook was run somewhere other than an interactive session with R2 access (e.g. artifacts produced elsewhere and handed off as local files), upload them manually instead: `cd training && uv run python r2_release.py --model sentiment upload <version> --path <local-dir>` — `<local-dir>` needs exactly `model.onnx`, `vocab.json`, and `config.json` under those plain names.
 
 6. **Promote to live only if step 4 looks good, via `r2_release.py`** — the only path that also makes the version public:
-   - `cd training && uv run python r2_release.py --model sentiment publish <version>` (needs the R2 env vars, e.g. from a local `.env` or exported in your shell, *and* an authenticated `gh` CLI with access to `goodgorithm/goodgorithm`).
+   - `cd training && uv run python r2_release.py --model sentiment publish <version>` (needs the `R2_MODELS_*` env vars — legacy unprefixed `R2_*` still accepted — e.g. from a local `.env` or exported in your shell, *and* an authenticated `gh` CLI with access to `goodgorithm/goodgorithm`).
    - This flips `sentiment-cnn/latest.json` **and** creates a public GitHub Release (`sentiment-cnn-<version>`) mirroring the three artifacts from R2, since `goodgorithm-models` itself is a private bucket — see "The release model" above.
    - The notebook's `PUBLISH_AS_LATEST = True` cell flips `latest.json`, but Colab has no `gh`/repo access, so it **cannot** create the public release. If you use that cell, you still need to run `r2_release.py --model sentiment publish <version>` afterward (it's idempotent on the `latest.json` flip and will just create the missing release). Prefer `r2_release.py` as the single step going forward.
 
