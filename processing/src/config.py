@@ -24,16 +24,11 @@ if REDIS_MAX_BYTES <= 0:
 REDIS_SOFT_LIMIT_RATIO = float(os.environ.get("REDIS_SOFT_LIMIT_RATIO", "0.70"))
 
 # R2 / trained models — all optional, never blocks the rest of the service
-# starting. See the wiki's Configuration page. The legacy unprefixed names
-# (R2_ACCOUNT_ID etc.) are still accepted as a fallback so the deployed
-# environments can adopt R2_MODELS_* without a lockstep cutover; drop the
-# fallback once every environment carries the prefixed names.
-R2_MODELS_ACCOUNT_ID = os.environ.get("R2_MODELS_ACCOUNT_ID") or os.environ.get("R2_ACCOUNT_ID")
-R2_MODELS_ACCESS_KEY_ID = os.environ.get("R2_MODELS_ACCESS_KEY_ID") or os.environ.get("R2_ACCESS_KEY_ID")
-R2_MODELS_SECRET_ACCESS_KEY = os.environ.get("R2_MODELS_SECRET_ACCESS_KEY") or os.environ.get(
-    "R2_SECRET_ACCESS_KEY"
-)
-R2_MODELS_BUCKET_NAME = os.environ.get("R2_MODELS_BUCKET_NAME") or os.environ.get("R2_BUCKET_NAME")
+# starting. See the wiki's Configuration page.
+R2_MODELS_ACCOUNT_ID = os.environ.get("R2_MODELS_ACCOUNT_ID")
+R2_MODELS_ACCESS_KEY_ID = os.environ.get("R2_MODELS_ACCESS_KEY_ID")
+R2_MODELS_SECRET_ACCESS_KEY = os.environ.get("R2_MODELS_SECRET_ACCESS_KEY")
+R2_MODELS_BUCKET_NAME = os.environ.get("R2_MODELS_BUCKET_NAME")
 SENTIMENT_MODEL_VERSION = os.environ.get("SENTIMENT_MODEL_VERSION")
 CATEGORY_MODEL_VERSION = os.environ.get("CATEGORY_MODEL_VERSION")
 

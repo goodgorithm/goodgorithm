@@ -1,4 +1,3 @@
-import importlib
 import json
 
 import pytest
@@ -77,27 +76,3 @@ def test_get_bytes_and_get_json_work_with_any_prefix(monkeypatch):
 
     assert category_store.get_bytes("category-classifier/v1/model.onnx") == b"fake-onnx-bytes"
     assert category_store.get_json("category-classifier/v1/config.json") == {"labels": ["sports"]}
-
-
-def test_legacy_unprefixed_r2_env_vars_are_still_read(monkeypatch):
-    # Transitional: R2_MODELS_* is the name, but a deployment env that only
-    # carries the legacy R2_* names must still resolve until the rename has
-    # rolled out everywhere.
-    for prefixed in (
-        "R2_MODELS_ACCOUNT_ID",
-        "R2_MODELS_ACCESS_KEY_ID",
-        "R2_MODELS_SECRET_ACCESS_KEY",
-        "R2_MODELS_BUCKET_NAME",
-    ):
-        monkeypatch.delenv(prefixed, raising=False)
-    monkeypatch.setenv("R2_ACCOUNT_ID", "legacy-account")
-    monkeypatch.setenv("R2_ACCESS_KEY_ID", "legacy-key")
-    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "legacy-secret")
-    monkeypatch.setenv("R2_BUCKET_NAME", "legacy-bucket")
-    try:
-        importlib.reload(config)
-        assert config.R2_MODELS_ACCOUNT_ID == "legacy-account"
-        assert config.R2_MODELS_BUCKET_NAME == "legacy-bucket"
-        assert config.r2_configured() is True
-    finally:
-        importlib.reload(config)
