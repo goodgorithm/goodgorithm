@@ -30,7 +30,7 @@ Yes, and it always will be — no paywall, no premium tier, no ads. If the proje
 
 ## Do you track visitors?
 
-We use Cloudflare Web Analytics for basic traffic numbers — nothing else. It's cookieless: visitor uniqueness is computed from a hash of the request, then discarded, so there's no tracking cookie and no personal data retained. We picked it specifically because it doesn't need a cookie-consent banner and doesn't conflict with "no accounts, no user data by design" above.
+No. There are no analytics or tracking tools of any kind — no third-party scripts, no cookies set by us, no fingerprinting. Cloudflare, which serves the site, keeps short-lived edge request logs (IP and user-agent, the same as any web request carries) for abuse prevention and debugging; none of it is a cookie, and none of it builds a profile of you. Full detail is in the [Privacy Policy](/privacy).
 
 ## How do I hear about big updates?
 

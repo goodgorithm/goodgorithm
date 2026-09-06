@@ -19,7 +19,7 @@ For the full step-by-step walkthrough of how a post moves from ingestion to the 
 |---|---|---|
 | `ingestion/` | TypeScript | Long-lived process consuming Bluesky Jetstream + polling Mastodon, writes raw posts to Postgres. |
 | `processing/` | Python | Dedup, bot filter, topicality, sentiment, ranking — the actual algorithm. |
-| `api/` | TypeScript (Fastify) | Read-only `/feed` and `/health` endpoints. |
+| `api/` | TypeScript (Fastify) | Read-only `/v1/feed` and `/health` endpoints. |
 | `web/` | TypeScript (React + Vite) | PWA frontend — infinite-scroll feed, deployed as static assets on Cloudflare Workers. |
 | `training/` | Python (notebook) | Sentiment CNN training, run manually on Colab/Kaggle, plus model-release tooling. |
 | `supabase/migrations/` | SQL | Postgres schema. |
@@ -28,14 +28,14 @@ Each service has its own `package.json` / `pyproject.toml` and expects its own `
 
 ## Docs
 
-Full project context for anyone (human or Claude) picking this up lives in [`CLAUDE.md`](CLAUDE.md), not scattered across this README. Deeper, public-facing docs live in the [GitHub Wiki](https://github.com/goodgorithm/goodgorithm/wiki), not Notion:
+Full project context for anyone (human or Claude) picking this up lives in [`CLAUDE.md`](CLAUDE.md), not scattered across this README. Deeper, public-facing docs live in the [GitHub Wiki](https://github.com/goodgorithm/goodgorithm/wiki):
 
 - **[Mission](https://github.com/goodgorithm/goodgorithm/wiki/Mission)** — goals, decision-making principles, commitments.
 - **[Algorithm](https://github.com/goodgorithm/goodgorithm/wiki/Algorithm)** — step-by-step pipeline mechanics.
 - **[Infrastructure](https://github.com/goodgorithm/goodgorithm/wiki/Infrastructure)** — hosting/tooling and why.
 - **[Content Policy](https://github.com/goodgorithm/goodgorithm/wiki/Content-Policy)** — what's excluded from the feed, and why.
 
-The app itself only surfaces a condensed FAQ in-app (`web/src/content/faq.md`, live at `/faq`) plus a link to this repo — the wiki is where the full docs live, not the app's own navigation. Notion is internal-only: decisions log, research, planning — not public.
+The app itself only surfaces a condensed FAQ in-app (`web/src/content/faq.md`, live at `/faq`) plus a link to this repo — the wiki is where the full docs live, not the app's own navigation.
 
 ## A note on LLMs
 
