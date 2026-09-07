@@ -17,10 +17,7 @@ def make_post(
     is_bot=False,
     is_dedup_canonical=True,
     text="a distinct post about nothing in particular",
-    context_penalty=1.0,
-    link_share_penalty=1.0,
-    aggregator_penalty=1.0,
-    shape_penalty=1.0,
+    penalty_multiplier=1.0,
     source=None,
     author_id=None,
 ):
@@ -38,10 +35,7 @@ def make_post(
         is_dedup_canonical=is_dedup_canonical,
         source=source or "bluesky",
         author_id=author_id or str(uuid4()),
-        context_penalty=context_penalty,
-        link_share_penalty=link_share_penalty,
-        aggregator_penalty=aggregator_penalty,
-        shape_penalty=shape_penalty,
+        penalty_multiplier=penalty_multiplier,
     )
 
 
@@ -75,47 +69,14 @@ def test_compute_base_score_multiplies_components():
     assert abs(ranking.compute_base_score(post, NOW) - 1.0) < 1e-9  # positivity(0.5) * 2.0 * decay(1.0)
 
 
-def test_compute_base_score_applies_context_penalty():
-    # A devalued (e.g. context-dependent Bluesky reply) post's base_score
-    # is scaled down by context_penalty, same as any other content-derived
-    # multiplier.
-    full = make_post(sentiment_score=0.5, topicality_score=2.0, context_penalty=1.0)
-    devalued = make_post(sentiment_score=0.5, topicality_score=2.0, context_penalty=0.4)
-    assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.4) < 1e-9
-
-
-def test_compute_base_score_applies_link_share_penalty():
-    # A bare link-share's base_score is scaled down by link_share_penalty,
-    # independently of context_penalty -- both multipliers stack.
-    full = make_post(sentiment_score=0.5, topicality_score=2.0, link_share_penalty=1.0)
-    devalued = make_post(sentiment_score=0.5, topicality_score=2.0, link_share_penalty=0.4)
-    assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.4) < 1e-9
-
-
-def test_compute_base_score_applies_aggregator_penalty():
-    # A post from a listed aggregator instance is scaled down by
-    # aggregator_penalty, stacking with the other devalue multipliers.
-    full = make_post(sentiment_score=0.5, topicality_score=2.0, aggregator_penalty=1.0)
-    devalued = make_post(sentiment_score=0.5, topicality_score=2.0, aggregator_penalty=0.3)
-    both = make_post(
-        sentiment_score=0.5, topicality_score=2.0, link_share_penalty=0.4, aggregator_penalty=0.3
-    )
-    assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.3) < 1e-9
-    assert abs(ranking.compute_base_score(both, NOW) - ranking.compute_base_score(full, NOW) * 0.4 * 0.3) < 1e-9
-
-
-def test_compute_base_score_applies_shape_penalty():
-    # A post matching a registered post_shape (a "now playing on <station>"
-    # radio bot, say) that the bot filter didn't already exclude is scaled
-    # down by shape_penalty, stacking with the other devalue multipliers.
-    full = make_post(sentiment_score=0.5, topicality_score=2.0, shape_penalty=1.0)
-    devalued = make_post(sentiment_score=0.5, topicality_score=2.0, shape_penalty=0.3)
-    stacked = make_post(
-        sentiment_score=0.5, topicality_score=2.0, aggregator_penalty=0.3, shape_penalty=0.3
-    )
-    assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.3) < 1e-9
+def test_compute_base_score_applies_penalty_multiplier():
+    # base_score scales linearly with penalty_multiplier -- the single
+    # combined devalue product from penalties.py (see test_penalties.py for
+    # how the individual penalties compose into it).
+    full = make_post(sentiment_score=0.5, topicality_score=2.0, penalty_multiplier=1.0)
+    devalued = make_post(sentiment_score=0.5, topicality_score=2.0, penalty_multiplier=0.12)
     assert abs(
-        ranking.compute_base_score(stacked, NOW) - ranking.compute_base_score(full, NOW) * 0.3 * 0.3
+        ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.12
     ) < 1e-9
 
 

@@ -79,6 +79,11 @@ class ProcessedPostUpsert:
     quote_content: dict | None = None
     category: str | None = None
     category_method: str | None = None
+    penalty_multiplier: float = 1.0
+    penalty_detail: dict | None = None
+    # The individual *_penalty columns hold the same values as
+    # penalty_detail's entries; kept in step during the transition off the
+    # pre-box schema.
     context_penalty: float = 1.0
     link_share_penalty: float = 1.0
     aggregator_penalty: float = 1.0
@@ -93,8 +98,8 @@ _PROCESSED_POSTS_COLUMNS = (
     "raw_post_id, source, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
     "sentiment_score, sentiment_method, topicality_score, entities, "
     "base_score, rank_score, quote_content, category, category_method, "
-    "context_penalty, link_share_penalty, aggregator_penalty, "
-    "shape_penalty, shape_name, generated_thumbnail_url, pipeline_version"
+    "context_penalty, link_share_penalty, aggregator_penalty, shape_penalty, shape_name, "
+    "penalty_multiplier, penalty_detail, generated_thumbnail_url, pipeline_version"
 )
 
 
@@ -106,7 +111,8 @@ _PROCESSED_POSTS_ROW_SQL = (
     "(%s::uuid, %s::text, %s::uuid, %s::boolean, %s::boolean, %s::real, "
     "%s::real, %s::text, %s::real, %s::jsonb, "
     "%s::real, %s::real, %s::jsonb, %s::text, %s::text, "
-    "%s::real, %s::real, %s::real, %s::real, %s::text, %s::text, %s::text)"
+    "%s::real, %s::real, %s::real, %s::real, %s::text, "
+    "%s::real, %s::jsonb, %s::text, %s::text)"
 )
 
 
@@ -145,6 +151,8 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
             aggregator_penalty     = EXCLUDED.aggregator_penalty,
             shape_penalty          = EXCLUDED.shape_penalty,
             shape_name             = EXCLUDED.shape_name,
+            penalty_multiplier     = EXCLUDED.penalty_multiplier,
+            penalty_detail         = EXCLUDED.penalty_detail,
             generated_thumbnail_url = EXCLUDED.generated_thumbnail_url,
             pipeline_version       = EXCLUDED.pipeline_version,
             processed_at           = NOW()
@@ -186,6 +194,8 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.aggregator_penalty,
                     row.shape_penalty,
                     row.shape_name,
+                    row.penalty_multiplier,
+                    Jsonb(row.penalty_detail) if row.penalty_detail is not None else None,
                     row.generated_thumbnail_url,
                     row.pipeline_version,
                 )
@@ -203,10 +213,7 @@ class RankableRow:
     entities: list
     is_bot: bool
     is_dedup_canonical: bool
-    context_penalty: float
-    link_share_penalty: float
-    aggregator_penalty: float
-    shape_penalty: float
+    penalty_multiplier: float
     source: str
     author_id: str
 
@@ -227,8 +234,7 @@ def fetch_rankable_posts(since: datetime, min_sentiment: float, pool_size: int) 
         rows = conn.execute(
             """
             SELECT r.id, r.text, r.created_at, p.sentiment_score, p.topicality_score,
-                   p.entities, p.is_bot, p.is_dedup_canonical, p.context_penalty,
-                   p.link_share_penalty, p.aggregator_penalty, p.shape_penalty,
+                   p.entities, p.is_bot, p.is_dedup_canonical, p.penalty_multiplier,
                    r.source, r.author_id
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
