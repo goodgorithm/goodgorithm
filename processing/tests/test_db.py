@@ -14,7 +14,7 @@ def test_processed_posts_upsert_sql_skips_rows_whose_raw_post_vanished():
     assert "FROM (VALUES" in sql  # INSERT ... SELECT, not INSERT ... VALUES
     assert "WHERE EXISTS (SELECT 1 FROM raw_posts r WHERE r.id = v.raw_post_id" in sql
     assert "ON CONFLICT (raw_post_id) DO UPDATE" in sql
-    assert sql.count("%s") == 3 * 21  # rows x columns, param count still bounded per chunk
+    assert sql.count("%s") == 3 * 23  # rows x columns, param count still bounded per chunk
 
 
 def test_resolver_candidate_queries_filter_and_order_on_processed_posts():
@@ -43,13 +43,17 @@ def _reset_moderation_cache(monkeypatch):
 def test_fetch_moderation_lists_caches_within_ttl(monkeypatch):
     _reset_moderation_cache(monkeypatch)
 
-    calls = {"terms": 0, "domains": 0, "aggregators": 0}
+    calls = {"terms": 0, "domains": 0, "aggregators": 0, "shapes": 0}
     monkeypatch.setattr(db, "fetch_suppressed_terms", lambda: calls.__setitem__("terms", calls["terms"] + 1) or frozenset({"nsfw"}))
     monkeypatch.setattr(
         db, "fetch_suppressed_domains", lambda: calls.__setitem__("domains", calls["domains"] + 1) or frozenset({"example.com"})
     )
     monkeypatch.setattr(
         db, "fetch_aggregator_instances", lambda: calls.__setitem__("aggregators", calls["aggregators"] + 1) or frozenset({"flipboard.com"})
+    )
+    shape_cfg = {"nowplaying": db.PostShapeConfig(enabled=True, devalue_multiplier=0.3, repeat_threshold=3)}
+    monkeypatch.setattr(
+        db, "fetch_post_shape_config", lambda: calls.__setitem__("shapes", calls["shapes"] + 1) or shape_cfg
     )
     monkeypatch.setattr(db.time, "monotonic", lambda: 1000.0)
 
@@ -60,8 +64,9 @@ def test_fetch_moderation_lists_caches_within_ttl(monkeypatch):
         frozenset({"nsfw"}),
         frozenset({"example.com"}),
         frozenset({"flipboard.com"}),
+        shape_cfg,
     )
-    assert calls == {"terms": 1, "domains": 1, "aggregators": 1}
+    assert calls == {"terms": 1, "domains": 1, "aggregators": 1, "shapes": 1}
 
 
 def test_fetch_moderation_lists_refetches_after_ttl_expires(monkeypatch):
@@ -76,6 +81,7 @@ def test_fetch_moderation_lists_refetches_after_ttl_expires(monkeypatch):
     monkeypatch.setattr(db, "fetch_suppressed_terms", fake_fetch_terms)
     monkeypatch.setattr(db, "fetch_suppressed_domains", lambda: frozenset())
     monkeypatch.setattr(db, "fetch_aggregator_instances", lambda: frozenset())
+    monkeypatch.setattr(db, "fetch_post_shape_config", lambda: {})
 
     fake_now = [1000.0]
     monkeypatch.setattr(db.time, "monotonic", lambda: fake_now[0])

@@ -300,10 +300,10 @@ def test_score_bot_varying_structure_does_not_raise_template_component():
     assert last.is_bot is False
 
 
-# --- nowplaying_shape / nowplaying_component (issue #189) ---
+# --- post_shape override / shape_component (issue #189, #196) ---
 
 # Real production text: one station, three tracks, three different hashtag
-# tails -- template_skeleton fragments across these, nowplaying_shape doesn't.
+# tails -- template_skeleton fragments across these, the post_shape key doesn't.
 JOINT_REGGAE_1 = (
     "Now playing on ❤️ Joint Radio Reggae: \U0001f3b5 Al Campbell - Take A Ride "
     "listen with us \U0001f3a7 https://www.jointil.com #Reggae #AlCampbell"
@@ -319,28 +319,6 @@ JOINT_REGGAE_3 = (
 
 # The tibr* federated Mastodon bot, seen via several polled instances.
 TIBR_A = 'Artist: "A" Support: "x" Title: "T1" Album: "AL" Station: The Indie Beat Radio - watch live'
-TIBR_B = 'Artist: "B" Support: "y" Title: "T2" Album: "AL2" Station: The Indie Beat Radio - watch live'
-
-
-def test_nowplaying_shape_stable_across_a_stations_tracks():
-    key = bot_filter.nowplaying_shape(JOINT_REGGAE_1)
-    assert key is not None
-    assert bot_filter.nowplaying_shape(JOINT_REGGAE_2) == key
-    assert bot_filter.nowplaying_shape(JOINT_REGGAE_3) == key
-    assert bot_filter.nowplaying_shape(TIBR_A) == bot_filter.nowplaying_shape(TIBR_B)
-
-
-def test_nowplaying_shape_none_for_genuine_or_incidental_text():
-    for text in (
-        "\U0001f3a7 Just liked: Sign of the Times by Harry Styles #NowPlaying #Spotify",
-        "#NowPlaying #Madonna #BedtimeStories",
-        "Dance of the Blessed Spirits by Gluck #nowplaying #radio3",
-        "In this case believe the Urban Legend and tune into the Final Girls podcast!!!!",
-        "Talk Question Time is out! Tune in on YouTube, Spotify & Apple Podcasts",
-        "Streaming live on Twitch right now! come through",
-        "had a lovely walk in the park this morning",
-    ):
-        assert bot_filter.nowplaying_shape(text) is None, text
 
 
 def test_score_bot_repeated_nowplaying_flags_as_bot_at_threshold():
@@ -353,7 +331,8 @@ def test_score_bot_repeated_nowplaying_flags_as_bot_at_threshold():
     # velocity is only 3 and each track is its own dedup cluster, so the
     # weighted bot_score never reaches 0.5 -- the override is what flags it.
     assert results[0].is_bot is False
-    assert results[-1].nowplaying_component == 1.0
+    assert results[-1].shape_component == 1.0
+    assert results[-1].shape_name == "nowplaying"
     assert results[-1].bot_score < bot_filter.BOT_FILTER_BOT_SCORE_THRESHOLD
     assert results[-1].is_bot is True
 
@@ -363,7 +342,7 @@ def test_score_bot_singleton_nowplaying_is_not_flagged():
     result = bot_filter.score_bot(
         "bluesky", "did:plc:realperson", JOINT_REGGAE_1, uuid4(), index
     )
-    assert 0.0 < result.nowplaying_component < 1.0
+    assert 0.0 < result.shape_component < 1.0
     assert result.is_bot is False
 
 
@@ -375,8 +354,27 @@ def test_score_bot_nowplaying_override_spans_polled_mastodon_instances():
         last = bot_filter.score_bot(
             "mastodon", f"{instance}/tibrnowplayingbot@mastodon.social", TIBR_A, uuid4(), index
         )
-    assert last.nowplaying_component == 1.0
+    assert last.shape_component == 1.0
     assert last.is_bot is True
+
+
+def test_score_bot_non_matching_text_has_no_shape_component():
+    index = InMemoryBotFilterIndex()
+    result = bot_filter.score_bot("bluesky", "did:plc:person", "had a lovely walk this morning", uuid4(), index)
+    assert result.shape_component == 0.0
+    assert result.shape_name is None
+
+
+def test_score_bot_disabled_shape_config_suppresses_the_override():
+    from infra.db import PostShapeConfig
+
+    index = InMemoryBotFilterIndex()
+    disabled = {"nowplaying": PostShapeConfig(enabled=False, devalue_multiplier=1.0, repeat_threshold=3)}
+    for _ in range(5):
+        last = bot_filter.score_bot("bluesky", "did:plc:jointradio", JOINT_REGGAE_1, uuid4(), index, disabled)
+    assert last.shape_component == 0.0
+    assert last.shape_name is None
+    assert last.is_bot is False
 
 
 class RaisingPipeline:
