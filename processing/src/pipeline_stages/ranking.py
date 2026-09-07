@@ -70,6 +70,11 @@ class RankablePost:
     # Mastodon home instance is a listed content aggregator (Flipboard
     # etc.). Keyed on the source instance, not on engagement.
     aggregator_penalty: float = 1.0
+    # nowplaying_demote.py's devalue multiplier -- 1.0 unless the post is a
+    # structured "now playing on <station>" radio/stream post that the bot
+    # filter didn't already exclude. Content-derived (the post's own text
+    # shape), same category as the multipliers above.
+    nowplaying_penalty: float = 1.0
 
 
 @dataclass
@@ -99,8 +104,9 @@ def recency_decay(created_at: datetime, now: datetime) -> float:
 
 def compute_base_score(post: RankablePost, now: datetime) -> float:
     """Content-derived only — positivity x topicality x recency x
-    context_penalty x link_share_penalty x aggregator_penalty. No
-    engagement field exists on RankablePost for this to accidentally read."""
+    context_penalty x link_share_penalty x aggregator_penalty x
+    nowplaying_penalty. No engagement field exists on RankablePost for this
+    to accidentally read."""
     return (
         positivity(post.sentiment_score)
         * post.topicality_score
@@ -108,6 +114,7 @@ def compute_base_score(post: RankablePost, now: datetime) -> float:
         * post.context_penalty
         * post.link_share_penalty
         * post.aggregator_penalty
+        * post.nowplaying_penalty
     )
 
 

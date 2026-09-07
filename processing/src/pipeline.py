@@ -20,6 +20,7 @@ from pipeline_stages import (
     language_filter,
     link_share,
     moderation_recheck,
+    nowplaying_demote,
     quote_resolver,
     ranking,
     sentiment,
@@ -49,7 +50,7 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
-PIPELINE_VERSION = "v8"
+PIPELINE_VERSION = "v9"
 
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
@@ -177,6 +178,7 @@ def run_cycle(batch_size: int) -> int:
         aggregator_penalty = aggregator_demote.classify(
             post.source, post.author_id, aggregator_instances
         ).devalue_multiplier
+        nowplaying_penalty = nowplaying_demote.classify(post.text).devalue_multiplier
 
         rankable = ranking.RankablePost(
             id=post.id,
@@ -192,6 +194,7 @@ def run_cycle(batch_size: int) -> int:
             context_penalty=context_penalty,
             link_share_penalty=link_share_penalty,
             aggregator_penalty=aggregator_penalty,
+            nowplaying_penalty=nowplaying_penalty,
         )
         base_score = ranking.compute_base_score(rankable, now)
 
@@ -226,6 +229,7 @@ def run_cycle(batch_size: int) -> int:
                 context_penalty=context_penalty,
                 link_share_penalty=link_share_penalty,
                 aggregator_penalty=aggregator_penalty,
+                nowplaying_penalty=nowplaying_penalty,
                 generated_thumbnail_url=generated_thumbnail_url,
             )
         )
@@ -265,6 +269,7 @@ def refresh_rankings() -> int:
             context_penalty=row.context_penalty,
             link_share_penalty=row.link_share_penalty,
             aggregator_penalty=row.aggregator_penalty,
+            nowplaying_penalty=row.nowplaying_penalty,
         )
         for row in rows
     ]

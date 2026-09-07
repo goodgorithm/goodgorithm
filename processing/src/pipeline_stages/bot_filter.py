@@ -57,6 +57,21 @@ if BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD < 1:
         f"BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD ({BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD}) must be at least 1"
     )
 
+# "now playing on <station>" radio-bot posts share a fixed opener but rotate
+# the track, artist and per-track hashtags every post -- so template_skeleton
+# (which reads the last few normalized words) fragments across them and their
+# other spam signals stay individually weak (low velocity, one dedup cluster
+# per track, moderate lexical). Once one canonical account emits this many
+# nowplaying_shape() matches in the template-repeat window, score_bot forces
+# is_bot regardless of the weighted score. A singleton "now playing on ..."
+# from a real person can never reach it. Must be at least 1. See the wiki's
+# Bot Filter page.
+BOT_FILTER_NOWPLAYING_REPEAT_THRESHOLD = int(os.environ.get("BOT_FILTER_NOWPLAYING_REPEAT_THRESHOLD", "3"))
+if BOT_FILTER_NOWPLAYING_REPEAT_THRESHOLD < 1:
+    raise ValueError(
+        f"BOT_FILTER_NOWPLAYING_REPEAT_THRESHOLD ({BOT_FILTER_NOWPLAYING_REPEAT_THRESHOLD}) must be at least 1"
+    )
+
 BOT_FILTER_VELOCITY_WEIGHT = float(os.environ.get("BOT_FILTER_VELOCITY_WEIGHT", "0.30"))
 BOT_FILTER_SELF_DUP_WEIGHT = float(os.environ.get("BOT_FILTER_SELF_DUP_WEIGHT", "0.25"))
 BOT_FILTER_LEXICAL_WEIGHT = float(os.environ.get("BOT_FILTER_LEXICAL_WEIGHT", "0.20"))
@@ -70,6 +85,29 @@ BOT_FILTER_BOT_SCORE_THRESHOLD = float(os.environ.get("BOT_FILTER_BOT_SCORE_THRE
 # separate, larger piece of work.
 _URL_RE = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
 _HASHTAG_RE = re.compile(r"#\w+")
+
+# "now playing on <station>" and its close variants. Anchored on the opener
+# so a bare "#nowplaying" tag, "tune in" / "streaming live" (podcast and
+# Twitch self-promo), and a person sharing what they're listening to
+# ("Just liked ...") don't match -- only a station/stream announcing a track.
+_NOWPLAYING_ON_RE = re.compile(
+    r"(?:^|[\s>\"'“])(?:#?\s?now\s?playing|now\s+on\s+air|live\s+now)\s+on\s+(?P<station>[^\n:!(]*)",
+    re.IGNORECASE,
+)
+_NOWPLAYING_NOW_ON_RE = re.compile(
+    r"(?:^|[\s>\"'“])now\s+on\s+(?P<station>[^\n:!(]*?):",
+    re.IGNORECASE,
+)
+# The BBC family's link-free "<BBC Radio N ...show...> Now Playing <artist>
+# <track>" shape, which carries no "on <station>".
+_NOWPLAYING_BBC_RE = re.compile(
+    r"^bbc\s+(?:radio|asian|introducing|world|sounds|music)\b.*?\bnow\s+playing\b",
+    re.IGNORECASE | re.DOTALL,
+)
+# The tibr*/tibtv* federated Mastodon bot's structured block.
+_NOWPLAYING_STRUCTURED_RE = re.compile(r"\bartist:\s*\S.*?\btitle:\s*\S", re.IGNORECASE | re.DOTALL)
+_NOWPLAYING_STATION_FIELD_RE = re.compile(r"\b(?:station|show):\s*\"?([^\"\n]+)", re.IGNORECASE)
+_NOWPLAYING_KEY_CLEAN_RE = re.compile(r"[^a-z0-9]+")
 
 
 def url_density(text: str) -> float:
@@ -117,6 +155,41 @@ def template_skeleton(text: str) -> str:
     prefix = words[:BOT_FILTER_TEMPLATE_PREFIX_WORDS]
     suffix = words[-BOT_FILTER_TEMPLATE_SUFFIX_WORDS:] if len(words) > BOT_FILTER_TEMPLATE_PREFIX_WORDS else []
     return "|".join(prefix) + "||" + "|".join(suffix)
+
+
+def _nowplaying_key(station: str) -> str:
+    """A station identifier reduced to its first few ASCII words -- drops
+    leading emoji/decoration and the per-track tail, so every post from one
+    station collapses to the same key."""
+    ascii_only = station.encode("ascii", "ignore").decode("ascii")
+    words = ascii_only.split()[:3]
+    return _NOWPLAYING_KEY_CLEAN_RE.sub("-", " ".join(words).lower()).strip("-")
+
+
+def nowplaying_shape(text: str) -> str | None:
+    """A stable per-station key when `text` is a structured "now playing on
+    <station>" / radio-bot post -- the shape a station account emits many
+    times a day with only the track, artist and hashtags changing -- else
+    None. A bare "#nowplaying" tag, "tune in" / "streaming live", and a
+    person naming a track they like all return None.
+
+    Used two ways: score_bot feeds it to bump_template_repeat so a rotating-
+    station bot's posts accumulate under one key (template_skeleton fragments
+    on their per-track hashtag tail), and nowplaying_demote.classify uses
+    "matches at all" as its base_score devalue gate. See the wiki's Bot
+    Filter page."""
+    if not text:
+        return None
+    for pattern in (_NOWPLAYING_ON_RE, _NOWPLAYING_NOW_ON_RE):
+        match = pattern.search(text)
+        if match:
+            return "np:" + (_nowplaying_key(match.group("station")) or "x")
+    if _NOWPLAYING_BBC_RE.search(text):
+        return "np:" + (_nowplaying_key(text) or "bbc")
+    if _NOWPLAYING_STRUCTURED_RE.search(text):
+        field = _NOWPLAYING_STATION_FIELD_RE.search(text)
+        return "np:" + ((_nowplaying_key(field.group(1)) if field else "") or "structured")
+    return None
 
 
 def canonical_account_id(source: str, author_id: str) -> str:
@@ -234,6 +307,11 @@ class BotScore:
     self_dup_component: float
     lexical_component: float
     template_component: float
+    # Not a term in the weighted bot_score -- a separate repeat count for the
+    # "now playing on <station>" shape that forces is_bot on its own once it
+    # reaches 1.0 (BOT_FILTER_NOWPLAYING_REPEAT_THRESHOLD matches). 0.0 for
+    # any post nowplaying_shape() doesn't recognize.
+    nowplaying_component: float = 0.0
 
 
 def score_bot(source: str, author_id: str, text: str, cluster_id: UUID, index: BotFilterIndex) -> BotScore:
@@ -258,6 +336,18 @@ def score_bot(source: str, author_id: str, text: str, cluster_id: UUID, index: B
     template_count = index.bump_template_repeat(account_id, template_skeleton(text))
     template_component = min(1.0, template_count / BOT_FILTER_TEMPLATE_REPEAT_THRESHOLD)
 
+    # Separate from the weighted score: a "now playing on <station>" post's
+    # spam signals are each individually weak, so it's caught by how reliably
+    # one account repeats the shape, not by how it scores on any one cycle.
+    # Reuses bump_template_repeat's own Redis path under an "np:"-prefixed
+    # skeleton so it can't collide with the generic one.
+    np_skeleton = nowplaying_shape(text)
+    if np_skeleton is not None:
+        np_count = index.bump_template_repeat(account_id, np_skeleton)
+        nowplaying_component = min(1.0, np_count / BOT_FILTER_NOWPLAYING_REPEAT_THRESHOLD)
+    else:
+        nowplaying_component = 0.0
+
     bot_score = (
         BOT_FILTER_VELOCITY_WEIGHT * velocity_component
         + BOT_FILTER_SELF_DUP_WEIGHT * self_dup_component
@@ -267,9 +357,10 @@ def score_bot(source: str, author_id: str, text: str, cluster_id: UUID, index: B
 
     return BotScore(
         bot_score=bot_score,
-        is_bot=bot_score >= BOT_FILTER_BOT_SCORE_THRESHOLD,
+        is_bot=bot_score >= BOT_FILTER_BOT_SCORE_THRESHOLD or nowplaying_component >= 1.0,
         velocity_component=velocity_component,
         self_dup_component=self_dup_component,
         lexical_component=lex_component,
         template_component=template_component,
+        nowplaying_component=nowplaying_component,
     )

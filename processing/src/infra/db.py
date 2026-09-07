@@ -82,6 +82,7 @@ class ProcessedPostUpsert:
     context_penalty: float = 1.0
     link_share_penalty: float = 1.0
     aggregator_penalty: float = 1.0
+    nowplaying_penalty: float = 1.0
     generated_thumbnail_url: str | None = None
 
 
@@ -91,7 +92,8 @@ _PROCESSED_POSTS_COLUMNS = (
     "raw_post_id, source, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
     "sentiment_score, sentiment_method, topicality_score, entities, "
     "base_score, rank_score, quote_content, category, category_method, "
-    "context_penalty, link_share_penalty, aggregator_penalty, generated_thumbnail_url, pipeline_version"
+    "context_penalty, link_share_penalty, aggregator_penalty, nowplaying_penalty, "
+    "generated_thumbnail_url, pipeline_version"
 )
 
 
@@ -103,7 +105,7 @@ _PROCESSED_POSTS_ROW_SQL = (
     "(%s::uuid, %s::text, %s::uuid, %s::boolean, %s::boolean, %s::real, "
     "%s::real, %s::text, %s::real, %s::jsonb, "
     "%s::real, %s::real, %s::jsonb, %s::text, %s::text, "
-    "%s::real, %s::real, %s::real, %s::text, %s::text)"
+    "%s::real, %s::real, %s::real, %s::real, %s::text, %s::text)"
 )
 
 
@@ -140,6 +142,7 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
             context_penalty        = EXCLUDED.context_penalty,
             link_share_penalty     = EXCLUDED.link_share_penalty,
             aggregator_penalty     = EXCLUDED.aggregator_penalty,
+            nowplaying_penalty     = EXCLUDED.nowplaying_penalty,
             generated_thumbnail_url = EXCLUDED.generated_thumbnail_url,
             pipeline_version       = EXCLUDED.pipeline_version,
             processed_at           = NOW()
@@ -179,6 +182,7 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.context_penalty,
                     row.link_share_penalty,
                     row.aggregator_penalty,
+                    row.nowplaying_penalty,
                     row.generated_thumbnail_url,
                     row.pipeline_version,
                 )
@@ -199,6 +203,7 @@ class RankableRow:
     context_penalty: float
     link_share_penalty: float
     aggregator_penalty: float
+    nowplaying_penalty: float
     source: str
     author_id: str
 
@@ -220,7 +225,8 @@ def fetch_rankable_posts(since: datetime, min_sentiment: float, pool_size: int) 
             """
             SELECT r.id, r.text, r.created_at, p.sentiment_score, p.topicality_score,
                    p.entities, p.is_bot, p.is_dedup_canonical, p.context_penalty,
-                   p.link_share_penalty, p.aggregator_penalty, r.source, r.author_id
+                   p.link_share_penalty, p.aggregator_penalty, p.nowplaying_penalty,
+                   r.source, r.author_id
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
             WHERE r.created_at >= %s

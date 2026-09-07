@@ -20,6 +20,7 @@ def make_post(
     context_penalty=1.0,
     link_share_penalty=1.0,
     aggregator_penalty=1.0,
+    nowplaying_penalty=1.0,
     source=None,
     author_id=None,
 ):
@@ -40,6 +41,7 @@ def make_post(
         context_penalty=context_penalty,
         link_share_penalty=link_share_penalty,
         aggregator_penalty=aggregator_penalty,
+        nowplaying_penalty=nowplaying_penalty,
     )
 
 
@@ -100,6 +102,21 @@ def test_compute_base_score_applies_aggregator_penalty():
     )
     assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.3) < 1e-9
     assert abs(ranking.compute_base_score(both, NOW) - ranking.compute_base_score(full, NOW) * 0.4 * 0.3) < 1e-9
+
+
+def test_compute_base_score_applies_nowplaying_penalty():
+    # A structured "now playing on <station>" post the bot filter didn't
+    # already exclude is scaled down by nowplaying_penalty, stacking with
+    # the other devalue multipliers.
+    full = make_post(sentiment_score=0.5, topicality_score=2.0, nowplaying_penalty=1.0)
+    devalued = make_post(sentiment_score=0.5, topicality_score=2.0, nowplaying_penalty=0.3)
+    stacked = make_post(
+        sentiment_score=0.5, topicality_score=2.0, aggregator_penalty=0.3, nowplaying_penalty=0.3
+    )
+    assert abs(ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.3) < 1e-9
+    assert abs(
+        ranking.compute_base_score(stacked, NOW) - ranking.compute_base_score(full, NOW) * 0.3 * 0.3
+    ) < 1e-9
 
 
 def test_filter_eligible_excludes_bots_duplicates_and_low_sentiment():
