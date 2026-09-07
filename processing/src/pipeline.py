@@ -20,7 +20,7 @@ from pipeline_stages import (
     language_filter,
     link_share,
     moderation_recheck,
-    nowplaying_demote,
+    post_shape,
     quote_resolver,
     ranking,
     sentiment,
@@ -50,7 +50,7 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
-PIPELINE_VERSION = "v9"
+PIPELINE_VERSION = "v10"
 
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
@@ -94,7 +94,7 @@ def run_cycle(batch_size: int) -> int:
     # so a post is never scored once it's excluded. See the wiki's Content
     # Policy page for the policy behind each, and Pipeline Internals for
     # why this specific order.
-    suppressed_terms, suppressed_domains, aggregator_instances = db.fetch_moderation_lists()
+    suppressed_terms, suppressed_domains, aggregator_instances, post_shape_config = db.fetch_moderation_lists()
 
     context_classifications: dict = {}
 
@@ -167,7 +167,9 @@ def run_cycle(batch_size: int) -> int:
     upserts: list[db.ProcessedPostUpsert] = []
     for post in kept_posts:
         cluster = dedup_results[post.id]
-        bot_score = bot_filter.score_bot(post.source, post.author_id, post.text, cluster.cluster_id, bot_index)
+        bot_score = bot_filter.score_bot(
+            post.source, post.author_id, post.text, cluster.cluster_id, bot_index, post_shape_config
+        )
         topic = topicality_results[post.id]
         sentiment_score = sentiment_results[post.id]
 
@@ -178,7 +180,9 @@ def run_cycle(batch_size: int) -> int:
         aggregator_penalty = aggregator_demote.classify(
             post.source, post.author_id, aggregator_instances
         ).devalue_multiplier
-        nowplaying_penalty = nowplaying_demote.classify(post.text).devalue_multiplier
+        shape_match = post_shape.classify(post.text, post_shape_config)
+        shape_penalty = shape_match.devalue_multiplier if shape_match else 1.0
+        shape_name = shape_match.name if shape_match else None
 
         rankable = ranking.RankablePost(
             id=post.id,
@@ -194,7 +198,7 @@ def run_cycle(batch_size: int) -> int:
             context_penalty=context_penalty,
             link_share_penalty=link_share_penalty,
             aggregator_penalty=aggregator_penalty,
-            nowplaying_penalty=nowplaying_penalty,
+            shape_penalty=shape_penalty,
         )
         base_score = ranking.compute_base_score(rankable, now)
 
@@ -229,7 +233,11 @@ def run_cycle(batch_size: int) -> int:
                 context_penalty=context_penalty,
                 link_share_penalty=link_share_penalty,
                 aggregator_penalty=aggregator_penalty,
-                nowplaying_penalty=nowplaying_penalty,
+                # nowplaying_penalty is dual-written equal to shape_penalty
+                # until migration 0023 drops the pre-rename column.
+                nowplaying_penalty=shape_penalty,
+                shape_penalty=shape_penalty,
+                shape_name=shape_name,
                 generated_thumbnail_url=generated_thumbnail_url,
             )
         )
@@ -269,7 +277,7 @@ def refresh_rankings() -> int:
             context_penalty=row.context_penalty,
             link_share_penalty=row.link_share_penalty,
             aggregator_penalty=row.aggregator_penalty,
-            nowplaying_penalty=row.nowplaying_penalty,
+            shape_penalty=row.shape_penalty,
         )
         for row in rows
     ]

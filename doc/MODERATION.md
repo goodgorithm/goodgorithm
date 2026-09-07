@@ -6,12 +6,12 @@ and the wiki's [Content Policy](https://github.com/goodgorithm/goodgorithm/wiki/
 page — this file is just the procedure.
 
 There is no admin UI. Edits are made by hand in the Supabase SQL editor, against **both**
-the production project **and** its `staging` branch. An edit to any of the four tables
+the production project **and** its `staging` branch. An edit to any of these tables
 takes effect within `MODERATION_LISTS_REFRESH_SECONDS` (default 60s) — no deploy or restart
-needed. `suppressed_terms` / `suppressed_domains` / `aggregator_instances` are cached whole
-by `processing/`'s `fetch_moderation_lists()`; `blocked_authors` is read by `ingestion/`'s
-own same-window cache (to keep new posts out of `raw_posts`) and swept from already-ingested
-rows by `purge_blocked_authors()`.
+needed. `suppressed_terms` / `suppressed_domains` / `aggregator_instances` / `post_shapes`
+are cached whole by `processing/`'s `fetch_moderation_lists()`; `blocked_authors` is read by
+`ingestion/`'s own same-window cache (to keep new posts out of `raw_posts`) and swept from
+already-ingested rows by `purge_blocked_authors()`.
 
 ## The tables
 
@@ -21,6 +21,7 @@ rows by `purge_blocked_authors()`.
 | `suppressed_terms` | `term` (lowercase) | hard exclude | posts whose body hashtags / Mastodon `spoiler_text` contain an unambiguous adult-content self-tag |
 | `suppressed_domains` | `domain` (lowercase) | hard exclude | posts linking to the domain (`has_excluded_domain`) **and** Mastodon posts whose account is hosted on it (`has_excluded_home_instance`) |
 | `aggregator_instances` | `domain` (lowercase) | **demote only** (`base_score` × `AGGREGATOR_DEMOTE_MULTIPLIER`) | Mastodon posts whose account's home instance is a content aggregator that syndicates headline/link reposts (Flipboard etc.) |
+| `post_shapes` | `name` (a `post_shape.py` shape slug) | **demote** (`base_score` × the row's `devalue_multiplier`) **+ optional `is_bot`** at `repeat_threshold` | posts matching a registered structured-automated shape (`nowplaying` = "now playing on `<station>`" radio bots); the regexes are code, this row is just the knobs |
 
 The three hard-exclude tables are **precision over recall, hand-curated**. Add a term/domain
 only if it is *definitionally* off-mission — an unambiguous adult self-tag, an instance
@@ -32,6 +33,13 @@ instance) — those are left to the scoring pipeline.
 the feed, just ranked well down. Add an instance once a measurement pass (see the recurring
 query below) shows it contributing a large share of ranked Mastodon volume as automated
 syndication with no original commentary — not for being merely prolific or tech-leaning.
+
+`post_shapes` is not curated the same way — you don't add rows for new shapes (that's a
+code change to `post_shape.py`'s registry, with a false-positive fixture corpus). This table
+is the live control panel for the shapes that already exist: flip `enabled` to `false` to
+kill a misfiring shape without a deploy, or tune its `devalue_multiplier` / `repeat_threshold`
+against production. Migration `0022` seeds one row (`nowplaying`); a shape with no row runs
+on its code defaults.
 
 ## Adding an entry
 
@@ -57,6 +65,11 @@ ON CONFLICT (domain) DO NOTHING;
 INSERT INTO aggregator_instances (domain, reason) VALUES
   ('example.com', 'automated syndication, <share>% of ranked Mastodon volume -- <YYYY-MM-DD>')
 ON CONFLICT (domain) DO NOTHING;
+
+-- post_shapes  (tune an existing shape; do NOT add new shape names here)
+UPDATE post_shapes SET enabled = false, reason = '<why + YYYY-MM-DD>' WHERE name = 'nowplaying';
+UPDATE post_shapes SET devalue_multiplier = 0.5, repeat_threshold = 5, reason = '<why + YYYY-MM-DD>'
+  WHERE name = 'nowplaying';
 ```
 
 Always `ON CONFLICT DO NOTHING` and always put a dated `reason` — the table is the audit log.
