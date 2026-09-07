@@ -50,7 +50,7 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
-PIPELINE_VERSION = "v10"
+PIPELINE_VERSION = "v11"
 
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
@@ -233,9 +233,6 @@ def run_cycle(batch_size: int) -> int:
                 context_penalty=context_penalty,
                 link_share_penalty=link_share_penalty,
                 aggregator_penalty=aggregator_penalty,
-                # nowplaying_penalty is dual-written equal to shape_penalty
-                # until migration 0023 drops the pre-rename column.
-                nowplaying_penalty=shape_penalty,
                 shape_penalty=shape_penalty,
                 shape_name=shape_name,
                 generated_thumbnail_url=generated_thumbnail_url,

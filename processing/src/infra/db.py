@@ -82,9 +82,6 @@ class ProcessedPostUpsert:
     context_penalty: float = 1.0
     link_share_penalty: float = 1.0
     aggregator_penalty: float = 1.0
-    # nowplaying_penalty is the pre-rename column; the pipeline dual-writes
-    # it equal to shape_penalty until migration 0023 drops it.
-    nowplaying_penalty: float = 1.0
     shape_penalty: float = 1.0
     shape_name: str | None = None
     generated_thumbnail_url: str | None = None
@@ -96,7 +93,7 @@ _PROCESSED_POSTS_COLUMNS = (
     "raw_post_id, source, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
     "sentiment_score, sentiment_method, topicality_score, entities, "
     "base_score, rank_score, quote_content, category, category_method, "
-    "context_penalty, link_share_penalty, aggregator_penalty, nowplaying_penalty, "
+    "context_penalty, link_share_penalty, aggregator_penalty, "
     "shape_penalty, shape_name, generated_thumbnail_url, pipeline_version"
 )
 
@@ -109,7 +106,7 @@ _PROCESSED_POSTS_ROW_SQL = (
     "(%s::uuid, %s::text, %s::uuid, %s::boolean, %s::boolean, %s::real, "
     "%s::real, %s::text, %s::real, %s::jsonb, "
     "%s::real, %s::real, %s::jsonb, %s::text, %s::text, "
-    "%s::real, %s::real, %s::real, %s::real, %s::real, %s::text, %s::text, %s::text)"
+    "%s::real, %s::real, %s::real, %s::real, %s::text, %s::text, %s::text)"
 )
 
 
@@ -146,7 +143,6 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
             context_penalty        = EXCLUDED.context_penalty,
             link_share_penalty     = EXCLUDED.link_share_penalty,
             aggregator_penalty     = EXCLUDED.aggregator_penalty,
-            nowplaying_penalty     = EXCLUDED.nowplaying_penalty,
             shape_penalty          = EXCLUDED.shape_penalty,
             shape_name             = EXCLUDED.shape_name,
             generated_thumbnail_url = EXCLUDED.generated_thumbnail_url,
@@ -188,7 +184,6 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.context_penalty,
                     row.link_share_penalty,
                     row.aggregator_penalty,
-                    row.nowplaying_penalty,
                     row.shape_penalty,
                     row.shape_name,
                     row.generated_thumbnail_url,
