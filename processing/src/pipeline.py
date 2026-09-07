@@ -48,7 +48,7 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
-PIPELINE_VERSION = "v12"
+PIPELINE_VERSION = "v13"
 
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
@@ -92,14 +92,14 @@ def run_cycle(batch_size: int) -> int:
     # so a post is never scored once it's excluded. See the wiki's Content
     # Policy page for the policy behind each, and Pipeline Internals for
     # why this specific order.
-    suppressed_terms, suppressed_domains, aggregator_instances, post_shape_config = db.fetch_moderation_lists()
+    mod = db.fetch_moderation_lists()
 
     context_classifications: dict = {}
 
     kept_posts = []
     for post in posts:
         if content_filter.is_content_excluded(
-            post.source, post.text, post.raw_json, suppressed_terms, suppressed_domains
+            post.source, post.text, post.raw_json, mod.suppressed_terms, mod.suppressed_domains
         ):
             db.delete_raw_post(post.id)
             logger.info(
@@ -147,8 +147,8 @@ def run_cycle(batch_size: int) -> int:
     quote_uris_by_post = {post.id: quote_resolver.extract_quote_uri(post.raw_json) for post in kept_posts}
     quote_content_by_uri = quote_resolver.resolve_quotes(
         [uri for uri in quote_uris_by_post.values() if uri is not None],
-        suppressed_terms,
-        suppressed_domains,
+        mod.suppressed_terms,
+        mod.suppressed_domains,
     )
 
     # Same batched/deduped shape as quote resolution above.
@@ -166,7 +166,7 @@ def run_cycle(batch_size: int) -> int:
     for post in kept_posts:
         cluster = dedup_results[post.id]
         bot_score = bot_filter.score_bot(
-            post.source, post.author_id, post.text, cluster.cluster_id, bot_index, post_shape_config
+            post.source, post.author_id, post.text, cluster.cluster_id, bot_index, mod.post_shape_config
         )
         topic = topicality_results[post.id]
         sentiment_score = sentiment_results[post.id]
@@ -178,8 +178,9 @@ def run_cycle(batch_size: int) -> int:
                 raw_json=post.raw_json,
                 text=post.text,
                 context_action=context_classifications[post.id],
-                aggregator_instances=aggregator_instances,
-                shape_config=post_shape_config,
+                aggregator_instances=mod.aggregator_instances,
+                syndication_domains=mod.syndication_domains,
+                shape_config=mod.post_shape_config,
             )
         )
 

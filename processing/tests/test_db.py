@@ -43,13 +43,16 @@ def _reset_moderation_cache(monkeypatch):
 def test_fetch_moderation_lists_caches_within_ttl(monkeypatch):
     _reset_moderation_cache(monkeypatch)
 
-    calls = {"terms": 0, "domains": 0, "aggregators": 0, "shapes": 0}
+    calls = {"terms": 0, "domains": 0, "aggregators": 0, "syndication": 0, "shapes": 0}
     monkeypatch.setattr(db, "fetch_suppressed_terms", lambda: calls.__setitem__("terms", calls["terms"] + 1) or frozenset({"nsfw"}))
     monkeypatch.setattr(
         db, "fetch_suppressed_domains", lambda: calls.__setitem__("domains", calls["domains"] + 1) or frozenset({"example.com"})
     )
     monkeypatch.setattr(
         db, "fetch_aggregator_instances", lambda: calls.__setitem__("aggregators", calls["aggregators"] + 1) or frozenset({"flipboard.com"})
+    )
+    monkeypatch.setattr(
+        db, "fetch_syndication_domains", lambda: calls.__setitem__("syndication", calls["syndication"] + 1) or frozenset({"dlvr.it"})
     )
     shape_cfg = {"nowplaying": db.PostShapeConfig(enabled=True, devalue_multiplier=0.3, repeat_threshold=3)}
     monkeypatch.setattr(
@@ -60,13 +63,14 @@ def test_fetch_moderation_lists_caches_within_ttl(monkeypatch):
     first = db.fetch_moderation_lists()
     second = db.fetch_moderation_lists()
 
-    assert first == second == (
-        frozenset({"nsfw"}),
-        frozenset({"example.com"}),
-        frozenset({"flipboard.com"}),
-        shape_cfg,
+    assert first == second == db.ModerationLists(
+        suppressed_terms=frozenset({"nsfw"}),
+        suppressed_domains=frozenset({"example.com"}),
+        aggregator_instances=frozenset({"flipboard.com"}),
+        syndication_domains=frozenset({"dlvr.it"}),
+        post_shape_config=shape_cfg,
     )
-    assert calls == {"terms": 1, "domains": 1, "aggregators": 1, "shapes": 1}
+    assert calls == {"terms": 1, "domains": 1, "aggregators": 1, "syndication": 1, "shapes": 1}
 
 
 def test_fetch_moderation_lists_refetches_after_ttl_expires(monkeypatch):
@@ -81,6 +85,7 @@ def test_fetch_moderation_lists_refetches_after_ttl_expires(monkeypatch):
     monkeypatch.setattr(db, "fetch_suppressed_terms", fake_fetch_terms)
     monkeypatch.setattr(db, "fetch_suppressed_domains", lambda: frozenset())
     monkeypatch.setattr(db, "fetch_aggregator_instances", lambda: frozenset())
+    monkeypatch.setattr(db, "fetch_syndication_domains", lambda: frozenset())
     monkeypatch.setattr(db, "fetch_post_shape_config", lambda: {})
 
     fake_now = [1000.0]

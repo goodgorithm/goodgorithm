@@ -16,11 +16,26 @@ verbatim as `processed_posts.penalty_detail` (JSONB) for auditing. See the
 wiki's Penalties page.
 """
 
+import os
 from dataclasses import dataclass
 from typing import Callable
+from urllib.parse import urlsplit
 
 from pipeline_stages import aggregator_demote, link_share, post_shape
+from pipeline_stages.content_filter import matches_domain_list
 from pipeline_stages.context_dependency import ContextClassification
+from util import url_extract
+
+# base_score multiplier for a post whose link routes through a dedicated
+# RSS->social auto-poster / share-shortener (dlvr.it, ift.tt, ...). Same
+# default as aggregator_demote's -- syndicated headline, no original take.
+# The domain list is db.fetch_syndication_domains()'s whole-table read,
+# threaded in per post. See the wiki's Penalties page.
+SYNDICATION_DEMOTE_MULTIPLIER = float(os.environ.get("SYNDICATION_DEMOTE_MULTIPLIER", "0.3"))
+if not 0.0 < SYNDICATION_DEMOTE_MULTIPLIER <= 1.0:
+    raise ValueError(
+        f"SYNDICATION_DEMOTE_MULTIPLIER ({SYNDICATION_DEMOTE_MULTIPLIER}) must be in (0.0, 1.0]"
+    )
 
 
 @dataclass(frozen=True)
@@ -36,6 +51,7 @@ class PenaltyContext:
     text: str
     context_action: ContextClassification
     aggregator_instances: frozenset[str]
+    syndication_domains: frozenset[str]
     shape_config: dict[str, post_shape.ShapeConfig]
 
 
@@ -52,6 +68,16 @@ def _aggregator(ctx: PenaltyContext) -> tuple[float, dict]:
         aggregator_demote.classify(ctx.source, ctx.author_id, ctx.aggregator_instances).devalue_multiplier,
         {},
     )
+
+
+def _syndication(ctx: PenaltyContext) -> tuple[float, dict]:
+    url = url_extract.extract_raw_url(ctx.source, ctx.raw_json, ctx.text)
+    if url is None:
+        return 1.0, {}
+    host = urlsplit(url).netloc.lower()
+    if host and matches_domain_list(host, ctx.syndication_domains):
+        return SYNDICATION_DEMOTE_MULTIPLIER, {}
+    return 1.0, {}
 
 
 def _shape(ctx: PenaltyContext) -> tuple[float, dict]:
@@ -74,6 +100,7 @@ PENALTIES: tuple[Penalty, ...] = (
     Penalty("context", _context),
     Penalty("link_share", _link_share),
     Penalty("aggregator", _aggregator),
+    Penalty("syndication", _syndication),
     Penalty("shape", _shape),
 )
 

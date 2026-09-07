@@ -21,6 +21,7 @@ already-ingested rows by `purge_blocked_authors()`.
 | `suppressed_terms` | `term` (lowercase) | hard exclude | posts whose body hashtags / Mastodon `spoiler_text` contain an unambiguous adult-content self-tag |
 | `suppressed_domains` | `domain` (lowercase) | hard exclude | posts linking to the domain (`has_excluded_domain`) **and** Mastodon posts whose account is hosted on it (`has_excluded_home_instance`) |
 | `aggregator_instances` | `domain` (lowercase) | **demote only** (`base_score` × `AGGREGATOR_DEMOTE_MULTIPLIER`) | Mastodon posts whose account's home instance is a content aggregator that syndicates headline/link reposts (Flipboard etc.) |
+| `syndication_domains` | `domain` (lowercase) | **demote only** (`base_score` × `SYNDICATION_DEMOTE_MULTIPLIER`) | any post (Bluesky or Mastodon) whose link host is a dedicated RSS→social auto-poster / share-shortener (`dlvr.it`, `ift.tt`, …) |
 | `post_shapes` | `name` (a `post_shape.py` shape slug) | **demote** (`base_score` × the row's `devalue_multiplier`) **+ optional `is_bot`** at `repeat_threshold` | posts matching a registered structured-automated shape (`nowplaying` = "now playing on `<station>`" radio bots); the regexes are code, this row is just the knobs |
 
 The three hard-exclude tables are **precision over recall, hand-curated**. Add a term/domain
@@ -33,6 +34,13 @@ instance) — those are left to the scoring pipeline.
 the feed, just ranked well down. Add an instance once a measurement pass (see the recurring
 query below) shows it contributing a large share of ranked Mastodon volume as automated
 syndication with no original commentary — not for being merely prolific or tech-leaning.
+
+`syndication_domains` is the same "demote, don't delete" call, keyed on a post's *link host*
+rather than a Mastodon home instance, so it works on both platforms. Add a domain only if it
+is a **dedicated** RSS→social auto-poster or share-shortener (`dlvr.it`, `ift.tt`, `cstu.io`,
+…) — one whose links are almost never hand-posted. Do **not** add general shorteners
+(`bit.ly`, `buff.ly`, `t.co`): people use those by hand too, ~40% false positives in a
+production sample.
 
 `post_shapes` is not curated the same way — you don't add rows for new shapes (that's a
 code change to `post_shape.py`'s registry, with a false-positive fixture corpus). This table
@@ -64,6 +72,11 @@ ON CONFLICT (domain) DO NOTHING;
 -- aggregator_instances  (demote, not exclude)
 INSERT INTO aggregator_instances (domain, reason) VALUES
   ('example.com', 'automated syndication, <share>% of ranked Mastodon volume -- <YYYY-MM-DD>')
+ON CONFLICT (domain) DO NOTHING;
+
+-- syndication_domains  (demote; dedicated auto-posters only, not general shorteners)
+INSERT INTO syndication_domains (domain, reason) VALUES
+  ('example.io', 'dedicated RSS -> social auto-poster -- <YYYY-MM-DD>')
 ON CONFLICT (domain) DO NOTHING;
 
 -- post_shapes  (tune an existing shape; do NOT add new shape names here)

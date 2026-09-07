@@ -523,6 +523,18 @@ def fetch_aggregator_instances() -> frozenset[str]:
     return frozenset(row[0] for row in rows)
 
 
+def fetch_syndication_domains() -> frozenset[str]:
+    """Whole table -- dedicated RSS->social auto-poster / share-shortener
+    domains (dlvr.it, ift.tt, ...). A post linking through one is devalued
+    by penalties.py's `syndication` entry, on either platform (unlike
+    aggregator_instances, which is Mastodon-home-instance only). Called
+    through fetch_moderation_lists()'s cache below. See the wiki's
+    Configuration page."""
+    with pool.connection() as conn:
+        rows = conn.execute("SELECT domain FROM syndication_domains").fetchall()
+    return frozenset(row[0] for row in rows)
+
+
 @dataclass(frozen=True)
 class PostShapeConfig:
     """A `post_shapes` row's operational knobs for one registered
@@ -548,29 +560,37 @@ def fetch_post_shape_config() -> dict[str, PostShapeConfig]:
     return {row[0]: PostShapeConfig(enabled=row[1], devalue_multiplier=row[2], repeat_threshold=row[3]) for row in rows}
 
 
+@dataclass(frozen=True)
+class ModerationLists:
+    """One cache line for every moderator-curated table run_cycle reads per
+    cycle. Named fields rather than a positional tuple -- four of the five
+    are `frozenset[str]` and can't be told apart at a call site."""
+
+    suppressed_terms: frozenset[str]
+    suppressed_domains: frozenset[str]
+    aggregator_instances: frozenset[str]
+    syndication_domains: frozenset[str]
+    post_shape_config: dict[str, PostShapeConfig]
+
+
 # How long fetch_moderation_lists()'s combined cache stays valid before the
-# next call re-queries all four tables. Optional; defaults apply if unset.
+# next call re-queries every table. Optional; defaults apply if unset.
 # See the wiki's Configuration page.
 MODERATION_LISTS_REFRESH_SECONDS = int(os.environ.get("MODERATION_LISTS_REFRESH_SECONDS", "60"))
 
-_moderation_lists_cache: (
-    tuple[frozenset[str], frozenset[str], frozenset[str], dict[str, PostShapeConfig]] | None
-) = None
+_moderation_lists_cache: ModerationLists | None = None
 _moderation_lists_cached_at = 0.0
 
 
-def fetch_moderation_lists() -> tuple[
-    frozenset[str], frozenset[str], frozenset[str], dict[str, PostShapeConfig]
-]:
-    """Combines the four whole-table reads above into one cached result
-    (suppressed terms, suppressed domains, aggregator instances, post-shape
-    config), refreshed at most every MODERATION_LISTS_REFRESH_SECONDS rather
-    than on every call. run_cycle() calls this every processing cycle, which
-    under a real backlog can run every few seconds (bounded only by
-    PROCESSING_BACKLOG_BUFFER_SECONDS) -- re-querying four small,
-    rarely-changing tables that often is pure waste. A moderator's edit
-    still takes effect within one cache window, not one redeploy, just not
-    necessarily on the very next cycle.
+def fetch_moderation_lists() -> ModerationLists:
+    """Combines the whole-table reads above into one cached result,
+    refreshed at most every MODERATION_LISTS_REFRESH_SECONDS rather than on
+    every call. run_cycle() calls this every processing cycle, which under a
+    real backlog can run every few seconds (bounded only by
+    PROCESSING_BACKLOG_BUFFER_SECONDS) -- re-querying small, rarely-changing
+    tables that often is pure waste. A moderator's edit still takes effect
+    within one cache window, not one redeploy, just not necessarily on the
+    very next cycle.
 
     blocked_authors is not in here: it's enforced at ingestion time
     (ingestion/ skips a match before writing raw_posts) and retroactively
@@ -579,11 +599,12 @@ def fetch_moderation_lists() -> tuple[
     global _moderation_lists_cache, _moderation_lists_cached_at
     now = time.monotonic()
     if _moderation_lists_cache is None or now - _moderation_lists_cached_at >= MODERATION_LISTS_REFRESH_SECONDS:
-        _moderation_lists_cache = (
-            fetch_suppressed_terms(),
-            fetch_suppressed_domains(),
-            fetch_aggregator_instances(),
-            fetch_post_shape_config(),
+        _moderation_lists_cache = ModerationLists(
+            suppressed_terms=fetch_suppressed_terms(),
+            suppressed_domains=fetch_suppressed_domains(),
+            aggregator_instances=fetch_aggregator_instances(),
+            syndication_domains=fetch_syndication_domains(),
+            post_shape_config=fetch_post_shape_config(),
         )
         _moderation_lists_cached_at = now
     return _moderation_lists_cache
