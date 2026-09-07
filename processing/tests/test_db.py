@@ -14,7 +14,7 @@ def test_processed_posts_upsert_sql_skips_rows_whose_raw_post_vanished():
     assert "FROM (VALUES" in sql  # INSERT ... SELECT, not INSERT ... VALUES
     assert "WHERE EXISTS (SELECT 1 FROM raw_posts r WHERE r.id = v.raw_post_id" in sql
     assert "ON CONFLICT (raw_post_id) DO UPDATE" in sql
-    assert sql.count("%s") == 3 * 24  # rows x columns, param count still bounded per chunk
+    assert sql.count("%s") == 3 * 19  # rows x columns, param count still bounded per chunk
 
 
 def test_resolver_candidate_queries_filter_and_order_on_processed_posts():

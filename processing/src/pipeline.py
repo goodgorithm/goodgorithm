@@ -48,7 +48,7 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
-PIPELINE_VERSION = "v13"
+PIPELINE_VERSION = "v14"
 
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
@@ -229,14 +229,6 @@ def run_cycle(batch_size: int) -> int:
                 category_method=category_model.CATEGORY_METHOD,
                 penalty_multiplier=penalty.multiplier,
                 penalty_detail=penalty.detail,
-                # The individual *_penalty columns carry the same values as
-                # penalty_detail's entries -- kept in step during the
-                # transition off the pre-box schema.
-                context_penalty=penalty.detail["context"],
-                link_share_penalty=penalty.detail["link_share"],
-                aggregator_penalty=penalty.detail["aggregator"],
-                shape_penalty=penalty.detail["shape"],
-                shape_name=penalty.detail["shape_name"],
                 generated_thumbnail_url=generated_thumbnail_url,
             )
         )
