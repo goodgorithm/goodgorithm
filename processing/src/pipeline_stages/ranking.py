@@ -56,25 +56,13 @@ class RankablePost:
     # doesn't fragment into several apparently-diverse "authors" here too.
     source: str
     author_id: str
-    # context_dependency.py's per-platform devalue multiplier -- 1.0 for
-    # posts that aren't context-dependent (or whose platform's policy is
-    # exclude-only, so a devalued post never reaches ranking at all).
-    # Content-derived, same category as topicality/sentiment, not an
-    # engagement signal.
-    context_penalty: float = 1.0
-    # link_share.py's bare-link-share devalue multiplier -- 1.0 unless the
-    # post's own text adds nothing beyond its link card's title. Same
-    # content-derived, non-engagement category as context_penalty.
-    link_share_penalty: float = 1.0
-    # aggregator_demote.py's devalue multiplier -- 1.0 unless the post's
-    # Mastodon home instance is a listed content aggregator (Flipboard
-    # etc.). Keyed on the source instance, not on engagement.
-    aggregator_penalty: float = 1.0
-    # post_shape.py's devalue multiplier -- 1.0 unless the post matches a
-    # registered post shape (a "now playing on <station>" radio/stream bot,
-    # say) that the bot filter didn't already exclude. Content-derived (the
-    # post's own text shape), same category as the multipliers above.
-    shape_penalty: float = 1.0
+    # penalties.py's combined devalue multiplier -- the product of every
+    # registered penalty (context-dependency, bare link-share, aggregator
+    # instance, post shape, ...), 1.0 when none apply. Every factor is
+    # content-derived, never an engagement signal. See the wiki's Penalties
+    # page; the per-penalty breakdown is persisted separately as
+    # processed_posts.penalty_detail.
+    penalty_multiplier: float = 1.0
 
 
 @dataclass
@@ -104,17 +92,13 @@ def recency_decay(created_at: datetime, now: datetime) -> float:
 
 def compute_base_score(post: RankablePost, now: datetime) -> float:
     """Content-derived only — positivity x topicality x recency x
-    context_penalty x link_share_penalty x aggregator_penalty x
-    shape_penalty. No engagement field exists on RankablePost for this
-    to accidentally read."""
+    penalty_multiplier (penalties.py's combined devalue product). No
+    engagement field exists on RankablePost for this to accidentally read."""
     return (
         positivity(post.sentiment_score)
         * post.topicality_score
         * recency_decay(post.created_at, now)
-        * post.context_penalty
-        * post.link_share_penalty
-        * post.aggregator_penalty
-        * post.shape_penalty
+        * post.penalty_multiplier
     )
 
 

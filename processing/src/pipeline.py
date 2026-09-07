@@ -9,7 +9,6 @@ from datetime import datetime, timedelta, timezone
 import config
 from infra import corpus_store, db, redis_guard
 from pipeline_stages import (
-    aggregator_demote,
     author_resolver,
     bot_filter,
     category_model,
@@ -18,9 +17,8 @@ from pipeline_stages import (
     corpus_export,
     dedup,
     language_filter,
-    link_share,
     moderation_recheck,
-    post_shape,
+    penalties,
     quote_resolver,
     ranking,
     sentiment,
@@ -50,7 +48,7 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
-PIPELINE_VERSION = "v11"
+PIPELINE_VERSION = "v12"
 
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
@@ -173,16 +171,17 @@ def run_cycle(batch_size: int) -> int:
         topic = topicality_results[post.id]
         sentiment_score = sentiment_results[post.id]
 
-        context_penalty = context_classifications[post.id].devalue_multiplier
-        link_share_penalty = link_share.classify(
-            post.source, post.raw_json, post.text
-        ).devalue_multiplier
-        aggregator_penalty = aggregator_demote.classify(
-            post.source, post.author_id, aggregator_instances
-        ).devalue_multiplier
-        shape_match = post_shape.classify(post.text, post_shape_config)
-        shape_penalty = shape_match.devalue_multiplier if shape_match else 1.0
-        shape_name = shape_match.name if shape_match else None
+        penalty = penalties.apply(
+            penalties.PenaltyContext(
+                source=post.source,
+                author_id=post.author_id,
+                raw_json=post.raw_json,
+                text=post.text,
+                context_action=context_classifications[post.id],
+                aggregator_instances=aggregator_instances,
+                shape_config=post_shape_config,
+            )
+        )
 
         rankable = ranking.RankablePost(
             id=post.id,
@@ -195,10 +194,7 @@ def run_cycle(batch_size: int) -> int:
             is_dedup_canonical=cluster.is_canonical,
             source=post.source,
             author_id=post.author_id,
-            context_penalty=context_penalty,
-            link_share_penalty=link_share_penalty,
-            aggregator_penalty=aggregator_penalty,
-            shape_penalty=shape_penalty,
+            penalty_multiplier=penalty.multiplier,
         )
         base_score = ranking.compute_base_score(rankable, now)
 
@@ -230,11 +226,16 @@ def run_cycle(batch_size: int) -> int:
                 quote_content=quote_content,
                 category=category,
                 category_method=category_model.CATEGORY_METHOD,
-                context_penalty=context_penalty,
-                link_share_penalty=link_share_penalty,
-                aggregator_penalty=aggregator_penalty,
-                shape_penalty=shape_penalty,
-                shape_name=shape_name,
+                penalty_multiplier=penalty.multiplier,
+                penalty_detail=penalty.detail,
+                # The individual *_penalty columns carry the same values as
+                # penalty_detail's entries -- kept in step during the
+                # transition off the pre-box schema.
+                context_penalty=penalty.detail["context"],
+                link_share_penalty=penalty.detail["link_share"],
+                aggregator_penalty=penalty.detail["aggregator"],
+                shape_penalty=penalty.detail["shape"],
+                shape_name=penalty.detail["shape_name"],
                 generated_thumbnail_url=generated_thumbnail_url,
             )
         )
@@ -271,10 +272,7 @@ def refresh_rankings() -> int:
             is_dedup_canonical=row.is_dedup_canonical,
             source=row.source,
             author_id=row.author_id,
-            context_penalty=row.context_penalty,
-            link_share_penalty=row.link_share_penalty,
-            aggregator_penalty=row.aggregator_penalty,
-            shape_penalty=row.shape_penalty,
+            penalty_multiplier=row.penalty_multiplier,
         )
         for row in rows
     ]
