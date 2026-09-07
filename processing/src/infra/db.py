@@ -81,14 +81,6 @@ class ProcessedPostUpsert:
     category_method: str | None = None
     penalty_multiplier: float = 1.0
     penalty_detail: dict | None = None
-    # The individual *_penalty columns hold the same values as
-    # penalty_detail's entries; kept in step during the transition off the
-    # pre-box schema.
-    context_penalty: float = 1.0
-    link_share_penalty: float = 1.0
-    aggregator_penalty: float = 1.0
-    shape_penalty: float = 1.0
-    shape_name: str | None = None
     generated_thumbnail_url: str | None = None
 
 
@@ -98,7 +90,6 @@ _PROCESSED_POSTS_COLUMNS = (
     "raw_post_id, source, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
     "sentiment_score, sentiment_method, topicality_score, entities, "
     "base_score, rank_score, quote_content, category, category_method, "
-    "context_penalty, link_share_penalty, aggregator_penalty, shape_penalty, shape_name, "
     "penalty_multiplier, penalty_detail, generated_thumbnail_url, pipeline_version"
 )
 
@@ -111,7 +102,6 @@ _PROCESSED_POSTS_ROW_SQL = (
     "(%s::uuid, %s::text, %s::uuid, %s::boolean, %s::boolean, %s::real, "
     "%s::real, %s::text, %s::real, %s::jsonb, "
     "%s::real, %s::real, %s::jsonb, %s::text, %s::text, "
-    "%s::real, %s::real, %s::real, %s::real, %s::text, "
     "%s::real, %s::jsonb, %s::text, %s::text)"
 )
 
@@ -146,11 +136,6 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
             quote_content          = EXCLUDED.quote_content,
             category               = EXCLUDED.category,
             category_method        = EXCLUDED.category_method,
-            context_penalty        = EXCLUDED.context_penalty,
-            link_share_penalty     = EXCLUDED.link_share_penalty,
-            aggregator_penalty     = EXCLUDED.aggregator_penalty,
-            shape_penalty          = EXCLUDED.shape_penalty,
-            shape_name             = EXCLUDED.shape_name,
             penalty_multiplier     = EXCLUDED.penalty_multiplier,
             penalty_detail         = EXCLUDED.penalty_detail,
             generated_thumbnail_url = EXCLUDED.generated_thumbnail_url,
@@ -189,11 +174,6 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     Jsonb(row.quote_content) if row.quote_content is not None else None,
                     row.category,
                     row.category_method,
-                    row.context_penalty,
-                    row.link_share_penalty,
-                    row.aggregator_penalty,
-                    row.shape_penalty,
-                    row.shape_name,
                     row.penalty_multiplier,
                     Jsonb(row.penalty_detail) if row.penalty_detail is not None else None,
                     row.generated_thumbnail_url,
