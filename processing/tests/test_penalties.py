@@ -75,6 +75,17 @@ def test_apply_syndication_matches_a_shortener_link_on_either_platform():
     assert result.detail["syndication"] == 1.0
 
 
+def test_apply_syndication_tolerates_a_malformed_url_in_post_text():
+    # urlsplit() raises ValueError ("Invalid IPv6 URL") on a bad bracketed
+    # netloc; post text is untrusted, so this must not propagate -- the
+    # scoring path has no try/except and would crash-loop the process.
+    result = penalties.apply(
+        _ctx(text="check this http://[::1 out", syndication_domains=SHORTENERS)
+    )
+    assert result.detail["syndication"] == 1.0
+    assert result.multiplier == 1.0
+
+
 def test_apply_multiplier_equals_product_of_numeric_detail():
     result = penalties.apply(
         _ctx(

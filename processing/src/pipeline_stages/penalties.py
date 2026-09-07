@@ -74,7 +74,13 @@ def _syndication(ctx: PenaltyContext) -> tuple[float, dict]:
     url = url_extract.extract_raw_url(ctx.source, ctx.raw_json, ctx.text)
     if url is None:
         return 1.0, {}
-    host = urlsplit(url).netloc.lower()
+    try:
+        host = urlsplit(url).netloc.lower()
+    except ValueError:
+        # Malformed URL out of untrusted post text (e.g. urlsplit rejecting
+        # a bad bracketed IPv6 netloc). No host to match -- no penalty.
+        # Mirrors content_filter.has_excluded_domain's guard on the same call.
+        return 1.0, {}
     if host and matches_domain_list(host, ctx.syndication_domains):
         return SYNDICATION_DEMOTE_MULTIPLIER, {}
     return 1.0, {}
