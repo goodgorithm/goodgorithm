@@ -7,6 +7,9 @@ from pipeline_stages.context_dependency import ContextClassification
 NOWPLAYING = "▶️ #NowPlaying on Hot 21 Radio: 93 'Til Infinity by Souls of Mischief \U0001f525 Tune in now: https://www.hot21radio.com #Hot21Radio"
 
 FLIPBOARD = frozenset({"flipboard.com", "flipboard.social"})
+SHORTENERS = frozenset({"dlvr.it", "ift.tt"})
+
+_PENALTY_NAMES = ("context", "link_share", "aggregator", "syndication", "shape")
 
 
 def _ctx(**overrides):
@@ -17,26 +20,21 @@ def _ctx(**overrides):
         text="a plain post about a walk in the park",
         context_action=ContextClassification(action="none"),
         aggregator_instances=frozenset(),
+        syndication_domains=frozenset(),
         shape_config={},
     )
     base.update(overrides)
     return penalties.PenaltyContext(**base)
 
 
-def test_registry_names_are_the_four_penalties():
-    assert tuple(p.name for p in penalties.PENALTIES) == ("context", "link_share", "aggregator", "shape")
+def test_registry_names():
+    assert tuple(p.name for p in penalties.PENALTIES) == _PENALTY_NAMES
 
 
 def test_apply_no_penalties_is_identity():
     result = penalties.apply(_ctx())
     assert result.multiplier == 1.0
-    assert result.detail == {
-        "context": 1.0,
-        "link_share": 1.0,
-        "aggregator": 1.0,
-        "shape": 1.0,
-        "shape_name": None,
-    }
+    assert result.detail == {name: 1.0 for name in _PENALTY_NAMES} | {"shape_name": None}
 
 
 def test_apply_multiplies_every_penalty_and_records_the_breakdown():
@@ -51,8 +49,8 @@ def test_apply_multiplies_every_penalty_and_records_the_breakdown():
     assert result.detail["shape_name"] == "nowplaying"
     assert result.detail["link_share"] == 1.0
     assert result.detail["aggregator"] == 1.0
-    # multiplier is the product of the numeric detail entries
-    assert abs(result.multiplier - (0.4 * 1.0 * 1.0 * 0.3)) < 1e-9
+    assert result.detail["syndication"] == 1.0
+    assert abs(result.multiplier - (0.4 * 0.3)) < 1e-9
 
 
 def test_apply_reads_the_aggregator_instance_list():
@@ -63,17 +61,32 @@ def test_apply_reads_the_aggregator_instance_list():
     assert result.multiplier == aggregator_demote.AGGREGATOR_DEMOTE_MULTIPLIER
 
 
+def test_apply_syndication_matches_a_shortener_link_on_either_platform():
+    for source in ("bluesky", "mastodon"):
+        result = penalties.apply(
+            _ctx(source=source, text="Sicily, Italy http://dlvr.it/TVMgSf #Photography", syndication_domains=SHORTENERS)
+        )
+        assert result.detail["syndication"] == penalties.SYNDICATION_DEMOTE_MULTIPLIER
+    # no shortener list -> untouched
+    result = penalties.apply(_ctx(text="Sicily, Italy http://dlvr.it/TVMgSf", syndication_domains=frozenset()))
+    assert result.detail["syndication"] == 1.0
+    # a plain link -> untouched
+    result = penalties.apply(_ctx(text="great read https://example.com/x", syndication_domains=SHORTENERS))
+    assert result.detail["syndication"] == 1.0
+
+
 def test_apply_multiplier_equals_product_of_numeric_detail():
     result = penalties.apply(
         _ctx(
             source="mastodon",
             author_id="flipboard.com/mag",
             aggregator_instances=FLIPBOARD,
-            text=NOWPLAYING,
+            syndication_domains=SHORTENERS,
+            text="headline restated http://dlvr.it/x " + NOWPLAYING,
             context_action=ContextClassification(action="devalue", devalue_multiplier=0.4),
         )
     )
     product = 1.0
-    for name in ("context", "link_share", "aggregator", "shape"):
+    for name in _PENALTY_NAMES:
         product *= result.detail[name]
     assert abs(result.multiplier - product) < 1e-9

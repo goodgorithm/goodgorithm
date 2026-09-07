@@ -113,3 +113,34 @@ def test_long_text_over_char_cap_even_if_substring_is_untouched():
 def test_unknown_source_is_untouched():
     result = link_share.classify("rss", {"card": {"title": "x"}}, "x")
     assert result.is_bare_link_share is False
+
+
+# --- broadened triggers (issue #190) ---
+
+
+def test_fuzzy_title_overlap_catches_restated_headline_with_trailing_decoration():
+    # Caption is the headline verbatim plus a trailing emoji -> not a
+    # substring (the emoji survives _strip), but a full word-subset of the title.
+    raw = bluesky_external("Peanuts and Clorets Collaboration Launching This September")
+    text = "Peanuts and Clorets Collaboration Launching This September \U0001f389 #Japan"
+    result = link_share.classify("bluesky", raw, text)
+    assert result.is_bare_link_share is True
+
+
+def test_thin_hashtag_bag_caption_with_a_link_and_no_card_is_devalued():
+    text = "#best #albums #rock #music #songs #classic https://amwerner.com/2026/09/06/top-100-albums-90-81/"
+    result = link_share.classify("bluesky", {}, text)
+    assert result.is_bare_link_share is True
+    assert result.devalue_multiplier == link_share.LINK_SHARE_DEVALUE_MULTIPLIER
+
+
+def test_thin_caption_link_without_a_hashtag_bag_is_untouched():
+    # A genuine one-line human share -- short, but no hashtags -> the
+    # hashtag-bag gate keeps it out.
+    result = link_share.classify("bluesky", {}, "Happy birthday, Gloria Gaynor! https://www.youtube.com/watch?v=6dYWe1c3OyU")
+    assert result.is_bare_link_share is False
+
+
+def test_thin_caption_without_a_link_is_untouched():
+    result = link_share.classify("bluesky", {}, "#best #albums #rock #music #songs #classic")
+    assert result.is_bare_link_share is False
