@@ -21,12 +21,9 @@ A run of content-quality reviews turned up a few recurring ways low-value posts
 were reaching the top of the feed. Over a few days we shipped fixes for the big
 ones:
 
-- "Now playing on `<station>`" radio-bot posts — recognised by their shape and
-  pushed down; a repeat offender gets filtered out entirely.
-- Bare link-shares, and posts routed through automated RSS-to-social reposters —
-  demoted, since there's no personal take in them.
-- Prose-y marketing — content-farm "read the full post here", "upvote my product"
-  directory posts, affiliate links, asset-store listings — now spotted and demoted.
+- "Now playing on `<station>`" radio-bot posts — recognised by their shape and pushed down; a repeat offender gets filtered out entirely.
+- Bare link-shares, and posts routed through automated RSS-to-social reposters — demoted, since there's no personal take in them.
+- Prose-y marketing — content-farm "read the full post here", "upvote my product" directory posts, affiliate links, asset-store listings — now spotted and demoted.
 
 Each of these lowers a post's rank rather than deleting it, and the whole scoring
 adjustment now lives in one auditable place.
