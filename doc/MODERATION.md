@@ -22,7 +22,7 @@ already-ingested rows by `purge_blocked_authors()`.
 | `suppressed_domains` | `domain` (lowercase) | hard exclude | posts linking to the domain (`has_excluded_domain`) **and** Mastodon posts whose account is hosted on it (`has_excluded_home_instance`) |
 | `aggregator_instances` | `domain` (lowercase) | **demote only** (`base_score` × `AGGREGATOR_DEMOTE_MULTIPLIER`) | Mastodon posts whose account's home instance is a content aggregator that syndicates headline/link reposts (Flipboard etc.) |
 | `syndication_domains` | `domain` (lowercase) | **demote only** (`base_score` × `SYNDICATION_DEMOTE_MULTIPLIER`) | any post (Bluesky or Mastodon) whose link host is a dedicated RSS→social auto-poster / share-shortener (`dlvr.it`, `ift.tt`, …) |
-| `post_shapes` | `name` (a `post_shape.py` shape slug) | **demote** (`base_score` × the row's `devalue_multiplier`) **+ optional `is_bot`** at `repeat_threshold` | posts matching a registered structured-automated shape (`nowplaying` = "now playing on `<station>`" radio bots); the regexes are code, this row is just the knobs |
+| `post_shapes` | `name` (a `post_shape.py` shape slug) | **demote** (`base_score` × the row's `devalue_multiplier`) **+ optional `is_bot`** at `repeat_threshold` | posts matching a registered structured-automated shape (`nowplaying` = "now playing on `<station>`" radio bots; `promo` = content-farm / directory-CTA / referral / asset-store / listicle / B2B phrasing); the regexes are code, this row is just the knobs |
 
 The three hard-exclude tables are **precision over recall, hand-curated**. Add a term/domain
 only if it is *definitionally* off-mission — an unambiguous adult self-tag, an instance
@@ -36,11 +36,19 @@ query below) shows it contributing a large share of ranked Mastodon volume as au
 syndication with no original commentary — not for being merely prolific or tech-leaning.
 
 `syndication_domains` is the same "demote, don't delete" call, keyed on a post's *link host*
-rather than a Mastodon home instance, so it works on both platforms. Add a domain only if it
-is a **dedicated** RSS→social auto-poster or share-shortener (`dlvr.it`, `ift.tt`, `cstu.io`,
-…) — one whose links are almost never hand-posted. Do **not** add general shorteners
-(`bit.ly`, `buff.ly`, `t.co`): people use those by hand too, ~40% false positives in a
-production sample.
+rather than a Mastodon home instance, so it works on both platforms. Two kinds of entry
+belong here:
+
+- **Dedicated RSS→social auto-posters / share-shorteners** (`dlvr.it`, `ift.tt`, `cstu.io`,
+  …) — a host whose links are almost never hand-posted.
+- **Marketplace / submission-directory hosts whose posts are overwhelmingly promotional in
+  aggregate** (`itch.io`, `awesomeindie.com`) — individual links here *are* hand-posted, but
+  the listings/CTAs dominate the ranked feed's top decile, and this is a demote (not a
+  delete), so a genuine "play my game" link taking the same hit is acceptable. Pull the
+  entry if the collateral turns out too high.
+
+Do **not** add general shorteners (`bit.ly`, `buff.ly`, `t.co`): people use those by hand
+too, ~40% false positives in a production sample.
 
 `post_shapes` is not curated the same way — you don't add rows for new shapes (that's a
 code change to `post_shape.py`'s registry, with a false-positive fixture corpus). This table
@@ -74,7 +82,8 @@ INSERT INTO aggregator_instances (domain, reason) VALUES
   ('example.com', 'automated syndication, <share>% of ranked Mastodon volume -- <YYYY-MM-DD>')
 ON CONFLICT (domain) DO NOTHING;
 
--- syndication_domains  (demote; dedicated auto-posters only, not general shorteners)
+-- syndication_domains  (demote; dedicated auto-posters, or a marketplace /
+-- submission directory whose posts are overwhelmingly promo -- not general shorteners)
 INSERT INTO syndication_domains (domain, reason) VALUES
   ('example.io', 'dedicated RSS -> social auto-poster -- <YYYY-MM-DD>')
 ON CONFLICT (domain) DO NOTHING;
@@ -115,11 +124,14 @@ existing rows by hand.
   within one processing cycle automatically. Nothing to do; verify it cleared after ~10 min.
 - **`suppressed_terms` / `suppressed_domains`** — delete manually. **Preview with `SELECT`
   first**, then `DELETE`. `processed_posts` cascades.
-- **`aggregator_instances`** — nothing to purge (it never deleted anything), and nothing to
-  do. `aggregator_penalty` is written once when a post is scored, like `link_share_penalty`;
-  a new entry applies only to posts scored after the cache refreshes (≤60s), and
-  already-scored posts keep their old value until they age out of the 24h retention window.
-  Full effect within a day, no manual step.
+- **`aggregator_instances` / `syndication_domains`** — nothing to purge (neither ever
+  deleted anything), and nothing to do. `penalty_multiplier` is written once when a post is
+  scored; a new entry applies only to posts scored after the cache refreshes (≤60s), and
+  already-scored posts keep their old `base_score` until they age out of the 24h retention
+  window. Full effect within a day, no manual step.
+- **`post_shapes`** — same: a shape edit (enable/disable, `devalue_multiplier`,
+  `repeat_threshold`) applies to posts scored after the ≤60s cache refresh; no retroactive
+  sweep. A shape that forces `is_bot` only does so going forward.
 
 ```sql
 -- preview, then swap SELECT ... for DELETE FROM raw_posts r  (keep the WHERE)
