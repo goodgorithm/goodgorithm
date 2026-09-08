@@ -1,7 +1,4 @@
-import type { CSSProperties } from "react";
-
 import type { FeedPost } from "../api/types";
-import { cardTintVar } from "../lib/cardTint";
 import { renderEmojiShortcodes } from "../lib/emoji";
 import type { RelativeFractions } from "../lib/scoreScale";
 import { CollapsiblePostText } from "./CollapsiblePostText";
@@ -39,12 +36,7 @@ export function PostCard({
   priority?: boolean;
 }) {
   return (
-    <article
-      className={styles.card}
-      // Stable per-post background tint -- see lib/cardTint.ts. .card reads
-      // this with a --color-surface fallback, so an unset value is fine.
-      style={{ "--card-tint": cardTintVar(post.id) } as CSSProperties}
-    >
+    <article className={styles.card}>
       <div className={styles.header}>
         <SourceBadge source={post.source} />
         {post.author.avatar_url && (

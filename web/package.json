@@ -11,7 +11,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "gen:og": "node scripts/gen-og-image.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
