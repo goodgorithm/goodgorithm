@@ -377,6 +377,53 @@ def test_score_bot_disabled_shape_config_suppresses_the_override():
     assert last.is_bot is False
 
 
+# --- the "promo" shape's is_bot override (repeat_threshold 6, per sub-group) ---
+
+_PROMO_READMORE = [
+    f"Great write-up on {topic}. 🔗 Original Post [📖 Read full post here](https://farm{i}.blogspot.com/x)"
+    for i, topic in enumerate(("gardening", "sourdough", "birding", "cycling", "pottery", "tide pools"))
+]
+_PROMO_MIXED = [
+    "Puzzler is featured on Awesome Indie! Upvote it → https://awesomeindie.com/p/puzzler",
+    "Reward-focused upgrade. Apply using my link and unlock a welcome bonus.",
+    "Slime Pack -- Add 30 goo blobs to your game. Perfect for casual games.",
+    "9 Underrated Xbox Games You Missed This Year",
+    "Ready to modernize patient intake? #DigitalHealthRevolution",
+]
+
+
+def test_score_bot_repeated_promo_group_flags_as_bot_at_threshold():
+    index = InMemoryBotFilterIndex()
+    author = "mastodon.example/contentfarm42"
+
+    results = [bot_filter.score_bot("mastodon", author, t, uuid4(), index) for t in _PROMO_READMORE]
+
+    assert results[0].shape_name == "promo"
+    assert results[0].is_bot is False
+    assert results[-1].shape_component == 1.0
+    assert results[-1].shape_name == "promo"
+    assert results[-1].is_bot is True
+
+
+def test_score_bot_singleton_promo_is_not_flagged():
+    index = InMemoryBotFilterIndex()
+    result = bot_filter.score_bot("mastodon", "mastodon.example/indiedev", _PROMO_READMORE[0], uuid4(), index)
+    assert result.shape_name == "promo"
+    assert 0.0 < result.shape_component < 1.0
+    assert result.is_bot is False
+
+
+def test_score_bot_promo_across_different_sub_groups_does_not_flag():
+    # Counted per group key -- five one-off promo posts of five different
+    # shapes never push any single counter to the threshold.
+    index = InMemoryBotFilterIndex()
+    for text in _PROMO_MIXED:
+        last = bot_filter.score_bot("mastodon", "mastodon.example/mixedbag", text, uuid4(), index)
+    assert last.shape_name == "promo"
+    assert last.shape_component < 1.0
+    assert last.is_bot is False
+
+
 class RaisingPipeline:
     def execute(self, command):
         return self

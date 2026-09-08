@@ -77,3 +77,71 @@ def test_unknown_shape_name_in_config_is_ignored():
 def test_devalue_only_shape_config_carries_null_threshold():
     match = post_shape.classify(HOT21, {"nowplaying": Cfg(repeat_threshold=None)})
     assert match.repeat_threshold is None
+
+
+# --- "promo" shape: real production text (issue #191 corpus) ---
+
+PROMO = {
+    "readmore": (
+        "Chiriya Boli Chu Chu Chu \U0001f426 | Cute Kids Nasheed | Beautiful Song "
+        "\U0001f517 Original Post [\U0001f4d6 Read full post here](https://kidsvideosr7.blogspot.com/x)"
+    ),
+    "vote": (
+        "Sudoku Trainer is featured on Awesome Indie! \U0001f680 Would mean a lot -- "
+        "Upvote it → https://awesomeindie.com/products/sudoku-trainer"
+    ),
+    "referral": (
+        "Reward-focused card upgrade with genuinely useful perks. "
+        "Apply using my link and unlock a welcome bonus."
+    ),
+    "asset": (
+        "Sweets 2D Game Items -- Add 20 colorful sweets, cookies, chocolates and other "
+        "treats to your game. Perfect for casual games, especially Match 3."
+    ),
+    "listicle": "7 Creepy Xbox Games With Amazing Story Campaigns You Should Play Tonight",
+    "b2b": (
+        "Ready to modernize patient intake? Reduce wait times and improve data quality "
+        "with a single onboarding flow. #DigitalHealthRevolution"
+    ),
+}
+
+PROMO_NEGATIVES = (
+    "5 amazing hikes I did around Lake Tahoe this weekend -- photos in the thread",
+    "my honest review of the new cafe down the street, it's genuinely wonderful",
+    "just read a great article about urban gardening, really inspiring stuff",
+    "I made a small puzzle game over the weekend, would love it if you gave it a try",
+    "we're so proud to share our new welcome pack for first-time members",
+)
+
+
+def test_promo_groups_match_with_registry_defaults():
+    for group, text in PROMO.items():
+        match = post_shape.classify(text)
+        assert match is not None, group
+        assert match.name == "promo", group
+        assert match.key == group
+        assert match.devalue_multiplier == 0.35
+        assert match.repeat_threshold == 6
+
+
+def test_promo_key_is_stable_for_a_group():
+    other = (
+        "Kittens 2D Game Items -- Add 12 cats to your game. Perfect for casual games."
+    )
+    assert post_shape.classify(PROMO["asset"]).key == post_shape.classify(other).key == "asset"
+
+
+def test_genuine_prose_does_not_match_promo():
+    for text in PROMO_NEGATIVES:
+        assert post_shape.classify(text) is None, text
+
+
+def test_promo_db_row_overrides_the_registry_literals():
+    match = post_shape.classify(PROMO["vote"], {"promo": Cfg(devalue_multiplier=0.5, repeat_threshold=10)})
+    assert match.name == "promo"
+    assert match.devalue_multiplier == 0.5
+    assert match.repeat_threshold == 10
+
+
+def test_disabled_promo_shape_is_skipped():
+    assert post_shape.classify(PROMO["vote"], {"promo": Cfg(enabled=False)}) is None
