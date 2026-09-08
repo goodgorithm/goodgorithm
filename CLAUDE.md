@@ -186,15 +186,14 @@ The mark is a single lowercase **g**; an open-arc form, an uppercase G, and a tw
 
 - **Palette — "Signal"**: a confident, non-pastel green. Light accent `#1F9D55`, dark accent `#3ECB79`. Dark-mode backgrounds are warm-tinted near-black (e.g. `#121815`/`#19221E`), not cold pure/blue-black — the dark theme needs to read as inviting, not an inverted afterthought.
 - **Typography**: Manrope, for both display and body use, including the wordmark.
-- **Mark**: a single lowercase **g**. SVG (100×100 viewBox, `stroke-width="9"`, `stroke-linecap="round"`):
+- **Mark**: a single lowercase **g** that also reads as a small winking face. SVG (100×100 viewBox, `stroke-width="9"`, `stroke-linecap="round"`, `currentColor`):
   ```html
-  <path d="M 66.13 44.45 A 20 20 0 1 1 66.13 27.55" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M 55 55 C 57 76, 34 94, 16 82" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
-  <circle cx="66.13" cy="44.45" r="6" fill="currentColor"/>
-  <circle cx="66.13" cy="27.55" r="6" fill="currentColor"/>
-  <circle cx="16" cy="82" r="6" fill="currentColor"/>
+  <circle cx="68" cy="36" r="20" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 83 49 C 86 78, 48 96, 30 80" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 12 33 Q 21 41 30 33" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+  <path d="M 88 26 L 90 14" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
   ```
-  Open bowl (circle with a gap, not a closed ring — echoes "open source"), a hooked descender that curls back under the bowl rather than swinging outward, attached off-center at roughly 4 o'clock rather than dead-bottom (matches how real lowercase g's link asymmetrically), plus three small nodes at the bowl's open ends and the tail terminus.
+  The `g` sits shifted right in the viewBox so its closed-ring bowl doubles as a right eye; a soft closed left eye (a shallow downward arc) fills the space that opens up on the left, and the hooked descender sweeps under both eyes as a smile before tailing off left. A short ear tops the ring's right side, on the descender's line extended up and clear of the bowl. No node accents. `Logo.tsx` and `index.html`'s first-paint shell render this; the favicon / PWA / native-icon SVGs under `web/public/` and `web/assets/` are authored separately and maintained by hand, so they can lag the mark here.
 - **Wordmark**: "good" in the accent color at semibold/bold weight, "gorithm" in the body-text color at regular weight, set as one word with no space — `good` + `gorithm`.
 
 ## Data sources
