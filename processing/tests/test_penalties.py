@@ -6,6 +6,9 @@ from pipeline_stages.context_dependency import ContextClassification
 # a structured "now playing on <station>" post -- triggers the shape penalty
 NOWPLAYING = "▶️ #NowPlaying on Hot 21 Radio: 93 'Til Infinity by Souls of Mischief \U0001f525 Tune in now: https://www.hot21radio.com #Hot21Radio"
 
+# a directory-submission CTA -- triggers the shape penalty via the "promo" shape
+PROMO = "Puzzler is featured on Awesome Indie! Upvote it → https://awesomeindie.com/p/puzzler"
+
 FLIPBOARD = frozenset({"flipboard.com", "flipboard.social"})
 SHORTENERS = frozenset({"dlvr.it", "ift.tt"})
 
@@ -51,6 +54,13 @@ def test_apply_multiplies_every_penalty_and_records_the_breakdown():
     assert result.detail["aggregator"] == 1.0
     assert result.detail["syndication"] == 1.0
     assert abs(result.multiplier - (0.4 * 0.3)) < 1e-9
+
+
+def test_apply_records_the_promo_shape():
+    result = penalties.apply(_ctx(text=PROMO))
+    assert result.detail["shape"] == 0.35
+    assert result.detail["shape_name"] == "promo"
+    assert abs(result.multiplier - 0.35) < 1e-9
 
 
 def test_apply_reads_the_aggregator_instance_list():
