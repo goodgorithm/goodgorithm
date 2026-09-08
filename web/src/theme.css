@@ -15,16 +15,6 @@
   --color-text: #16211b;
   --color-text-secondary: #5b665f;
   --color-text-tertiary: #8b958f;
-
-  /* Per-post card tints (see lib/cardTint.ts). Barely-there: each stays
-     within a few L* of --color-surface, so body text keeps its contrast.
-     Hues nod to the "Faded canvas" pastel set (sage / beige / greige /
-     blush / grey-green). */
-  --card-tint-1: #f3f7f4;
-  --card-tint-2: #f8f5f0;
-  --card-tint-3: #f6f6f3;
-  --card-tint-4: #fdf3f0;
-  --card-tint-5: #f3f6f3;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -37,13 +27,5 @@
     --color-text: #ecf3ef;
     --color-text-secondary: #9fada6;
     --color-text-tertiary: #77857f;
-
-    /* Dark card tints: a hue nudge of --color-surface #19221e at ~the same
-       lightness, so the wash is felt but body text is unaffected. */
-    --card-tint-1: #19231e;
-    --card-tint-2: #21201c;
-    --card-tint-3: #1e211e;
-    --card-tint-4: #231d1c;
-    --card-tint-5: #1b211d;
   }
 }
