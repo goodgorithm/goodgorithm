@@ -64,8 +64,10 @@ AUTHOR_RESOLVE_BATCH_SIZE = int(os.environ.get("AUTHOR_RESOLVE_BATCH_SIZE", "500
 EXISTENCE_RECHECK_BATCH_SIZE = int(os.environ.get("EXISTENCE_RECHECK_BATCH_SIZE", "500"))
 
 # Corpus export -- see the wiki's Configuration page and Processing
-# Infrastructure's "Corpus export" section.
-EXPORT_CORPUS_BATCH_SIZE = int(os.environ.get("EXPORT_CORPUS_BATCH_SIZE", "2000"))
+# Infrastructure's "Corpus export" section. Sized for headroom over the
+# per-cycle inflow now that near-duplicates are kept too (~1.4x the
+# canonical-only rate).
+EXPORT_CORPUS_BATCH_SIZE = int(os.environ.get("EXPORT_CORPUS_BATCH_SIZE", "3000"))
 # How long a scored post is held back from the archive so every
 # retroactive-exclusion path has fired first. Well inside RETENTION_HOURS.
 EXPORT_CORPUS_MIN_AGE_HOURS = int(os.environ.get("EXPORT_CORPUS_MIN_AGE_HOURS", "6"))
@@ -425,9 +427,10 @@ def cleanup_old_data() -> int:
 
 
 def export_corpus() -> int:
-    """Appends dedup-canonical, moderation-final post text to the
-    long-lived goodgorithm-corpus R2 bucket before RETENTION_HOURS deletes
-    the raw_posts row. Gated by the caller on config.CORPUS_EXPORT_ENABLED
+    """Appends moderation-final post text -- canonical and near-duplicate,
+    each record carrying is_dedup_canonical -- to the long-lived
+    goodgorithm-corpus R2 bucket before RETENTION_HOURS deletes the
+    raw_posts row. Gated by the caller on config.CORPUS_EXPORT_ENABLED
     (off outside production) and config.corpus_r2_configured().
 
     Mirrors recheck_moderation's shape: fetch a bounded batch, do the work,

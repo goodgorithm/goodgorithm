@@ -8,7 +8,9 @@ from infra.db import ExportablePost
 from pipeline_stages import corpus_export
 
 
-def _post(raw_post_id, text, source="bluesky", day="2026-09-05", category="arts_culture"):
+def _post(
+    raw_post_id, text, source="bluesky", day="2026-09-05", category="arts_culture", is_dedup_canonical=True
+):
     ts = datetime.fromisoformat(f"{day}T12:00:00+00:00")
     return ExportablePost(
         raw_post_id=raw_post_id,
@@ -20,6 +22,7 @@ def _post(raw_post_id, text, source="bluesky", day="2026-09-05", category="arts_
         pipeline_version="v8",
         dedup_cluster_id="11111111-1111-1111-1111-111111111111",
         processed_at=ts,
+        is_dedup_canonical=is_dedup_canonical,
     )
 
 
@@ -73,9 +76,22 @@ def test_build_objects_groups_by_source_and_date_and_gzips_valid_ndjson():
     assert records[0]["source"] == "bluesky"
     assert records[0]["category"] == "arts_culture"
     assert records[0]["pipeline_version"] == "v8"
+    assert records[0]["is_dedup_canonical"] is True
     assert "sentiment_score" not in records[0]
     assert "raw_post_id" not in records[0]
     assert "author_id" not in records[0]
+
+
+def test_build_objects_keeps_non_canonical_rows_and_flags_them():
+    posts = [
+        _post("a", "the original", is_dedup_canonical=True),
+        _post("b", "a near-dup crosspost", is_dedup_canonical=False),
+    ]
+    [obj] = corpus_export.build_objects("corpus", posts)
+    records = list(corpus_export.iter_records(obj.data))
+
+    assert [r["text"] for r in records] == ["the original", "a near-dup crosspost"]
+    assert [r["is_dedup_canonical"] for r in records] == [True, False]
 
 
 def test_iter_records_round_trips_build_objects_output():
