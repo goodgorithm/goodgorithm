@@ -53,6 +53,17 @@ export async function deleteBySourceId(source: "bluesky" | "mastodon", sourceId:
   return result.count;
 }
 
+// Used by the Jetstream account-takedown path (bluesky.ts): a taken-down /
+// suspended / deleted Bluesky account emits no further posts, so its
+// already-ingested raw_posts (processed_posts cascades) are dropped
+// directly here rather than parked in blocked_authors for
+// purge_blocked_authors to sweep. Served by raw_posts_source_author_idx;
+// matches 0 rows for the firehose takedowns we never ingested from.
+export async function deleteByAuthor(source: "bluesky" | "mastodon", authorId: string): Promise<number> {
+  const result = await sql`DELETE FROM raw_posts WHERE source = ${source} AND author_id = ${authorId}`;
+  return result.count;
+}
+
 // Moderation blocklist -- written by a human moderator directly (SQL) or
 // by blueskyLabels.ts's bot-label handling (see the wiki's Content Policy
 // page). ON CONFLICT DO NOTHING: the label stream can redeliver the same

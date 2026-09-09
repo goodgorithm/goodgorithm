@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { blockAuthor, deleteBySourceId, getBlockedAuthors, insertPost, isBlockedAuthor } from "./db";
+import { deleteByAuthor, deleteBySourceId, getBlockedAuthors, insertPost, isBlockedAuthor } from "./db";
 import { parseNumberEnv } from "./env";
 import { consumePendingExclusion, markPendingExclusion } from "./pendingExclusions";
 
@@ -62,10 +62,13 @@ export function parseDeleteCommit(event: JetstreamEvent): string | null {
 }
 
 // The DID of an account whose kind:"account" frame reports it as gone (see
-// ACCOUNT_TAKEDOWN_STATUSES), or null otherwise. Routed into blocked_authors
-// so processing/'s purge_blocked_authors sweep drops its already-ingested
-// posts -- an account takedown emits no com.atproto.label event, so neither
-// the label stream nor moderation_recheck.py would ever catch it.
+// ACCOUNT_TAKEDOWN_STATUSES), or null otherwise. The handler drops the
+// account's already-ingested raw_posts directly (deleteByAuthor), with no
+// blocked_authors row -- a dead account emits nothing more, so a
+// suppression row would only accrete unbounded firehose noise. An account
+// takedown emits no com.atproto.label event, so neither the label stream
+// nor moderation_recheck.py would ever catch it; existence_recheck.py is
+// the backstop for a frame lost across a cursorless reconnect.
 export function accountTakedownDid(event: JetstreamEvent): string | null {
   if (event.kind !== "account" || !event.did) return null;
   const account = event.account;
@@ -174,14 +177,21 @@ export function startBlueskyIngestion(): void {
       }
 
       // The post's author was taken down / suspended / deleted their
-      // account. Block the DID; processing/'s purge sweep removes their
-      // already-ingested posts within its own window.
+      // account. A dead account emits no further Jetstream posts, so drop
+      // everything we've already ingested from it directly (processed_posts
+      // cascades) rather than recording a blocked_authors row -- global
+      // firehose takedowns would otherwise accrete one each without bound.
+      // A straggler create that raced the account frame across a cursorless
+      // reconnect is caught by processing/'s existence_recheck.py sweep.
       const takedownDid = accountTakedownDid(event);
       if (takedownDid) {
         try {
           const status = event.account?.status;
-          await blockAuthor("bluesky", takedownDid, `jetstream account ${status}`);
-          console.log(`[bluesky] account ${status} for ${takedownDid} -> blocked`);
+          const deleted = await deleteByAuthor("bluesky", takedownDid);
+          console.log(
+            `[bluesky] account ${status} for ${takedownDid} -> ` +
+              (deleted > 0 ? `deleted ${deleted} post(s)` : "no ingested posts"),
+          );
         } catch (err) {
           console.error("[bluesky] account takedown handling error:", err);
         }
