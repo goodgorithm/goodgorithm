@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchFeed } from "./client";
 import { consumeFeedBootstrap } from "./feedBootstrap";
 import type { Category } from "./types";
-import { clearCursor, loadCursor, saveCursor } from "../lib/feedCursor";
+import { clearCursor, loadCursor, loadSeenIds, saveCursor } from "../lib/feedCursor";
 
 export function useFeed(category: Category | null) {
   const categoryKey = category ?? "all";
@@ -26,6 +26,16 @@ export function useFeed(category: Category | null) {
   );
   const resumed = initialCursor !== null;
 
+  // Post ids this category showed before a reload/resume, fed to Feed.tsx
+  // so its dedup Set already knows them - the in-memory Set is rebuilt
+  // from the loaded pages only, so without this a resumed session can
+  // re-render a post the live re-ranking shifted back across the cursor.
+  // Only on a real resume (generation 0); a "Back to top" starts clean.
+  const carriedSeenIds = useMemo(
+    () => (generation === 0 ? loadSeenIds(category) : []),
+    [category, generation],
+  );
+
   const query = useInfiniteQuery({
     queryKey: ["feed", categoryKey, generation],
     // First page adopts the request the inline <script> in index.html
@@ -41,14 +51,26 @@ export function useFeed(category: Category | null) {
   });
 
   useEffect(() => {
-    const lastPage = query.data?.pages.at(-1);
-    if (lastPage) saveCursor(category, lastPage.next_cursor);
-  }, [query.data, category]);
+    const pages = query.data?.pages ?? [];
+    const lastPage = pages.at(-1);
+    if (!lastPage) return;
+    // Merge the ids a prior resumed session carried in with this
+    // session's loaded pages, newest last so saveCursor's cap keeps the
+    // most recent. carriedSeenIds is [] after a "Back to top", so a reset
+    // session's stored set is just its own pages.
+    const seenIds = [
+      ...new Set([
+        ...carriedSeenIds,
+        ...pages.flatMap((p) => p.posts.map((post) => post.id)),
+      ]),
+    ];
+    saveCursor(category, lastPage.next_cursor, seenIds);
+  }, [query.data, category, carriedSeenIds]);
 
   const resetToTop = () => {
     clearCursor(category);
     setResetGenerations((prev) => ({ ...prev, [categoryKey]: generation + 1 }));
   };
 
-  return { ...query, resumed, resetToTop };
+  return { ...query, resumed, carriedSeenIds, resetToTop };
 }

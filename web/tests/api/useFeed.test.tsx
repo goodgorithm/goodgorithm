@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useFeed } from "../../src/api/useFeed";
-import { loadCursor, saveCursor } from "../../src/lib/feedCursor";
+import { loadCursor, loadSeenIds, saveCursor } from "../../src/lib/feedCursor";
 
 function createWrapper() {
   const queryClient = new QueryClient();
@@ -15,6 +15,11 @@ function createWrapper() {
 
 function mockFeedResponse(nextCursor: string | null) {
   return new Response(JSON.stringify({ posts: [], next_cursor: nextCursor }), { status: 200 });
+}
+
+function mockFeedResponseWithPosts(ids: string[], nextCursor: string | null) {
+  const posts = ids.map((id) => ({ id }));
+  return new Response(JSON.stringify({ posts, next_cursor: nextCursor }), { status: 200 });
 }
 
 describe("useFeed", () => {
@@ -136,6 +141,51 @@ describe("useFeed", () => {
         true,
       ),
     );
+  });
+
+  it("persists the seen post ids once a page loads (issue #38)", async () => {
+    vi.mocked(fetch).mockResolvedValue(mockFeedResponseWithPosts(["a", "b", "c"], "next-1"));
+
+    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(loadSeenIds(null)).toEqual(["a", "b", "c"]);
+  });
+
+  it("carries prior seen ids into a resumed session and merges them with the new pages", async () => {
+    saveCursor(null, "resume-me", ["x", "y"]);
+    vi.mocked(fetch).mockResolvedValue(mockFeedResponseWithPosts(["a"], "next-1"));
+
+    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    expect(result.current.carriedSeenIds).toEqual(["x", "y"]);
+    expect(loadSeenIds(null)).toEqual(["x", "y", "a"]);
+  });
+
+  it("resetToTop drops the carried seen ids so the fresh session starts clean", async () => {
+    saveCursor(null, "resume-me", ["x", "y"]);
+    vi.mocked(fetch).mockResolvedValue(mockFeedResponseWithPosts(["a"], "next-1"));
+
+    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.carriedSeenIds).toEqual(["x", "y"]));
+
+    act(() => result.current.resetToTop());
+
+    await waitFor(() => expect(result.current.carriedSeenIds).toEqual([]));
+    expect(result.current.resumed).toBe(false);
+  });
+
+  it("keeps each category's seen ids independent", async () => {
+    saveCursor("science_technology", "tech-cursor", ["t1"]);
+    vi.mocked(fetch).mockResolvedValue(mockFeedResponseWithPosts(["d1"], "next-1"));
+
+    const { result } = renderHook(() => useFeed("diaries_daily_life"), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+
+    expect(result.current.carriedSeenIds).toEqual([]);
+    expect(loadSeenIds("science_technology")).toEqual(["t1"]);
+    expect(loadSeenIds("diaries_daily_life")).toEqual(["d1"]);
   });
 
   it("resetToTop on one category doesn't force another category back to the top", async () => {
