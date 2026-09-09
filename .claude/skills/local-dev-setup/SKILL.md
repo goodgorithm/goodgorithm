@@ -27,7 +27,7 @@ Check-and-report only — never auto-install anything:
 
 4. **Wire `.env` per service** — three separate files, each in its own service directory (not a shared root `.env`):
    - `ingestion/.env`: `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`, `BLUESKY_SAMPLE_RATE=0.05`
-   - `processing/.env`: same `DATABASE_URL`, `REDIS_URL=redis://localhost:6379`, `PROCESSING_BATCH_SIZE=20`, `PROCESSING_INTERVAL_SECONDS=60`
+   - `processing/.env`: same `DATABASE_URL`, `REDIS_URL=redis://localhost:6379`, `PROCESSING_BATCH_SIZE=20`, `PROCESSING_INTERVAL_SECONDS=60`, `PORT=8081` (keeps the long-lived loop's status server off `ingestion/`'s `8080`; harmless for `--once`)
    - `api/.env`: same `DATABASE_URL`
    - `web/.env`: `cp web/.env.example web/.env` if it doesn't already exist (default `VITE_API_BASE_URL=http://localhost:3000` is already correct)
    Only create files that don't already exist — never overwrite an existing `.env` without asking first, it may hold values the user set deliberately.
@@ -36,11 +36,11 @@ Check-and-report only — never auto-install anything:
 
 6. **Processing**: `cd processing && uv sync && uv run python src/main.py --once`. Checkpoint: console output shows `processed N posts` with no errors; `docker exec supabase_db_goodgorithm psql -U postgres -c "select count(*) from processed_posts where rank_score is not null;"` should be > 0. If it's 0, re-run `--once` a couple more times (ingestion accumulates backlog in the background) before treating it as a real problem.
 
-7. **API**: `cd api && npm install && npm run dev` (background it). Checkpoint: `curl -s localhost:3000/health` → `"reachable": true`. Then check across all four categories, since one may still be empty (see step 9): `for c in science_technology arts_culture food_dining diaries_daily_life; do echo -n "$c: "; curl -s "localhost:3000/v1/feed?category=$c" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['posts']))"; done` — at least one should be > 0.
+7. **API**: `cd api && npm install && npm run dev` (background it). Checkpoint: `curl -s localhost:3000/health` → `"reachable": true`, then `curl -s "localhost:3000/v1/feed" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['posts']))"` (**no `category=` param**) returns > 0. That's the real end-to-end check — it needs a ranked post, not a categorized one. Don't gate success on the per-category feeds (`?category=science_technology` etc.): the keyword-taxonomy fallback categorizes only ~3% of posts, so all four can read 0 for a long time on a fresh session (see step 9). `?category=all` is not valid at the API (it 400s) — omit the param instead.
 
-8. **Web**: `cd web && npm install && npm run dev` (background it). Report the URL (`http://localhost:5173`) for the user to open themselves — don't try to screenshot/verify visually unless asked; step 7's curl check is the real verification.
+8. **Web**: `cd web && npm install && npm run dev` (background it). Report the URL (`http://localhost:5173`) for the user to open themselves — don't try to screenshot/verify visually unless asked; step 7's no-`category` curl check is the real verification.
 
-9. **Known local-only wrinkle, report this proactively, don't wait to be asked**: without R2 (step 3), the keyword-taxonomy category fallback is noticeably less confident than the trained classifier — most locally-scored posts end up with an empty `category`, matching none of the four tabs. So it's normal and expected for some category tabs (possibly the default one) to show "No posts yet" in `web/` even once everything is genuinely working. Step 7's per-category curl loop is what actually confirms success, not "the default tab has content."
+9. **Known local-only wrinkle, report this proactively, don't wait to be asked**: without R2 (step 3), the keyword-taxonomy category fallback catches far less than the trained classifier — only ~3% of locally-scored posts land in any of the four categories (vs ~two-thirds), and it's lopsided toward `science_technology`. So every category tab in `web/` can show "No posts yet" for the first several minutes — often much longer for `arts_culture`/`food_dining` — while the pipeline is working perfectly. The no-`category` feed (step 7) is what confirms success. If the user wants category tabs populated, they need `ingestion/` **plus** `processing/` as the long-lived loop (`uv run python src/main.py`, no `--once`) running a while: `science_technology` ~10 min, one or two others over the next ~20–40 min, `food_dining` often not within an hour. Running the loop needs `PORT=8081` in `processing/.env` (its 8080 default collides with `ingestion/` → `OSError: [Errno 48] Address already in use`); `--once` doesn't.
 
 ## What this can't do
 
@@ -58,7 +58,8 @@ Bluesky Jetstream and Mastodon's public timelines are always-live, unauthenticat
 - **`DATABASE_URL is required`** (from `ingestion`/`api`) — that service's own `.env` wasn't created (step 4); a root `.env` doesn't count.
 - **`missing required env vars: DATABASE_URL, REDIS_URL`** (from `processing`) — same, for `processing/.env`.
 - **No rows in `raw_posts` after a couple of minutes** — expected sometimes; `BLUESKY_SAMPLE_RATE` is probabilistic. Wait longer before treating it as broken.
-- **All four categories return 0 posts even after several `--once` runs** — genuinely worth investigating (check `processing`'s console output for errors); one category having 0 is normal, all four is not.
+- **All four category feeds return 0 even after several `--once` runs** — normal on a fresh session: the keyword-taxonomy fallback categorizes ~3% of posts and lags for many minutes. Verify with the no-`category` feed (`curl -s localhost:3000/v1/feed` → > 0) instead; only treat it as broken if *that* is empty after `processing` has ranked posts (`select count(*) from processed_posts where rank_score is not null` > 0). Actual errors in `processing`'s console are the real signal.
+- **`processing` long-lived loop exits with `OSError: [Errno 48] Address already in use`** — its status server defaults to `8080`, already held by `ingestion`. Set `PORT=8081` in `processing/.env` (step 4).
 
 ## Gotchas
 
