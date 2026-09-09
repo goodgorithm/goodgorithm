@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import urlsplit
 
-from pipeline_stages import aggregator_demote, link_share, post_shape
+from pipeline_stages import aggregator_demote, hashtag_bag, link_share, post_shape
 from pipeline_stages.content_filter import matches_domain_list
 from pipeline_stages.context_dependency import ContextClassification
 from util import url_extract
@@ -81,6 +81,10 @@ def _link_share(ctx: PenaltyContext) -> tuple[float, dict]:
     return link_share.classify(ctx.source, ctx.raw_json, ctx.text).devalue_multiplier, {}
 
 
+def _hashtag_bag(ctx: PenaltyContext) -> tuple[float, dict]:
+    return hashtag_bag.classify(ctx.text).devalue_multiplier, {}
+
+
 def _aggregator(ctx: PenaltyContext) -> tuple[float, dict]:
     return (
         aggregator_demote.classify(ctx.source, ctx.author_id, ctx.aggregator_instances).devalue_multiplier,
@@ -130,6 +134,7 @@ class Penalty:
 PENALTIES: tuple[Penalty, ...] = (
     Penalty("context", _context),
     Penalty("link_share", _link_share),
+    Penalty("hashtag_bag", _hashtag_bag),
     Penalty("aggregator", _aggregator),
     Penalty("syndication", _syndication),
     Penalty("quote", _quote),
