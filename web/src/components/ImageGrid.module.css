@@ -53,3 +53,27 @@
   display: block;
   background: var(--color-surface-muted);
 }
+
+/* Shown in place of the <img> once every load attempt (thumbnail, retry,
+   fullsize) has failed -- sized exactly like .image per layout so the
+   reserved box never collapses. The <a href={fullUrl}> wrapper keeps it
+   clickable. */
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 1em;
+  text-align: center;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted);
+}
+
+.count2 .placeholder,
+.count3 .placeholder,
+.count4 .placeholder {
+  height: 100%;
+}
