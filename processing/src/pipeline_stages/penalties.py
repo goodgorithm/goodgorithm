@@ -42,13 +42,12 @@ if not 0.0 < SYNDICATION_DEMOTE_MULTIPLIER <= 1.0:
 # moderation-filtered quoted post (quote_resolver.py records
 # quote_content = {"status": "unavailable", "reason": "filtered"} -- adult
 # self-label / labeler adult label / excluded hashtag / suppressed-domain
-# link on the quoted post). The outer post is still scored on its own text,
-# so an enthusiastic caption over adult content otherwise ranks normally.
-# Devalue, not exclude: ~40% of the matches are wholesome art-community
-# endorsements of an 18+-flagged account. `not_found` quotes (deleted /
-# detached / blocked) are deliberately left untouched -- near-pure
-# collateral. A touch gentler than the 0.3 family for that reason. See the
-# wiki's Penalties page.
+# link on the quoted post). The outer post is scored on its own text alone,
+# so a caption over adult content otherwise ranks on the caption. Devalue,
+# not exclude, and a touch gentler than the 0.3 family: many matches are
+# art-community endorsements of an 18+-flagged account or post whose own
+# content is tame. `not_found` quotes (deleted / detached / blocked) are
+# left untouched. See the wiki's Penalties page.
 QUOTE_FILTERED_DEMOTE_MULTIPLIER = float(os.environ.get("QUOTE_FILTERED_DEMOTE_MULTIPLIER", "0.4"))
 if not 0.0 < QUOTE_FILTERED_DEMOTE_MULTIPLIER <= 1.0:
     raise ValueError(
