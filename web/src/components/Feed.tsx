@@ -22,6 +22,7 @@ export function Feed() {
     fetchNextPage,
     hasNextPage,
     resumed,
+    carriedSeenIds,
     resetToTop,
     refetch,
   } = useFeed(category);
@@ -38,17 +39,17 @@ export function Feed() {
     return () => observer.disconnect();
   }, [hasNextPage, fetchNextPage]);
 
-  // Deduped by id, keeping the first (earlier-page) occurrence - api/'s
-  // rank_score-keyset pagination isn't fully airtight against the live
-  // background re-ranking that runs concurrently with pagination: a post
-  // can shift to a lower rank_score between page fetches and satisfy the
-  // cursor comparison again. This doesn't fix the server occasionally
-  // serving the same post twice, just stops it from ever rendering twice
-  // in one continuous scroll - the fuller fix (pinning a consistent
-  // ranking snapshot for the duration of a scroll session) is tracked
-  // separately. See the wiki's Web Internals page.
+  // Deduped by id, keeping the first (earlier-page) occurrence. api/'s
+  // rank_score-keyset pagination can hand back a post it already served:
+  // the background re-ranking mutates rank_score between the page fetches
+  // of one session, so a post can drop back across the cursor. The Set
+  // catches that within a scroll, and is seeded from carriedSeenIds - the
+  // ids this category showed before a reload/resume (feedCursor.ts) - so
+  // a resumed session doesn't re-render them either. A re-served row that
+  // still slips through is dropped here and never reaches the screen.
+  // See the wiki's Web Internals page.
   const posts = useMemo(() => {
-    const seen = new Set<string>();
+    const seen = new Set<string>(carriedSeenIds);
     const deduped: FeedPost[] = [];
     for (const page of data?.pages ?? []) {
       for (const post of page.posts) {
@@ -58,7 +59,7 @@ export function Feed() {
       }
     }
     return deduped;
-  }, [data?.pages]);
+  }, [data?.pages, carriedSeenIds]);
 
   // One percentile basis per fetched page (see scoreScale.ts) - computed
   // per page, then merged, so a page already on screen never has its

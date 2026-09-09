@@ -26,7 +26,7 @@ function makePost(id: string, text: string): FeedPost {
   };
 }
 
-function mockUseFeed(pages: FeedPost[][]) {
+function mockUseFeed(pages: FeedPost[][], carriedSeenIds: string[] = []) {
   vi.mocked(useFeedModule.useFeed).mockReturnValue({
     data: { pages: pages.map((posts) => ({ posts, next_cursor: null })), pageParams: [] },
     error: null,
@@ -35,6 +35,7 @@ function mockUseFeed(pages: FeedPost[][]) {
     fetchNextPage: vi.fn(),
     hasNextPage: false,
     resumed: false,
+    carriedSeenIds,
     resetToTop: vi.fn(),
     refetch: vi.fn(),
     // biome-ignore/eslint-ignore: partial mock of react-query's return shape, only what Feed.tsx actually reads
@@ -50,6 +51,7 @@ function mockUseFeedPending() {
     fetchNextPage: vi.fn(),
     hasNextPage: false,
     resumed: false,
+    carriedSeenIds: [],
     resetToTop: vi.fn(),
     refetch: vi.fn(),
   } as unknown as ReturnType<typeof useFeedModule.useFeed>);
@@ -89,6 +91,19 @@ describe("Feed", () => {
     expect(screen.getAllByText("Repeated post")).toHaveLength(1);
     expect(screen.getByText("Second post")).toBeInTheDocument();
     expect(screen.getByText("Third post")).toBeInTheDocument();
+  });
+
+  it("does not render a post whose id was seen before a reload (issue #38)", () => {
+    // carriedSeenIds is what this category showed before the resume; the
+    // dedup Set is seeded from it, so a post re-served on the resumed
+    // feed's first page (because the background re-ranking shifted it back
+    // across the persisted cursor) never renders.
+    mockUseFeed([[makePost("1", "Already seen"), makePost("2", "Fresh post")]], ["1"]);
+
+    render(<Feed />);
+
+    expect(screen.queryByText("Already seen")).not.toBeInTheDocument();
+    expect(screen.getByText("Fresh post")).toBeInTheDocument();
   });
 
   it("keeps the earlier-page occurrence's position when deduping", () => {
