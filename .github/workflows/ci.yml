@@ -84,8 +84,52 @@ jobs:
       - run: npm run build
       - run: npm test
 
+  # supabase/migrations/ filename + ordering + additive-only lint. No secret,
+  # runs on every push and PR -- the PR-time signal, since db push itself
+  # only runs on the staging/production branches below.
+  migration-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - run: node scripts/check-migrations.mjs
+
+  # Applies pending supabase/migrations/ to the matching Supabase project
+  # BEFORE the Railway services deploy, so schema is in place for the new
+  # code. `db push` is a no-op when nothing is pending. A failed migration
+  # blocks the deploy (deploy-* needs this job).
+  migrate-staging:
+    needs: [processing-tests, ingestion-build, api-tests, migration-checks]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.113.0
+      - name: Apply migrations to Supabase staging
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL_STAGING }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
+
+  migrate-production:
+    needs: [processing-tests, ingestion-build, api-tests, migration-checks]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/production'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.113.0
+      - name: Apply migrations to Supabase production
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL_PRODUCTION }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
+
   deploy-staging:
-    needs: [processing-tests, ingestion-build, api-tests]
+    needs: [processing-tests, ingestion-build, api-tests, migrate-staging]
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
@@ -97,7 +141,7 @@ jobs:
           .github/scripts/railway-deploy.sh goodgorithm-ingestion goodgorithm-api goodgorithm-processing
 
   deploy-production:
-    needs: [processing-tests, ingestion-build, api-tests]
+    needs: [processing-tests, ingestion-build, api-tests, migrate-production]
     if: github.event_name == 'push' && github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     steps:

@@ -3,7 +3,7 @@
 -- one carries no original take, so penalties.py's `syndication` entry
 -- devalues its base_score -- on either platform, unlike aggregator_instances
 -- (Mastodon home instance only). Same table shape + inline RLS as
--- aggregator_instances (0018); a demote, never a hard-delete, so it stays
+-- aggregator_instances; a demote, never a hard-delete, so it stays
 -- separate from suppressed_domains.
 --
 -- Additive and off by default (an empty table matches nothing), so it's

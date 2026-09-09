@@ -12,8 +12,8 @@ def test_has_excluded_hashtag_matches_case_insensitively():
 
 def test_has_excluded_hashtag_does_not_match_unlisted_tags():
     # #lesbian/#spanking deliberately not in the suppressed-terms list --
-    # identity term / ambiguous-outside-context, see the migration's
-    # comment (0009_add_suppressed_terms.sql).
+    # identity term / ambiguous-outside-context, see the
+    # add_suppressed_terms migration's comment.
     assert content_filter.has_excluded_hashtag("#lesbian #spanking book out now", TERMS) is False
     assert content_filter.has_excluded_hashtag("just a normal positive post", TERMS) is False
 

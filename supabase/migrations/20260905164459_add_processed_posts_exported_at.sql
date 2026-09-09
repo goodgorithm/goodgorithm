@@ -4,7 +4,7 @@
 -- classical-ML embeddings. NULL for posts not yet exported, and for every
 -- post while CORPUS_EXPORT_ENABLED is off (staging, local dev). Set
 -- exactly once and never re-derived, same contract as moderation_checked_at
--- (0015) and author_resolved_at (0016). Additive/nullable.
+-- and author_resolved_at. Additive/nullable.
 ALTER TABLE processed_posts ADD COLUMN exported_at TIMESTAMPTZ;
 
 -- Serves the export sweep's candidate query the same way

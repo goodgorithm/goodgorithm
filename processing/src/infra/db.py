@@ -259,7 +259,7 @@ def update_rank_scores(updates: list[tuple[UUID, float, float]]) -> None:
 
 def delete_old_raw_posts(cutoff: datetime) -> int:
     """processed_posts rows cascade-delete automatically (FK ON DELETE
-    CASCADE, see migration 0003)."""
+    CASCADE, see the cascade_delete_processed_posts migration)."""
     with pool.connection() as conn:
         cur = conn.execute("DELETE FROM raw_posts WHERE created_at < %s", (cutoff,))
         return cur.rowcount
@@ -489,8 +489,8 @@ def fetch_unexported_posts(batch_size: int, min_age_hours: int) -> list[Exportab
     Ordered oldest-first (unlike the resolver sweeps' DESC): this sweep
     races retention, so it drains toward the delete cutoff rather than
     staying near the freshest rows. The exported_at IS NULL AND
-    is_dedup_canonical predicate matches processed_posts_export_pending_idx
-    (0020); the age and Bluesky-label conditions filter on top of it. The
+    is_dedup_canonical predicate matches processed_posts_export_pending_idx;
+    the age and Bluesky-label conditions filter on top of it. The
     raw_posts join is only for text/source/created_at, which don't live on
     processed_posts."""
     with pool.connection() as conn:

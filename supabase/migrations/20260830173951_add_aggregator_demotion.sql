@@ -9,11 +9,11 @@
 --    base_score (aggregator_demote.py). Same "moderator edits rows directly via
 --    the Supabase SQL editor, no deploy" precedent as blocked_authors /
 --    suppressed_terms / suppressed_domains. RLS enabled inline, same as
---    suppressed_domains (0014).
+--    suppressed_domains.
 --
 -- 2. processed_posts.aggregator_penalty: aggregator_demote.py's per-post devalue
---    multiplier, same pattern as context_penalty (0008) / link_share_penalty
---    (0017) -- computed once at scoring time, read back on every refresh_rankings
+--    multiplier, same pattern as context_penalty / link_share_penalty
+--    -- computed once at scoring time, read back on every refresh_rankings
 --    MMR pass. DEFAULT 1.0 leaves base_score maths unchanged for existing rows and
 --    any post whose home instance isn't listed, so it's safe under the sequential
 --    ingestion->api->processing deploy: a processing instance still on old code

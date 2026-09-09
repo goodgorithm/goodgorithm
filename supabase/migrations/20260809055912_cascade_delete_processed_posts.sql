@@ -1,3 +1,6 @@
+-- non-additive: DROP CONSTRAINT then re-add it with ON DELETE CASCADE,
+-- within one transaction (the FK is absent only between the two statements).
+--
 -- Lets deleting an old raw_posts row automatically clean up its
 -- processed_posts row too, instead of failing on the FK or requiring
 -- callers to delete from both tables in the right order.

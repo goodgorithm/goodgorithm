@@ -1,0 +1,12 @@
+-- non-additive: DROP COLUMN. Apply only once the v11 deploy that stopped
+-- writing nowplaying_penalty is confirmed live in the target environment,
+-- so no still-running v10 process tries to write a column that no longer
+-- exists.
+--
+-- Second step of the processed_posts.nowplaying_penalty -> shape_penalty
+-- rename (issue #196). The add_post_shapes migration added shape_penalty/
+-- shape_name and the v10 code dual-wrote nowplaying_penalty = shape_penalty;
+-- v11 stops writing it and nothing reads it (refresh_rankings switched to
+-- shape_penalty). 24h retention has long since aged out every pre-rename
+-- (v9) row, so there is no historical data on the column to preserve.
+ALTER TABLE processed_posts DROP COLUMN nowplaying_penalty;

@@ -3,7 +3,7 @@
 -- post reached the feed because none of its hashtags (#CamGirls, #Pussy,
 -- #OnlyFans, #Domination, #Fetish) matched the old frozenset({"nsfw"}).
 -- Same "moderator adds/removes rows directly, no code change or service
--- restart needed" precedent as blocked_authors (issue #7, migration 0006):
+-- restart needed" precedent as blocked_authors (issue #7):
 -- today, by hand, via the Supabase SQL editor -- no admin UI/CLI,
 -- deliberately, same as that table.
 --

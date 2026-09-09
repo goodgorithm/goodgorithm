@@ -5,7 +5,7 @@
 -- would be an unmitigated ReDoS surface. This row only carries the
 -- deploy-free tunables (enable/disable, base_score devalue multiplier,
 -- bot-filter repeat threshold), overriding the registry literals. Same
--- shape as 0022's `nowplaying` seed; a shape with no row falls back to its
+-- shape as the add_post_shapes `nowplaying` seed; a shape with no row falls back to its
 -- code literals. Live-tune with `UPDATE post_shapes SET ... WHERE
 -- name = 'promo'` -- effect within MODERATION_LISTS_REFRESH_SECONDS.
 INSERT INTO post_shapes (name, enabled, devalue_multiplier, repeat_threshold, reason) VALUES

@@ -7,7 +7,8 @@
 -- shape, and tune its base_score devalue multiplier and bot-filter repeat
 -- threshold. A shape with no row here falls back to its code-registry
 -- literals. Same "curate the data live, keep the mechanism in code" split as
--- aggregator_instances (0018). RLS inline, matching 0014/0018.
+-- aggregator_instances. RLS inline, matching add_suppressed_domains /
+-- add_aggregator_demotion.
 CREATE TABLE post_shapes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE CHECK (name = lower(name)),
@@ -26,8 +27,9 @@ INSERT INTO post_shapes (name, devalue_multiplier, repeat_threshold, reason) VAL
 -- Renames processed_posts.nowplaying_penalty -> shape_penalty (the generic
 -- post-shape devalue multiplier) and adds shape_name (which shape fired).
 -- Additive: the new code dual-writes nowplaying_penalty = shape_penalty
--- until migration 0023 drops the old column, so a processing instance still
--- on v9 during the sequential deploy keeps reading a correct value. Same
--- DEFAULT-1.0 safety as 0017/0021.
+-- until the drop_nowplaying_penalty migration drops the old column, so a
+-- processing instance still on v9 during the sequential deploy keeps reading
+-- a correct value. Same DEFAULT-1.0 safety as add_link_share_penalty /
+-- add_nowplaying_penalty.
 ALTER TABLE processed_posts ADD COLUMN shape_penalty REAL DEFAULT 1.0;
 ALTER TABLE processed_posts ADD COLUMN shape_name TEXT;
