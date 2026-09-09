@@ -472,12 +472,16 @@ class ExportablePost:
     pipeline_version: str
     dedup_cluster_id: UUID
     processed_at: datetime
+    is_dedup_canonical: bool
 
 
 def fetch_unexported_posts(batch_size: int, min_age_hours: int) -> list[ExportablePost]:
-    """Bounded batch of dedup-canonical, moderation-final posts the corpus
-    export sweep hasn't archived yet. Set exactly once via exported_at,
-    never re-derived -- same contract as moderation_checked_at.
+    """Bounded batch of moderation-final posts the corpus export sweep
+    hasn't archived yet -- canonical *and* near-duplicate (crossposts,
+    syndicated reposts, templated bot text): a training pipeline chooses
+    per record via the exported is_dedup_canonical flag / dedup_cluster_id.
+    exported_at is set exactly once, never re-derived -- same contract as
+    moderation_checked_at.
 
     min_age_hours holds a post back until every retroactive-exclusion path
     (moderation_recheck's one-shot label check, the real-time label stream,
@@ -488,21 +492,19 @@ def fetch_unexported_posts(batch_size: int, min_age_hours: int) -> list[Exportab
 
     Ordered oldest-first (unlike the resolver sweeps' DESC): this sweep
     races retention, so it drains toward the delete cutoff rather than
-    staying near the freshest rows. The exported_at IS NULL AND
-    is_dedup_canonical predicate matches processed_posts_export_pending_idx;
-    the age and Bluesky-label conditions filter on top of it. The
-    raw_posts join is only for text/source/created_at, which don't live on
-    processed_posts."""
+    staying near the freshest rows. The exported_at IS NULL predicate
+    matches processed_posts_export_pending_idx; the age and Bluesky-label
+    conditions filter on top of it. The raw_posts join is only for
+    text/source/created_at, which don't live on processed_posts."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
             SELECT p.raw_post_id, r.source, r.text, r.created_at,
                    p.category, p.category_method, p.pipeline_version,
-                   p.dedup_cluster_id, p.processed_at
+                   p.dedup_cluster_id, p.processed_at, p.is_dedup_canonical
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
             WHERE p.exported_at IS NULL
-              AND p.is_dedup_canonical
               AND p.processed_at < NOW() - (%s * INTERVAL '1 hour')
               AND (r.source <> 'bluesky' OR p.moderation_checked_at IS NOT NULL)
             ORDER BY p.processed_at ASC
