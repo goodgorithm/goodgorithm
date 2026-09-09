@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from pipeline_stages import aggregator_demote, penalties
+from pipeline_stages import aggregator_demote, hashtag_bag, penalties
 from pipeline_stages.context_dependency import ContextClassification
 
 # a structured "now playing on <station>" post -- triggers the shape penalty
@@ -15,7 +15,7 @@ SHORTENERS = frozenset({"dlvr.it", "ift.tt"})
 # quote_resolver.py's exact blob for a quoted post that failed moderation
 QUOTE_FILTERED = {"status": "unavailable", "reason": "filtered"}
 
-_PENALTY_NAMES = ("context", "link_share", "aggregator", "syndication", "quote", "shape")
+_PENALTY_NAMES = ("context", "link_share", "hashtag_bag", "aggregator", "syndication", "quote", "shape")
 
 
 def _ctx(**overrides):
@@ -82,6 +82,21 @@ def test_apply_leaves_a_not_found_or_available_quote_untouched():
         result = penalties.apply(_ctx(quote_content=qc))
         assert result.detail["quote"] == 1.0
         assert result.multiplier == 1.0
+
+
+def test_apply_devalues_a_hashtag_bag():
+    result = penalties.apply(_ctx(text="#GrandCanyon #Arizona #Sunset #Orange #Trees #Beautiful"))
+    assert result.detail["hashtag_bag"] == hashtag_bag.HASHTAG_BAG_DEVALUE_MULTIPLIER
+    assert result.detail["link_share"] == 1.0
+    assert abs(result.multiplier - hashtag_bag.HASHTAG_BAG_DEVALUE_MULTIPLIER) < 1e-9
+
+
+def test_apply_leaves_a_real_caption_with_a_few_tags_untouched():
+    result = penalties.apply(
+        _ctx(text="Beautiful shot over the ridge this evening, the light was unreal #photography #nature")
+    )
+    assert result.detail["hashtag_bag"] == 1.0
+    assert result.multiplier == 1.0
 
 
 def test_apply_reads_the_aggregator_instance_list():
