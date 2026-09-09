@@ -16,6 +16,7 @@ from pipeline_stages import (
     context_dependency,
     corpus_export,
     dedup,
+    existence_recheck,
     language_filter,
     moderation_recheck,
     penalties,
@@ -57,6 +58,10 @@ MODERATION_RECHECK_BATCH_SIZE = int(os.environ.get("MODERATION_RECHECK_BATCH_SIZ
 # Batch size for resolve_authors()'s sweep -- see the wiki's Configuration
 # page.
 AUTHOR_RESOLVE_BATCH_SIZE = int(os.environ.get("AUTHOR_RESOLVE_BATCH_SIZE", "500"))
+
+# Batch size for recheck_existence()'s sweep -- see the wiki's Configuration
+# page.
+EXISTENCE_RECHECK_BATCH_SIZE = int(os.environ.get("EXISTENCE_RECHECK_BATCH_SIZE", "500"))
 
 # Corpus export -- see the wiki's Configuration page and Processing
 # Infrastructure's "Corpus export" section.
@@ -360,6 +365,49 @@ def recheck_moderation() -> int:
     if purged:
         logger.info("moderation-recheck purged %d posts", purged)
     return purged
+
+
+def recheck_existence(stale_hours: int) -> int:
+    """Deletes an already-ranked Bluesky post (db.delete_raw_post, cascades
+    to processed_posts) once it stops resolving on Bluesky's AppView --
+    user delete, post detach, or the author's account being taken down /
+    suspended / deleted. None of those emit a com.atproto.label event, so
+    neither ingestion/'s label stream nor recheck_moderation catches them.
+
+    Unlike recheck_moderation's one-shot moderation_checked_at, this is a
+    *rolling* re-check: existence_checked_at is re-derived, so a row is
+    re-swept once its last check is older than stale_hours, across its
+    whole 24h feed life -- a takedown usually lands hours after ingestion.
+    It also backstops ingestion/'s real-time Jetstream delete/account
+    handling, whose cursorless connection loses frames across a reconnect.
+
+    Throttled by the caller (main.py) for the same reason as
+    recheck_moderation -- an external API call in batches must not compound
+    under a large backlog. Must run after refresh_rankings() in the loop:
+    its candidate set is rank_score IS NOT NULL. Deletion, not a score
+    change, so PIPELINE_VERSION is unaffected."""
+    posts = db.fetch_bluesky_posts_needing_existence_recheck(EXISTENCE_RECHECK_BATCH_SIZE, stale_hours)
+    if not posts:
+        return 0
+
+    results = existence_recheck.check_existence(posts)
+    gone = 0
+    present_ids = []
+    for post in posts:
+        result = results.get(post.raw_post_id)
+        if result is None:
+            continue  # batch failed -- left unchecked, retried next sweep
+        if result == "gone":
+            db.delete_raw_post(post.raw_post_id)
+            gone += 1
+            logger.info("existence-recheck purged post %s (no longer on AppView)", post.raw_post_id)
+        else:
+            present_ids.append(post.raw_post_id)
+
+    db.mark_existence_checked(present_ids)
+    if gone:
+        logger.info("existence-recheck purged %d posts", gone)
+    return gone
 
 
 def cleanup_old_data() -> int:

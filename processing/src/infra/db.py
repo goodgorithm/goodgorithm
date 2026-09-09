@@ -402,6 +402,66 @@ def mark_authors_resolved(results: list[tuple[UUID, dict | None]]) -> None:
 
 
 @dataclass
+class ExistenceCheckPost:
+    raw_post_id: UUID
+    source_id: str
+
+
+def fetch_bluesky_posts_needing_existence_recheck(batch_size: int, stale_hours: int) -> list[ExistenceCheckPost]:
+    """Bounded batch of already-*ranked* Bluesky posts existence_recheck.py
+    hasn't verified recently. Scoped to rank_score IS NOT NULL (only a small
+    fraction of ingested Bluesky posts are ever shown, so re-checking the
+    rest would be pure waste) -- same scoping as
+    fetch_bluesky_posts_needing_author_resolution.
+
+    Unlike moderation_checked_at / author_resolved_at, existence_checked_at
+    is *re-derived*: a row becomes a candidate again once its last check is
+    older than stale_hours, so the sweep revisits it across its whole 24h
+    life. Ordered/filtered on processed_posts alone so
+    processed_posts_existence_pending_idx serves the query;
+    existence_checked_at ASC NULLS FIRST puts never-checked rows ahead of
+    stale ones. raw_posts is joined only for source_id, which the AppView
+    call needs and processed_posts doesn't carry."""
+    with pool.connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.raw_post_id, r.source_id
+            FROM processed_posts p
+            JOIN raw_posts r ON r.id = p.raw_post_id
+            WHERE p.source = 'bluesky' AND p.rank_score IS NOT NULL
+              AND (p.existence_checked_at IS NULL
+                   OR p.existence_checked_at < NOW() - (%s * INTERVAL '1 hour'))
+            ORDER BY p.existence_checked_at ASC NULLS FIRST
+            LIMIT %s
+            """,
+            (stale_hours, batch_size),
+        ).fetchall()
+    return [ExistenceCheckPost(*row) for row in rows]
+
+
+def mark_existence_checked(raw_post_ids: list[UUID]) -> None:
+    """Bulk-writes existence_checked_at = NOW() for posts confirmed still
+    present -- chunked multi-row UPDATE, same pattern (and same
+    DB_RANK_SCORE_UPDATE_CHUNK_SIZE) as mark_moderation_checked. A "gone"
+    post isn't passed here; the caller deletes its raw_posts row instead."""
+    if not raw_post_ids:
+        return
+    with pool.connection() as conn:
+        for i in range(0, len(raw_post_ids), DB_RANK_SCORE_UPDATE_CHUNK_SIZE):
+            chunk = raw_post_ids[i : i + DB_RANK_SCORE_UPDATE_CHUNK_SIZE]
+            values_sql = ", ".join(["(%s::uuid)"] * len(chunk))
+            conn.execute(
+                f"""
+                UPDATE processed_posts AS p
+                SET existence_checked_at = NOW()
+                FROM (VALUES {values_sql}) AS v(raw_post_id)
+                WHERE p.raw_post_id = v.raw_post_id
+                """,
+                chunk,
+            )
+
+
+@dataclass
 class ExportablePost:
     raw_post_id: UUID
     source: str
