@@ -54,8 +54,8 @@ too, ~40% false positives in a production sample.
 code change to `post_shape.py`'s registry, with a false-positive fixture corpus). This table
 is the live control panel for the shapes that already exist: flip `enabled` to `false` to
 kill a misfiring shape without a deploy, or tune its `devalue_multiplier` / `repeat_threshold`
-against production. Migration `0022` seeds one row (`nowplaying`); a shape with no row runs
-on its code defaults.
+against production. The `add_post_shapes` migration seeds one row (`nowplaying`); a shape
+with no row runs on its code defaults.
 
 ## Adding an entry
 

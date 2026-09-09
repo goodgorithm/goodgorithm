@@ -61,8 +61,9 @@ No separate style guide — what CI actually checks (below) is the real bar. Bey
 
 - `processing/`: `uv run pytest`.
 - `ingestion/`, `api/`, `web/`: `npm run build` (type-check + compile) and `npm test`.
+- `supabase/migrations/`: `node scripts/check-migrations.mjs` — filename scheme, strictly-increasing timestamps, and the additive-only rule (a `DROP`/`RENAME`/`ALTER … TYPE`/`TRUNCATE` needs a `-- non-additive: <reason>` line). See [`doc/MIGRATIONS.md`](doc/MIGRATIONS.md).
 
-Pushes to `staging`/`production` additionally deploy (Railway for `ingestion`/`api`/`processing`, Cloudflare Workers for `web/`) once the above passes — see [`CLAUDE.md`'s Git conventions](CLAUDE.md#git-conventions) for the branch-promotion flow that triggers this.
+Pushes to `staging`/`production` additionally apply pending migrations (`supabase db push`) and deploy (Railway for `ingestion`/`api`/`processing`, Cloudflare Workers for `web/`) once the above passes — see [`CLAUDE.md`'s Git conventions](CLAUDE.md#git-conventions) for the branch-promotion flow that triggers this.
 
 `web/`'s `npm run lint` (oxlint) exists as a local script but isn't wired into CI yet — run it yourself before opening a PR that touches `web/`.
 

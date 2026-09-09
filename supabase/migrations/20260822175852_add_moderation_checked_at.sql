@@ -5,5 +5,5 @@
 -- against ingestion/'s blueskyLabels.ts real-time label-stream listener,
 -- which can race Jetstream's own insert for the same post. NULL for
 -- Mastodon posts and for Bluesky posts not yet swept. Additive/nullable,
--- same pattern as quote_content (0004) and generated_thumbnail_url (0010).
+-- same pattern as quote_content and generated_thumbnail_url.
 ALTER TABLE processed_posts ADD COLUMN moderation_checked_at TIMESTAMPTZ;

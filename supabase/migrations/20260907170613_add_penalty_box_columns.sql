@@ -13,6 +13,7 @@
 -- new code dual-writes the individual context_penalty / link_share_penalty /
 -- aggregator_penalty / shape_penalty / shape_name columns from the same
 -- values until a follow-up migration drops them (the nowplaying_penalty
--- pattern). Same DEFAULT-1.0 safety as 0017 / 0018 / 0022.
+-- pattern). Same DEFAULT-1.0 safety as add_link_share_penalty /
+-- add_aggregator_demotion / add_post_shapes.
 ALTER TABLE processed_posts ADD COLUMN penalty_multiplier REAL DEFAULT 1.0;
 ALTER TABLE processed_posts ADD COLUMN penalty_detail JSONB;

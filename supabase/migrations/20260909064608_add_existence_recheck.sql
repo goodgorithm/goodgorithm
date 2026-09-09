@@ -13,7 +13,7 @@
 --
 -- Additive/nullable column, same pattern as the other processed_posts
 -- resolver columns. The partial index mirrors
--- processed_posts_author_pending_idx (0019) but is ordered by
+-- processed_posts_author_pending_idx but is ordered by
 -- existence_checked_at ASC NULLS FIRST so the candidate query --
 -- "never checked, or checked longer ago than the stale window" -- is a
 -- forward range scan that stops at LIMIT.
