@@ -1,5 +1,5 @@
 import pipeline
-from infra.db import RawPost, UncheckedBlueskyPost, UnresolvedAuthorPost
+from infra.db import ExistenceCheckPost, RawPost, UncheckedBlueskyPost, UnresolvedAuthorPost
 from pipeline_stages.context_dependency import ContextClassification
 
 
@@ -94,6 +94,45 @@ def test_resolve_authors_marks_resolved_and_skips_failed_batch(monkeypatch):
         ("found-id", {"displayName": "Jane Doe", "avatarUrl": None}),
         ("no-author-id", None),
     ]
+
+
+def test_recheck_existence_noop_when_nothing_pending(monkeypatch):
+    monkeypatch.setattr(
+        pipeline.db, "fetch_bluesky_posts_needing_existence_recheck", lambda batch_size, stale_hours: []
+    )
+    monkeypatch.setattr(pipeline.db, "mark_existence_checked", lambda ids: None)
+
+    assert pipeline.recheck_existence(3) == 0
+
+
+def test_recheck_existence_purges_gone_and_marks_present_checked(monkeypatch):
+    posts = [
+        ExistenceCheckPost(raw_post_id="gone-id", source_id="did:plc:a/1"),
+        ExistenceCheckPost(raw_post_id="present-id", source_id="did:plc:b/2"),
+        ExistenceCheckPost(raw_post_id="unchecked-id", source_id="did:plc:c/3"),
+    ]
+    captured = {}
+
+    def fake_fetch(batch_size, stale_hours):
+        captured["stale_hours"] = stale_hours
+        return posts
+
+    monkeypatch.setattr(pipeline.db, "fetch_bluesky_posts_needing_existence_recheck", fake_fetch)
+    monkeypatch.setattr(
+        pipeline.existence_recheck,
+        "check_existence",
+        lambda posts: {"gone-id": "gone", "present-id": "present"},  # unchecked-id's batch "failed"
+    )
+
+    deleted = []
+    monkeypatch.setattr(pipeline.db, "delete_raw_post", lambda post_id: deleted.append(post_id))
+    checked = []
+    monkeypatch.setattr(pipeline.db, "mark_existence_checked", lambda ids: checked.extend(ids))
+
+    assert pipeline.recheck_existence(7) == 1
+    assert deleted == ["gone-id"]
+    assert checked == ["present-id"]
+    assert captured["stale_hours"] == 7
 
 
 def _raw_post(id_, source, lang, text):

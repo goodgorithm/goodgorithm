@@ -104,6 +104,25 @@ def main() -> None:
         type=int,
         default=int(os.environ.get("AUTHOR_RESOLVE_INTERVAL_SECONDS", 60)),
     )
+    # A safety backstop like --moderation-recheck-interval (a dead
+    # "View original" link is a visible defect), but a takedown is never
+    # urgent to the second and this is the processing-side net for
+    # ingestion/'s real-time Jetstream delete/account path -- throttled in
+    # minutes. Must run after refresh_rankings in the loop below: its
+    # candidate population (rank_score IS NOT NULL) depends on that stage
+    # having run this cycle. --stale-hours governs how long after its last
+    # check a still-live post is re-verified. See the wiki's Configuration
+    # page.
+    parser.add_argument(
+        "--existence-recheck-interval",
+        type=int,
+        default=int(os.environ.get("EXISTENCE_RECHECK_INTERVAL_SECONDS", 300)),
+    )
+    parser.add_argument(
+        "--existence-recheck-stale-hours",
+        type=int,
+        default=int(os.environ.get("EXISTENCE_RECHECK_STALE_HOURS", 3)),
+    )
     # Corpus export sweep -- appends feed-eligible post text to the
     # goodgorithm-corpus R2 bucket. Races retention (must run well within
     # RETENTION_HOURS minus EXPORT_CORPUS_MIN_AGE_HOURS), so it's throttled
@@ -146,6 +165,7 @@ def main() -> None:
         pipeline.recheck_moderation()
         pipeline.refresh_rankings()
         pipeline.resolve_authors()
+        pipeline.recheck_existence(args.existence_recheck_stale_hours)
         pipeline.cleanup_old_data()
         pipeline.purge_blocked_authors()
         if corpus_enabled:
@@ -174,6 +194,8 @@ def main() -> None:
             "moderation_recheck_interval_seconds": args.moderation_recheck_interval,
             "purge_blocked_authors_interval_seconds": args.purge_blocked_authors_interval,
             "author_resolve_interval_seconds": args.author_resolve_interval,
+            "existence_recheck_interval_seconds": args.existence_recheck_interval,
+            "existence_recheck_stale_hours": args.existence_recheck_stale_hours,
             "network_detection_interval_seconds": args.network_detection_interval,
             "export_corpus_interval_seconds": args.export_corpus_interval,
             "compact_corpus_hour_utc": args.compact_corpus_hour_utc,
@@ -185,6 +207,7 @@ def main() -> None:
     last_redis_guard_time = 0.0
     last_moderation_recheck_time = 0.0
     last_author_resolve_time = 0.0
+    last_existence_recheck_time = 0.0
     last_purge_blocked_authors_time = 0.0
     last_export_corpus_time = 0.0
     last_compact_check_date = None
@@ -209,6 +232,12 @@ def main() -> None:
         if now - last_author_resolve_time >= args.author_resolve_interval:
             pipeline.resolve_authors()
             last_author_resolve_time = now
+
+        # After resolve_authors for the same reason it runs after
+        # refresh_rankings -- its candidate set is rank_score IS NOT NULL.
+        if now - last_existence_recheck_time >= args.existence_recheck_interval:
+            pipeline.recheck_existence(args.existence_recheck_stale_hours)
+            last_existence_recheck_time = now
 
         if now - last_network_detection_time >= args.network_detection_interval:
             network_detector.record_clusters(

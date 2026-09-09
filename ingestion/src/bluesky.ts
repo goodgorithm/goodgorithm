@@ -1,7 +1,7 @@
 import WebSocket from "ws";
-import { getBlockedAuthors, insertPost, isBlockedAuthor } from "./db";
+import { blockAuthor, deleteBySourceId, getBlockedAuthors, insertPost, isBlockedAuthor } from "./db";
 import { parseNumberEnv } from "./env";
-import { consumePendingExclusion } from "./pendingExclusions";
+import { consumePendingExclusion, markPendingExclusion } from "./pendingExclusions";
 
 // Fixed since this connection was first added - no operational need found
 // yet to point it at a different Jetstream instance.
@@ -33,6 +33,45 @@ interface JetstreamEvent {
       facets?: unknown;
     };
   };
+  // kind:"account" frames carry no commit -- just the account's current
+  // hosting status. Present on the same firehose regardless of
+  // wantedCollections.
+  account?: {
+    active: boolean;
+    status?: string;
+  };
+}
+
+// active:false with one of these statuses means the account's posts have
+// stopped resolving on the AppView for good -- taken down by a moderation
+// service, self-deleted, or suspended. "deactivated" is deliberately
+// absent: it's user-reversible, so a post can come back.
+const ACCOUNT_TAKEDOWN_STATUSES = new Set(["takendown", "suspended", "deleted"]);
+
+// A commit with operation "delete" for the post collection carries no
+// record -- only the rkey of the now-gone post. Returns the `${did}/${rkey}`
+// source_id form, or null for creates/updates and non-post collections.
+export function parseDeleteCommit(event: JetstreamEvent): string | null {
+  if (event.kind !== "commit") return null;
+  const commit = event.commit;
+  if (!commit || commit.operation !== "delete" || commit.collection !== "app.bsky.feed.post") {
+    return null;
+  }
+  if (!event.did || !commit.rkey) return null;
+  return `${event.did}/${commit.rkey}`;
+}
+
+// The DID of an account whose kind:"account" frame reports it as gone (see
+// ACCOUNT_TAKEDOWN_STATUSES), or null otherwise. Routed into blocked_authors
+// so processing/'s purge_blocked_authors sweep drops its already-ingested
+// posts -- an account takedown emits no com.atproto.label event, so neither
+// the label stream nor moderation_recheck.py would ever catch it.
+export function accountTakedownDid(event: JetstreamEvent): string | null {
+  if (event.kind !== "account" || !event.did) return null;
+  const account = event.account;
+  if (!account || account.active !== false) return null;
+  if (!account.status || !ACCOUNT_TAKEDOWN_STATUSES.has(account.status)) return null;
+  return event.did;
 }
 
 interface BlueskyFacet {
@@ -112,6 +151,40 @@ export function startBlueskyIngestion(): void {
       try {
         event = JSON.parse(data.toString()) as JetstreamEvent;
       } catch {
+        return;
+      }
+
+      // A post we already ingested was deleted on Bluesky. Drop our copy
+      // (processed_posts cascades). A 0-row delete may just mean our own
+      // create for this rkey hasn't landed yet -- remember it so the create
+      // path skips the insert, symmetric to blueskyLabels.ts.
+      const deletedSourceId = parseDeleteCommit(event);
+      if (deletedSourceId) {
+        try {
+          const deleted = await deleteBySourceId("bluesky", deletedSourceId);
+          if (deleted === 0) markPendingExclusion(deletedSourceId);
+          console.log(
+            `[bluesky] delete commit for ${deletedSourceId}` +
+              (deleted > 0 ? " -> deleted" : " -> marked pending exclusion (no matching row yet)"),
+          );
+        } catch (err) {
+          console.error("[bluesky] delete handling error:", err);
+        }
+        return;
+      }
+
+      // The post's author was taken down / suspended / deleted their
+      // account. Block the DID; processing/'s purge sweep removes their
+      // already-ingested posts within its own window.
+      const takedownDid = accountTakedownDid(event);
+      if (takedownDid) {
+        try {
+          const status = event.account?.status;
+          await blockAuthor("bluesky", takedownDid, `jetstream account ${status}`);
+          console.log(`[bluesky] account ${status} for ${takedownDid} -> blocked`);
+        } catch (err) {
+          console.error("[bluesky] account takedown handling error:", err);
+        }
         return;
       }
 

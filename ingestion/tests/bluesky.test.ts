@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { getConnectionState, resolveFacetLinks } from "../src/bluesky";
+import {
+  accountTakedownDid,
+  getConnectionState,
+  parseDeleteCommit,
+  resolveFacetLinks,
+} from "../src/bluesky";
 
 test("resolveFacetLinks substitutes a facet-marked truncated link with its real URI (issue #42)", () => {
   // Real text + facet pulled from production (the reported post): the
@@ -108,6 +113,70 @@ test("resolveFacetLinks only touches the link facet's range when tag/mention fac
 test("resolveFacetLinks returns the text unchanged when facets is not an array", () => {
   assert.equal(resolveFacetLinks("hello world", undefined), "hello world");
   assert.equal(resolveFacetLinks("hello world", null), "hello world");
+});
+
+test("parseDeleteCommit returns the source_id for a post-collection delete commit", () => {
+  const event = {
+    did: "did:plc:abc",
+    time_us: 1,
+    kind: "commit",
+    commit: { operation: "delete", collection: "app.bsky.feed.post", rkey: "3xyz" },
+  };
+  assert.equal(parseDeleteCommit(event), "did:plc:abc/3xyz");
+});
+
+test("parseDeleteCommit ignores non-post collections, non-delete operations, and non-commits", () => {
+  const base = { did: "did:plc:abc", time_us: 1 };
+  assert.equal(
+    parseDeleteCommit({
+      ...base,
+      kind: "commit",
+      commit: { operation: "delete", collection: "app.bsky.feed.like", rkey: "3xyz" },
+    }),
+    null,
+  );
+  assert.equal(
+    parseDeleteCommit({
+      ...base,
+      kind: "commit",
+      commit: { operation: "create", collection: "app.bsky.feed.post", rkey: "3xyz", record: { $type: "x" } },
+    }),
+    null,
+  );
+  assert.equal(parseDeleteCommit({ ...base, kind: "account", account: { active: false } }), null);
+});
+
+test("parseDeleteCommit returns null when the delete commit is missing did or rkey", () => {
+  assert.equal(
+    parseDeleteCommit({ did: "", time_us: 1, kind: "commit", commit: { operation: "delete", collection: "app.bsky.feed.post", rkey: "3xyz" } }),
+    null,
+  );
+  assert.equal(
+    parseDeleteCommit({ did: "did:plc:abc", time_us: 1, kind: "commit", commit: { operation: "delete", collection: "app.bsky.feed.post", rkey: "" } }),
+    null,
+  );
+});
+
+test("accountTakedownDid returns the DID for each terminal account status", () => {
+  for (const status of ["takendown", "suspended", "deleted"]) {
+    assert.equal(
+      accountTakedownDid({ did: "did:plc:abc", time_us: 1, kind: "account", account: { active: false, status } }),
+      "did:plc:abc",
+      status,
+    );
+  }
+});
+
+test("accountTakedownDid ignores active accounts, reversible deactivation, and missing account data", () => {
+  const base = { did: "did:plc:abc", time_us: 1, kind: "account" };
+  assert.equal(accountTakedownDid({ ...base, account: { active: true, status: "active" } }), null);
+  assert.equal(accountTakedownDid({ ...base, account: { active: false, status: "deactivated" } }), null);
+  assert.equal(accountTakedownDid({ ...base, account: { active: false } }), null);
+  assert.equal(accountTakedownDid({ ...base }), null);
+  assert.equal(
+    accountTakedownDid({ did: "did:plc:abc", time_us: 1, kind: "commit", commit: { operation: "delete", collection: "app.bsky.feed.post", rkey: "3xyz" } }),
+    null,
+  );
 });
 
 test("getConnectionState reports disconnected before startBlueskyIngestion has ever connected", () => {
