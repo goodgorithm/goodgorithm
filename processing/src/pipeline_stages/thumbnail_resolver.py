@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import socket
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 import urllib3
@@ -145,12 +145,66 @@ def _fetch_html(url: str, depth: int = 0) -> str | None:
             return None
 
 
+# A YouTube video's thumbnail is derivable from its id with no fetch at
+# all, so a bare YouTube URL in post text (a Bluesky client that dropped
+# the link in with no card) gets a thumbnail without widening either the
+# outbound-fetch surface or the SSRF surface. YouTube is the only host the
+# bare-URL text fallback accepts -- any other host needs a real og:image
+# fetch, which the allowlist deliberately doesn't cover. Hand-synced with
+# api/src/attachments.ts's YOUTUBE_HOSTS, the same Python<->TypeScript
+# hand-sync CLAUDE.md documents for this boundary.
+_YOUTUBE_HOSTS = frozenset(
+    {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}
+)
+# _TEXT_URL_RE grabs everything up to whitespace, so a URL ending a
+# sentence keeps its trailing bracket/period -- mirror of
+# web/src/lib/linkify.tsx's TRAILING_PUNCTUATION.
+_URL_TRAILING_PUNCTUATION_RE = re.compile(r"[).,!?;:'\"]+$")
+_YOUTUBE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+_YOUTUBE_PATH_ID_PREFIXES = ("shorts", "live", "embed", "v")
+# Google's own image CDN, a fixed trusted host -- not gated by
+# _is_safe_public_url for the same reason util/bluesky_appview.py's hosts
+# aren't (a known endpoint, not an arbitrary poster-supplied URL).
+_YOUTUBE_THUMBNAIL_TEMPLATE = "https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+
+def _youtube_video_id(url: str) -> str | None:
+    """The 11-char video id from any recognised YouTube URL shape
+    (`watch?v=`, `youtu.be/<id>`, `/shorts/<id>`, `/live/<id>`,
+    `/embed/<id>`, `/v/<id>`), or None if the host isn't YouTube or no
+    well-formed id is present."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host not in _YOUTUBE_HOSTS:
+        return None
+
+    if host == "youtu.be":
+        candidate = parsed.path.lstrip("/").split("/", 1)[0]
+    else:
+        parts = [p for p in parsed.path.split("/") if p]
+        if parts and parts[0].lower() in _YOUTUBE_PATH_ID_PREFIXES:
+            candidate = parts[1] if len(parts) > 1 else ""
+        else:
+            candidate = (parse_qs(parsed.query).get("v") or [""])[0]
+
+    return candidate if _YOUTUBE_ID_RE.match(candidate) else None
+
+
+def _youtube_thumbnail_url(url: str) -> str | None:
+    video_id = _youtube_video_id(url)
+    return _YOUTUBE_THUMBNAIL_TEMPLATE.format(video_id=video_id) if video_id else None
+
+
 def resolve_thumbnail(url: str) -> str | None:
     """Fetches the linked page and extracts its og:image (falling back to
     twitter:image). Never raises -- any failure (unsafe URL, network error,
     timeout, no matching tag) just means no generated thumbnail for this
     post, same "never blocks or crashes a cycle, no retry" discipline as
     quote_resolver.py, since each raw_post is only ever scored once."""
+    youtube_thumbnail = _youtube_thumbnail_url(url)
+    if youtube_thumbnail is not None:
+        return youtube_thumbnail
+
     page_html = _fetch_html(url)
     if page_html is None:
         return None
@@ -192,13 +246,27 @@ def extract_link_needing_thumbnail(source: str, raw_json: dict, text: str) -> st
     if source == "bluesky":
         record = (raw_json or {}).get("commit", {}).get("record", {})
         embed = record.get("embed") if isinstance(record, dict) else None
-        if not isinstance(embed, dict) or embed.get("$type") != "app.bsky.embed.external":
-            return None
-        external = embed.get("external")
-        if not isinstance(external, dict) or external.get("thumb"):
-            return None
-        uri = external.get("uri")
-        return uri if isinstance(uri, str) else None
+        embed_type = embed.get("$type") if isinstance(embed, dict) else None
+
+        if embed_type == "app.bsky.embed.external":
+            external = embed.get("external")
+            if not isinstance(external, dict) or external.get("thumb"):
+                return None
+            uri = external.get("uri")
+            return uri if isinstance(uri, str) else None
+
+        # No link card of its own. When the post shows nothing else either
+        # (no embed at all, or just a bare quote), fall back to the first
+        # URL in the post text -- but only a YouTube one, whose thumbnail
+        # resolve_thumbnail derives with no fetch. A post that already
+        # shows images/video/a quoted-post card is left as-is.
+        if embed_type in (None, "app.bsky.embed.record"):
+            match = _TEXT_URL_RE.search(text)
+            if match:
+                candidate = _URL_TRAILING_PUNCTUATION_RE.sub("", match.group(0))
+                if _youtube_video_id(candidate):
+                    return candidate
+        return None
 
     if source == "mastodon":
         card = (raw_json or {}).get("card")

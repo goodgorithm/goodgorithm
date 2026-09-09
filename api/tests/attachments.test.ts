@@ -10,10 +10,12 @@ function bskyRow(
   labels: unknown = null,
   quoteContent: unknown = null,
   generatedThumbnailUrl: string | null = null,
+  text = "",
 ): AttachmentSource {
   return {
     source: "bluesky",
     author_id: DID,
+    text,
     bluesky_embed: embed,
     mastodon_media: null,
     mastodon_card: null,
@@ -33,6 +35,7 @@ function mastodonRow(
   return {
     source: "mastodon",
     author_id: "fosstodon.org/someone",
+    text: "",
     bluesky_embed: null,
     mastodon_media: media,
     mastodon_card: card,
@@ -447,6 +450,80 @@ test("unrecognized embed $type returns no attachments", () => {
 test("no embed at all returns no attachments", () => {
   const { attachments } = buildAttachments(bskyRow(null));
   assert.deepEqual(attachments, []);
+});
+
+// --- Bluesky bare-URL YouTube link (no card of its own) ---
+
+const YT_THUMB = "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg";
+
+test("bluesky no embed + YouTube URL in text + generated thumbnail synthesizes a link card", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(null, null, null, YT_THUMB, "New video from the band: https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+  );
+  assert.deepEqual(attachments, [
+    {
+      kind: "link",
+      url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      title: null,
+      description: null,
+      thumbnailUrl: YT_THUMB,
+      providerName: null,
+    },
+  ]);
+});
+
+test("bluesky bare YouTube link: trailing punctuation is stripped from the url", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(null, null, null, YT_THUMB, "watch this (https://youtu.be/dQw4w9WgXcQ)."),
+  );
+  assert.equal(attachments.length, 1);
+  assert.equal((attachments[0] as { url: string }).url, "https://youtu.be/dQw4w9WgXcQ");
+});
+
+test("bluesky bare YouTube link: nothing synthesized without a generated thumbnail", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(null, null, null, null, "New video: https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+  );
+  assert.deepEqual(attachments, []);
+});
+
+test("bluesky bare URL: a non-YouTube first URL is not synthesized even if a thumbnail is set", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(null, null, null, "https://example.com/thumb.jpg", "new paper https://arxiv.org/abs/2401.00001"),
+  );
+  assert.deepEqual(attachments, []);
+});
+
+test("bluesky bare YouTube link rides alongside a quote embed", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(
+      { $type: "app.bsky.embed.record", record: { uri: `at://${DID}/app.bsky.feed.post/abc123` } },
+      null,
+      null,
+      YT_THUMB,
+      "quoting this, also https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+    ),
+  );
+  assert.equal(attachments.length, 2);
+  assert.equal(attachments[0].kind, "quote");
+  assert.equal(attachments[1].kind, "link");
+});
+
+test("bluesky YouTube URL in text is ignored when the post already shows images", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(
+      {
+        $type: "app.bsky.embed.images",
+        images: [{ alt: "", image: { ref: { $link: "bafkreihkdhzelfqeomrdx2we476eacogh2uvlddgcnrbu4mkwhnms52osa" } } }],
+      },
+      null,
+      null,
+      YT_THUMB,
+      "here it is https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    ),
+  );
+  assert.equal(attachments.length, 1);
+  assert.equal(attachments[0].kind, "image");
 });
 
 // --- Mastodon media + card (real shapes) ---
