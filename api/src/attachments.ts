@@ -6,6 +6,7 @@ export type { Attachment, QuoteContent } from "./types";
 export interface AttachmentSource {
   source: "bluesky" | "mastodon";
   author_id: string;
+  text: string;
   bluesky_embed: unknown;
   mastodon_media: unknown;
   mastodon_card: unknown;
@@ -51,6 +52,50 @@ function isHttpUrl(url: unknown): url is string {
 
 function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
+}
+
+// A Bluesky client can drop a bare URL into post text with no
+// app.bsky.embed.external card of its own. processing/'s
+// thumbnail_resolver derives a thumbnail from a YouTube video id with no
+// fetch and writes it to generated_thumbnail_url; a non-null value on a
+// Bluesky row with no external embed is the signal it did. This
+// synthesizes the link card api/ would otherwise never build. YOUTUBE_HOSTS
+// and the first-URL / trailing-punctuation handling are hand-synced with
+// thumbnail_resolver.extract_link_needing_thumbnail (no shared package
+// across the Python<->TypeScript boundary, per CLAUDE.md).
+const YOUTUBE_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "music.youtube.com",
+  "youtu.be",
+]);
+const TEXT_URL_RE = /https?:\/\/\S+/;
+const URL_TRAILING_PUNCTUATION_RE = /[).,!?;:'"]+$/;
+
+function youtubeLinkFromText(text: string, generatedThumbnailUrl: string | null): Attachment | null {
+  if (!isHttpUrl(generatedThumbnailUrl)) return null;
+
+  const match = text.match(TEXT_URL_RE);
+  if (!match) return null;
+  const url = match[0].replace(URL_TRAILING_PUNCTUATION_RE, "");
+
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (!YOUTUBE_HOSTS.has(host)) return null;
+
+  return {
+    kind: "link",
+    url,
+    title: null,
+    description: null,
+    thumbnailUrl: generatedThumbnailUrl,
+    providerName: null,
+  };
 }
 
 interface BlueskyImageItem {
@@ -213,8 +258,14 @@ function parseBlueskyEmbed(
   embed: unknown,
   quoteContent: QuoteContent | null,
   generatedThumbnailUrl: string | null,
+  text: string,
 ): Attachment[] {
-  if (typeof embed !== "object" || embed === null) return [];
+  // Only surfaced when the post shows nothing else of its own -- no embed
+  // at all, or a bare quote. A post that already carries images/video/an
+  // external card is left as-is (matches the Python-side gate).
+  const youtubeCard = youtubeLinkFromText(text, generatedThumbnailUrl);
+
+  if (typeof embed !== "object" || embed === null) return youtubeCard ? [youtubeCard] : [];
   const typed = embed as { $type?: unknown; images?: unknown; external?: unknown; record?: unknown; media?: unknown };
 
   switch (typed.$type) {
@@ -233,7 +284,8 @@ function parseBlueskyEmbed(
 
     case "app.bsky.embed.record": {
       const quote = parseBlueskyQuote(typed.record, quoteContent);
-      return quote ? [quote] : [];
+      const base = quote ? [quote] : [];
+      return youtubeCard ? [...base, youtubeCard] : base;
     }
 
     case "app.bsky.embed.recordWithMedia": {
@@ -247,7 +299,10 @@ function parseBlueskyEmbed(
     }
 
     default:
-      return [];
+      // An embed object with no recognised $type (malformed data) shows
+      // nothing, so the bare-URL fallback still applies -- same as no
+      // embed at all on the Python side.
+      return typed.$type == null && youtubeCard ? [youtubeCard] : [];
   }
 }
 
@@ -355,6 +410,7 @@ export function buildAttachments(row: AttachmentSource): AttachmentResult {
       row.bluesky_embed,
       parseQuoteContent(row.quote_content),
       row.generated_thumbnail_url,
+      row.text,
     );
   } else {
     const card = parseMastodonCard(row.mastodon_card, row.generated_thumbnail_url);

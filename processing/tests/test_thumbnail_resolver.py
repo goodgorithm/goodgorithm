@@ -314,6 +314,76 @@ def test_extract_link_needing_thumbnail_bluesky_non_external_embed():
     assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", raw_json, PLAIN_TEXT) is None
 
 
+def test_extract_link_needing_thumbnail_bluesky_no_embed_bare_youtube_url_in_text():
+    text = "New video from the band: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", {"commit": {"record": {}}}, text) == (
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    )
+
+
+def test_extract_link_needing_thumbnail_bluesky_bare_youtube_url_strips_trailing_punctuation():
+    text = "watch this (https://youtu.be/dQw4w9WgXcQ)."
+    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", {}, text) == "https://youtu.be/dQw4w9WgXcQ"
+
+
+def test_extract_link_needing_thumbnail_bluesky_bare_non_youtube_url_ignored():
+    text = "new paper: https://arxiv.org/abs/2401.00001"
+    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", {}, text) is None
+
+
+def test_extract_link_needing_thumbnail_bluesky_bare_youtube_url_under_a_quote_embed():
+    raw_json = {"commit": {"record": {"embed": {"$type": "app.bsky.embed.record", "record": {"uri": "at://x"}}}}}
+    text = "quoting this, also https://m.youtube.com/watch?v=abcdefghijk"
+    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", raw_json, text) == (
+        "https://m.youtube.com/watch?v=abcdefghijk"
+    )
+
+
+def test_extract_link_needing_thumbnail_bluesky_youtube_url_ignored_when_post_already_shows_media():
+    raw_json = {"commit": {"record": {"embed": {"$type": "app.bsky.embed.images", "images": []}}}}
+    text = "here it is https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    assert thumbnail_resolver.extract_link_needing_thumbnail("bluesky", raw_json, text) is None
+
+
+def test_resolve_thumbnail_derives_youtube_thumbnail_without_fetching(monkeypatch):
+    calls = []
+    monkeypatch.setattr(requests, "get", lambda *a, **k: calls.append(1))
+
+    result = thumbnail_resolver.resolve_thumbnail("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+    assert result == "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+    assert calls == []
+
+
+def test_resolve_thumbnail_derives_youtube_thumbnail_from_short_and_shorts_urls(monkeypatch):
+    monkeypatch.setattr(requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no fetch")))
+
+    assert thumbnail_resolver.resolve_thumbnail("https://youtu.be/dQw4w9WgXcQ") == (
+        "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+    )
+    assert thumbnail_resolver.resolve_thumbnail("https://www.youtube.com/shorts/dQw4w9WgXcQ") == (
+        "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+    )
+
+
+def test_youtube_video_id_parsing():
+    cases = {
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ": "dQw4w9WgXcQ",
+        "https://youtube.com/watch?v=dQw4w9WgXcQ&t=42s": "dQw4w9WgXcQ",
+        "https://music.youtube.com/watch?v=dQw4w9WgXcQ": "dQw4w9WgXcQ",
+        "https://youtu.be/dQw4w9WgXcQ": "dQw4w9WgXcQ",
+        "https://www.youtube.com/shorts/dQw4w9WgXcQ": "dQw4w9WgXcQ",
+        "https://www.youtube.com/live/dQw4w9WgXcQ": "dQw4w9WgXcQ",
+        "https://www.youtube.com/embed/dQw4w9WgXcQ": "dQw4w9WgXcQ",
+        # not derivable -> None, so resolve_thumbnail takes the fetch path
+        "https://www.youtube.com/@somechannel": None,
+        "https://www.youtube.com/watch?v=short": None,
+        "https://example.com/watch?v=dQw4w9WgXcQ": None,
+    }
+    for url, expected in cases.items():
+        assert thumbnail_resolver._youtube_video_id(url) == expected, url
+
+
 def test_extract_link_needing_thumbnail_mastodon_no_image():
     raw_json = {"card": {"url": "https://example.com/article", "image": None}}
     assert (
