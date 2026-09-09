@@ -12,7 +12,10 @@ PROMO = "Puzzler is featured on Awesome Indie! Upvote it → https://awesomeindi
 FLIPBOARD = frozenset({"flipboard.com", "flipboard.social"})
 SHORTENERS = frozenset({"dlvr.it", "ift.tt"})
 
-_PENALTY_NAMES = ("context", "link_share", "aggregator", "syndication", "shape")
+# quote_resolver.py's exact blob for a quoted post that failed moderation
+QUOTE_FILTERED = {"status": "unavailable", "reason": "filtered"}
+
+_PENALTY_NAMES = ("context", "link_share", "aggregator", "syndication", "quote", "shape")
 
 
 def _ctx(**overrides):
@@ -25,6 +28,7 @@ def _ctx(**overrides):
         aggregator_instances=frozenset(),
         syndication_domains=frozenset(),
         shape_config={},
+        quote_content=None,
     )
     base.update(overrides)
     return penalties.PenaltyContext(**base)
@@ -61,6 +65,23 @@ def test_apply_records_the_promo_shape():
     assert result.detail["shape"] == 0.35
     assert result.detail["shape_name"] == "promo"
     assert abs(result.multiplier - 0.35) < 1e-9
+
+
+def test_apply_devalues_a_post_quoting_a_filtered_quote():
+    result = penalties.apply(_ctx(quote_content=QUOTE_FILTERED))
+    assert result.detail["quote"] == penalties.QUOTE_FILTERED_DEMOTE_MULTIPLIER
+    assert abs(result.multiplier - penalties.QUOTE_FILTERED_DEMOTE_MULTIPLIER) < 1e-9
+
+
+def test_apply_leaves_a_not_found_or_available_quote_untouched():
+    for qc in (
+        {"status": "unavailable", "reason": "not_found"},
+        {"status": "available", "author": {}, "text": "hi", "createdAt": None},
+        None,
+    ):
+        result = penalties.apply(_ctx(quote_content=qc))
+        assert result.detail["quote"] == 1.0
+        assert result.multiplier == 1.0
 
 
 def test_apply_reads_the_aggregator_instance_list():

@@ -3,11 +3,12 @@ penalty and returns their combined multiplier.
 
 `compute_base_score` is `positivity x topicality x recency_decay x
 penalty_multiplier`, where `penalty_multiplier` is the product of every
-registered penalty's own multiplier (`1.0` == no penalty). Each penalty is
-a thin adapter around an existing stage module -- `context_dependency.py`
+registered penalty's own multiplier (`1.0` == no penalty). Most penalties
+are a thin adapter around an existing stage module -- `context_dependency.py`
 (devalue half only; its exclude half stays in `pipeline.py`'s filter loop),
-`link_share.py`, `aggregator_demote.py`, `post_shape.py`. This module
-*composes* them; it does not absorb them.
+`link_share.py`, `aggregator_demote.py`, `post_shape.py`. `quote` has no
+module of its own -- it reads the already-resolved `quote_resolver.py`
+`quote_content` blob. This module *composes* them; it does not absorb them.
 
 Adding a penalty means one `PENALTIES` entry plus its evaluator -- nothing
 in `ranking.py` / `pipeline.py` / `db.py` changes, since they only ever see
@@ -37,6 +38,23 @@ if not 0.0 < SYNDICATION_DEMOTE_MULTIPLIER <= 1.0:
         f"SYNDICATION_DEMOTE_MULTIPLIER ({SYNDICATION_DEMOTE_MULTIPLIER}) must be in (0.0, 1.0]"
     )
 
+# base_score multiplier for a post whose Bluesky quote resolved to a
+# moderation-filtered quoted post (quote_resolver.py records
+# quote_content = {"status": "unavailable", "reason": "filtered"} -- adult
+# self-label / labeler adult label / excluded hashtag / suppressed-domain
+# link on the quoted post). The outer post is still scored on its own text,
+# so an enthusiastic caption over adult content otherwise ranks normally.
+# Devalue, not exclude: ~40% of the matches are wholesome art-community
+# endorsements of an 18+-flagged account. `not_found` quotes (deleted /
+# detached / blocked) are deliberately left untouched -- near-pure
+# collateral. A touch gentler than the 0.3 family for that reason. See the
+# wiki's Penalties page.
+QUOTE_FILTERED_DEMOTE_MULTIPLIER = float(os.environ.get("QUOTE_FILTERED_DEMOTE_MULTIPLIER", "0.4"))
+if not 0.0 < QUOTE_FILTERED_DEMOTE_MULTIPLIER <= 1.0:
+    raise ValueError(
+        f"QUOTE_FILTERED_DEMOTE_MULTIPLIER ({QUOTE_FILTERED_DEMOTE_MULTIPLIER}) must be in (0.0, 1.0]"
+    )
+
 
 @dataclass(frozen=True)
 class PenaltyContext:
@@ -53,6 +71,7 @@ class PenaltyContext:
     aggregator_instances: frozenset[str]
     syndication_domains: frozenset[str]
     shape_config: dict[str, post_shape.ShapeConfig]
+    quote_content: dict | None
 
 
 def _context(ctx: PenaltyContext) -> tuple[float, dict]:
@@ -86,6 +105,13 @@ def _syndication(ctx: PenaltyContext) -> tuple[float, dict]:
     return 1.0, {}
 
 
+def _quote(ctx: PenaltyContext) -> tuple[float, dict]:
+    qc = ctx.quote_content
+    if qc and qc.get("status") == "unavailable" and qc.get("reason") == "filtered":
+        return QUOTE_FILTERED_DEMOTE_MULTIPLIER, {}
+    return 1.0, {}
+
+
 def _shape(ctx: PenaltyContext) -> tuple[float, dict]:
     match = post_shape.classify(ctx.text, ctx.shape_config)
     if match is None:
@@ -107,6 +133,7 @@ PENALTIES: tuple[Penalty, ...] = (
     Penalty("link_share", _link_share),
     Penalty("aggregator", _aggregator),
     Penalty("syndication", _syndication),
+    Penalty("quote", _quote),
     Penalty("shape", _shape),
 )
 

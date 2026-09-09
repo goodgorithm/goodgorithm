@@ -49,7 +49,7 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
-PIPELINE_VERSION = "v15"
+PIPELINE_VERSION = "v16"
 
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
@@ -176,6 +176,9 @@ def run_cycle(batch_size: int) -> int:
         topic = topicality_results[post.id]
         sentiment_score = sentiment_results[post.id]
 
+        quote_uri = quote_uris_by_post.get(post.id)
+        quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None
+
         penalty = penalties.apply(
             penalties.PenaltyContext(
                 source=post.source,
@@ -186,6 +189,7 @@ def run_cycle(batch_size: int) -> int:
                 aggregator_instances=mod.aggregator_instances,
                 syndication_domains=mod.syndication_domains,
                 shape_config=mod.post_shape_config,
+                quote_content=quote_content,
             )
         )
 
@@ -207,9 +211,6 @@ def run_cycle(batch_size: int) -> int:
         # Deliberately not threaded into RankablePost/ranking.py -- see
         # CLAUDE.md's Category taxonomy section.
         category = category_results[post.id]
-
-        quote_uri = quote_uris_by_post.get(post.id)
-        quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None
 
         thumbnail_url = thumbnail_urls_by_post.get(post.id)
         generated_thumbnail_url = thumbnail_by_url.get(thumbnail_url) if thumbnail_url else None
