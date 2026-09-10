@@ -107,20 +107,29 @@ _PROCESSED_POSTS_ROW_SQL = (
 
 
 def _build_processed_posts_upsert_sql(row_count: int) -> str:
-    """INSERT ... SELECT ... FROM (VALUES ...) WHERE EXISTS(raw_posts) -- not a
-    plain multi-row VALUES INSERT. A raw_post can be deleted between run_cycle
-    fetching it and this write landing (ingestion/'s blueskyLabels stream
-    retroactively deletes a post Bluesky labels adult-content, mid-scoring),
+    """INSERT ... SELECT ... FROM (VALUES ...) JOIN raw_posts ... FOR KEY SHARE
+    OF r -- not a plain multi-row VALUES INSERT. A raw_post can be deleted
+    between run_cycle fetching it and this write landing (ingestion/
+    retroactively deletes a post Bluesky labels adult-content, and drops a
+    taken-down account's whole backlog by author_id, both mid-scoring),
     which would FK-violate on processed_posts_raw_post_id_fkey and -- since
     infra/db.py deliberately has no try/except -- crash-loop the process.
-    The WHERE EXISTS drops any such vanished row from the batch
-    atomically: a moderation-deleted post simply gets no processed_posts row,
-    which is correct."""
+
+    A plain `WHERE EXISTS (SELECT 1 FROM raw_posts ...)` narrows that window
+    but does not close it: under READ COMMITTED the subquery's snapshot and
+    the FK trigger's own row-visibility check are separate, so a DELETE that
+    commits between them still violates. `JOIN raw_posts r ... FOR KEY SHARE
+    OF r` takes the *same* row lock the FK trigger takes, before the insert:
+    a concurrent DELETE for those rows blocks until this cycle commits (then
+    the FK check passes), or -- if the DELETE already won -- the row is
+    dropped from the SELECT and simply gets no processed_posts row, which is
+    correct."""
     values_sql = ", ".join([_PROCESSED_POSTS_ROW_SQL] * row_count)
     return f"""
         INSERT INTO processed_posts ({_PROCESSED_POSTS_COLUMNS})
         SELECT v.* FROM (VALUES {values_sql}) AS v ({_PROCESSED_POSTS_COLUMNS})
-        WHERE EXISTS (SELECT 1 FROM raw_posts r WHERE r.id = v.raw_post_id)
+        JOIN raw_posts r ON r.id = v.raw_post_id
+        FOR KEY SHARE OF r
         ON CONFLICT (raw_post_id) DO UPDATE SET
             source                 = EXCLUDED.source,
             dedup_cluster_id       = EXCLUDED.dedup_cluster_id,
