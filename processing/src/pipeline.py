@@ -417,12 +417,15 @@ def cleanup_old_data() -> int:
     """Deletes raw_posts older than RETENTION_HOURS; processed_posts rows
     for them cascade-delete automatically. Safe to run every cycle -- the
     delete is indexed (raw_posts_created_at_idx) and typically matches
-    nothing once the initial backlog is cleared. See CLAUDE.md's Data
-    retention section."""
+    nothing once the initial backlog is cleared. db.delete_old_raw_posts
+    chunks the delete and caps it at DB_CLEANUP_MAX_PER_CYCLE, so a real
+    backlog behind the cutoff drains over several cycles rather than one
+    oversized statement. See CLAUDE.md's Data retention section."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=RETENTION_HOURS)
     deleted = db.delete_old_raw_posts(cutoff)
     if deleted:
-        logger.info("cleaned up %d posts older than %dh", deleted, RETENTION_HOURS)
+        capped = " (capped -- more remain for the next cycle)" if deleted >= db.DB_CLEANUP_MAX_PER_CYCLE else ""
+        logger.info("cleaned up %d posts older than %dh%s", deleted, RETENTION_HOURS, capped)
     return deleted
 
 
