@@ -266,12 +266,50 @@ def update_rank_scores(updates: list[tuple[UUID, float, float]]) -> None:
             )
 
 
+# Deliberately bounded, not one unbounded DELETE FROM raw_posts WHERE
+# created_at < cutoff -- processed_posts rows cascade-delete per matched
+# row (ON DELETE CASCADE), and a large backlog behind the cutoff (e.g. a
+# RETENTION_HOURS bump, or catching up after time away from the loop) can
+# put hundreds of thousands of rows behind it at once. One statement over
+# that many rows risks exceeding Postgres's statement_timeout -- a
+# QueryCanceled this file has no try/except for, by design, which would
+# propagate as an unhandled crash and hit the same oversized delete again
+# on restart. See the wiki's Configuration: processing page, Data retention
+# section.
+DB_CLEANUP_CHUNK_SIZE = int(os.environ.get("DB_CLEANUP_CHUNK_SIZE", "5000"))
+# Caps how much of a huge backlog one cleanup_old_data() call chews
+# through -- it runs every cycle (no interval gate), so a bigger backlog
+# just drains over more cycles instead of one cycle running a delete
+# marathon that starves everything else the loop needs to do.
+DB_CLEANUP_MAX_PER_CYCLE = int(os.environ.get("DB_CLEANUP_MAX_PER_CYCLE", "50000"))
+
+
 def delete_old_raw_posts(cutoff: datetime) -> int:
     """processed_posts rows cascade-delete automatically (FK ON DELETE
-    CASCADE, see the cascade_delete_processed_posts migration)."""
+    CASCADE, see the cascade_delete_processed_posts migration). Deletes in
+    DB_CLEANUP_CHUNK_SIZE-row statements, oldest first (raw_posts_created_at_idx
+    scanned backward), stopping once a chunk matches fewer than
+    DB_CLEANUP_CHUNK_SIZE rows (nothing left) or DB_CLEANUP_MAX_PER_CYCLE
+    total is reached (more remains for the next cycle)."""
+    total = 0
     with pool.connection() as conn:
-        cur = conn.execute("DELETE FROM raw_posts WHERE created_at < %s", (cutoff,))
-        return cur.rowcount
+        while total < DB_CLEANUP_MAX_PER_CYCLE:
+            cur = conn.execute(
+                """
+                DELETE FROM raw_posts
+                WHERE id IN (
+                    SELECT id FROM raw_posts
+                    WHERE created_at < %s
+                    ORDER BY created_at
+                    LIMIT %s
+                )
+                """,
+                (cutoff, DB_CLEANUP_CHUNK_SIZE),
+            )
+            total += cur.rowcount
+            if cur.rowcount < DB_CLEANUP_CHUNK_SIZE:
+                break
+    return total
 
 
 def delete_raw_post(post_id: UUID) -> bool:

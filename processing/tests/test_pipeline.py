@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import pipeline
 from infra.db import ExistenceCheckPost, RawPost, UncheckedBlueskyPost, UnresolvedAuthorPost
 from pipeline_stages.context_dependency import ContextClassification
@@ -192,3 +194,29 @@ def test_run_cycle_language_gate_covers_untrusted_bluesky_tags(monkeypatch):
     }
     # ...and never for the plain Latin `en` Bluesky post.
     assert "im so excited hehe" not in checked
+
+
+def test_cleanup_old_data_computes_the_cutoff_from_retention_hours(monkeypatch):
+    seen_cutoff = []
+    monkeypatch.setattr(pipeline.db, "delete_old_raw_posts", lambda cutoff: seen_cutoff.append(cutoff) or 0)
+    monkeypatch.setattr(pipeline, "RETENTION_HOURS", 24)
+
+    pipeline.cleanup_old_data()
+
+    expected = datetime.now(timezone.utc) - timedelta(hours=24)
+    assert abs((seen_cutoff[0] - expected).total_seconds()) < 5
+
+
+def test_cleanup_old_data_returns_the_deleted_count(monkeypatch):
+    # issue #230: delete_old_raw_posts now chunks and caps its own delete
+    # (see infra/db.py) -- cleanup_old_data just passes the total through,
+    # whatever it is.
+    monkeypatch.setattr(pipeline.db, "delete_old_raw_posts", lambda cutoff: 137)
+
+    assert pipeline.cleanup_old_data() == 137
+
+
+def test_cleanup_old_data_is_a_noop_when_nothing_is_over_retention(monkeypatch):
+    monkeypatch.setattr(pipeline.db, "delete_old_raw_posts", lambda cutoff: 0)
+
+    assert pipeline.cleanup_old_data() == 0
