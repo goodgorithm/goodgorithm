@@ -20,7 +20,7 @@ jobs:
       - run: uv sync --frozen
       - run: uv run pytest
 
-  ingestion-build:
+  ingestion-tests:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -117,7 +117,7 @@ jobs:
   # code. `db push` is a no-op when nothing is pending. A failed migration
   # blocks the deploy (deploy-* needs this job).
   migrate-staging:
-    needs: [processing-tests, ingestion-build, api-tests, labeling-tests, migration-checks]
+    needs: [processing-tests, ingestion-tests, api-tests, labeling-tests, migration-checks]
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
@@ -131,7 +131,7 @@ jobs:
         run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
 
   migrate-production:
-    needs: [processing-tests, ingestion-build, api-tests, labeling-tests, migration-checks]
+    needs: [processing-tests, ingestion-tests, api-tests, labeling-tests, migration-checks]
     if: github.event_name == 'push' && github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     steps:
@@ -145,7 +145,7 @@ jobs:
         run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
 
   deploy-staging:
-    needs: [processing-tests, ingestion-build, api-tests, labeling-tests, migrate-staging]
+    needs: [processing-tests, ingestion-tests, api-tests, labeling-tests, migrate-staging]
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
@@ -157,7 +157,7 @@ jobs:
           .github/scripts/railway-deploy.sh goodgorithm-ingestion goodgorithm-api goodgorithm-processing goodgorithm-labeling
 
   deploy-production:
-    needs: [processing-tests, ingestion-build, api-tests, labeling-tests, migrate-production]
+    needs: [processing-tests, ingestion-tests, api-tests, labeling-tests, migrate-production]
     if: github.event_name == 'push' && github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     steps:
