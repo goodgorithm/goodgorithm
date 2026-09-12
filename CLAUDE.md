@@ -37,8 +37,9 @@ Five services, each independently deployable:
 | `api/` | TypeScript (Fastify) | Railway service `goodgorithm-api` | Stateless, read-only, unauthenticated HTTP — no outbound calls of its own (see Post attachments & embeds below). `/v1/feed` (cursor-paginated, ordered by `rank_score`), `/health`. |
 | `web/` | TypeScript (React + Vite) | Cloudflare Workers static assets (`goodgorithm-web`, staging/production named environments) | PWA *and* Capacitor-wrapped native iOS/Android app, same codebase: infinite-scroll feed consuming `api/`'s `/v1/feed`, no accounts/personalization. `VITE_API_BASE_URL` baked in at build time (static site, no server component). |
 | `training/` | Python (notebook) | Run manually on Colab/Kaggle, not deployed | Trains the sentiment CNN, exports to ONNX, publishes versioned artifacts to R2. |
+| `labeling/` | TypeScript (Fastify) | Railway service `goodgorithm-labeling` | Internal human-review tool for research evaluation sets (political/civic tone, feed-quality substance, etc.) — one post at a time, AI-drafted suggestions confirmed/corrected by a maintainer. Own `labeling` Postgres schema in the same Supabase project; gated by a single shared secret (`LABELING_ACCESS_TOKEN`), no accounts yet. Not part of the ranking pipeline. |
 
-Schema lives in `supabase/migrations/` (`raw_posts`, `processed_posts`), applied by CI (`supabase db push`) on staging/production push — don't hand-edit the schema elsewhere. See the Versioning & migration section.
+Schema lives in `supabase/migrations/` (`raw_posts`, `processed_posts`, `labeling.*`), applied by CI (`supabase db push`) on staging/production push — don't hand-edit the schema elsewhere. See the Versioning & migration section.
 
 **For the exact step-by-step mechanics of every pipeline stage** (thresholds, formulas, why each one works the way it does), see the published **Algorithm** page on the GitHub Wiki (see Docs at the bottom for the link) — that's the canonical, kept-current explanation. Don't duplicate it at length here; it'll drift.
 

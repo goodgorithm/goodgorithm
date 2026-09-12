@@ -52,6 +52,22 @@ jobs:
       - run: npm run build
       - run: npm test
 
+  labeling-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: labeling
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: labeling/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
   web-tests:
     runs-on: ubuntu-latest
     defaults:
@@ -101,7 +117,7 @@ jobs:
   # code. `db push` is a no-op when nothing is pending. A failed migration
   # blocks the deploy (deploy-* needs this job).
   migrate-staging:
-    needs: [processing-tests, ingestion-build, api-tests, migration-checks]
+    needs: [processing-tests, ingestion-build, api-tests, labeling-tests, migration-checks]
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
@@ -115,7 +131,7 @@ jobs:
         run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
 
   migrate-production:
-    needs: [processing-tests, ingestion-build, api-tests, migration-checks]
+    needs: [processing-tests, ingestion-build, api-tests, labeling-tests, migration-checks]
     if: github.event_name == 'push' && github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     steps:
@@ -129,7 +145,7 @@ jobs:
         run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
 
   deploy-staging:
-    needs: [processing-tests, ingestion-build, api-tests, migrate-staging]
+    needs: [processing-tests, ingestion-build, api-tests, labeling-tests, migrate-staging]
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
@@ -138,10 +154,10 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
         run: |
-          .github/scripts/railway-deploy.sh goodgorithm-ingestion goodgorithm-api goodgorithm-processing
+          .github/scripts/railway-deploy.sh goodgorithm-ingestion goodgorithm-api goodgorithm-processing goodgorithm-labeling
 
   deploy-production:
-    needs: [processing-tests, ingestion-build, api-tests, migrate-production]
+    needs: [processing-tests, ingestion-build, api-tests, labeling-tests, migrate-production]
     if: github.event_name == 'push' && github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     steps:
@@ -150,7 +166,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PRODUCTION }}
         run: |
-          .github/scripts/railway-deploy.sh goodgorithm-ingestion goodgorithm-api goodgorithm-processing
+          .github/scripts/railway-deploy.sh goodgorithm-ingestion goodgorithm-api goodgorithm-processing goodgorithm-labeling
 
   # Independent from deploy-staging/deploy-production (Railway) so a web-only
   # failure can't block the backend services deploying, or vice versa.
