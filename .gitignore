@@ -50,4 +50,9 @@ processing/profiling/.profiles/
 # machine/session-specific, not shared across checkouts
 supabase/.temp/
 
+# Scratch queries/scripts for one-off research/measurement issues (e.g. #232,
+# #239) - not production code, kept locally across sessions so a recurring
+# measurement stays reproducible without committing throwaway analysis tools
+research/
+
 .claude/settings.local.json
