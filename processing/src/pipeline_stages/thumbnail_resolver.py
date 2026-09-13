@@ -173,7 +173,13 @@ def _youtube_video_id(url: str) -> str | None:
     (`watch?v=`, `youtu.be/<id>`, `/shorts/<id>`, `/live/<id>`,
     `/embed/<id>`, `/v/<id>`), or None if the host isn't YouTube or no
     well-formed id is present."""
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        # Malformed URL out of untrusted post text (e.g. urlparse rejecting
+        # a bad bracketed IPv6 netloc). No host to match -- not YouTube.
+        # Mirrors penalties.py's _syndication guard on the same call.
+        return None
     host = (parsed.hostname or "").lower()
     if host not in _YOUTUBE_HOSTS:
         return None

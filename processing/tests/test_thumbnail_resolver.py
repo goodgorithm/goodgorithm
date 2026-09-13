@@ -379,6 +379,9 @@ def test_youtube_video_id_parsing():
         "https://www.youtube.com/@somechannel": None,
         "https://www.youtube.com/watch?v=short": None,
         "https://example.com/watch?v=dQw4w9WgXcQ": None,
+        # urlparse raises ValueError on a bad bracketed IPv6-shaped netloc
+        # out of untrusted post text -- must degrade to None, not raise.
+        "https://[not-valid-ipv6]/watch?v=dQw4w9WgXcQ": None,
     }
     for url, expected in cases.items():
         assert thumbnail_resolver._youtube_video_id(url) == expected, url
