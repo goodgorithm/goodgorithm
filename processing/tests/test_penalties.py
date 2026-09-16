@@ -132,6 +132,43 @@ def test_apply_syndication_tolerates_a_malformed_url_in_post_text():
     assert result.multiplier == 1.0
 
 
+def test_apply_syndication_matches_link_hidden_behind_unrelated_embed():
+    # The embed points to an unsuppressed domain; the actual shortener link
+    # only appears in the post's own text.
+    raw_json = {
+        "commit": {
+            "record": {
+                "embed": {
+                    "$type": "app.bsky.embed.external",
+                    "external": {"uri": "https://example.com/unrelated-article"},
+                }
+            }
+        }
+    }
+    result = penalties.apply(
+        _ctx(
+            raw_json=raw_json,
+            text="Sicily, Italy http://dlvr.it/TVMgSf #Photography",
+            syndication_domains=SHORTENERS,
+        )
+    )
+    assert result.detail["syndication"] == penalties.SYNDICATION_DEMOTE_MULTIPLIER
+
+
+def test_apply_syndication_matches_second_of_two_text_urls():
+    result = penalties.apply(
+        _ctx(text="see https://example.com/info and also http://dlvr.it/TVMgSf", syndication_domains=SHORTENERS)
+    )
+    assert result.detail["syndication"] == penalties.SYNDICATION_DEMOTE_MULTIPLIER
+
+
+def test_apply_syndication_tolerates_a_malformed_url_among_valid_ones():
+    result = penalties.apply(
+        _ctx(text="check this http://[::1 out, also http://dlvr.it/TVMgSf", syndication_domains=SHORTENERS)
+    )
+    assert result.detail["syndication"] == penalties.SYNDICATION_DEMOTE_MULTIPLIER
+
+
 def test_apply_multiplier_equals_product_of_numeric_detail():
     result = penalties.apply(
         _ctx(

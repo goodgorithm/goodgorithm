@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 
 import config
 from util import bluesky_funnel
-from util.url_extract import extract_raw_url
+from util.url_extract import extract_all_urls
 
 # Bluesky's own global label values -- not moderator-curated like
 # suppressed_terms below. Sourced from config.BLUESKY_ADULT_LABEL_VALUES
@@ -99,15 +99,20 @@ def has_excluded_domain(source: str, raw_json: dict, text: str, suppressed_domai
     suppressed_terms. Deliberately doesn't reuse dedup.py's
     extract_dedup_url -- that rejects bare-domain URLs (no path), right for
     dedup (a homepage link is a weak dedup signal) but wrong here (a bare
-    https://www.amazon.com link should still match)."""
-    raw_url = extract_raw_url(source, raw_json, text)
-    if not raw_url:
-        return False
-    try:
-        netloc = urlsplit(raw_url).netloc.lower()
-    except ValueError:
-        return False
-    return matches_domain_list(netloc, suppressed_domains)
+    https://www.amazon.com link should still match). Checks every URL the
+    post carries (extract_all_urls: structured embed/card plus every URL in
+    the text), not just the platform-preferred one -- a post's link-preview
+    embed and its own caption text can point to two different domains, and
+    either one matching is enough to exclude. A malformed URL among several
+    is skipped, not treated as a reason to stop checking the rest."""
+    for url in extract_all_urls(source, raw_json, text):
+        try:
+            netloc = urlsplit(url).netloc.lower()
+        except ValueError:
+            continue
+        if matches_domain_list(netloc, suppressed_domains):
+            return True
+    return False
 
 
 def has_bluesky_funnel_shape(source: str, text: str, suppressed_terms: frozenset[str]) -> bool:
