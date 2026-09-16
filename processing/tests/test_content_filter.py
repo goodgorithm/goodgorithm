@@ -118,6 +118,39 @@ def test_has_excluded_domain_is_defensive_about_no_url():
     assert content_filter.has_excluded_domain("mastodon", {}, "just a normal post", DOMAINS) is False
 
 
+def test_has_excluded_domain_matches_suppressed_link_hidden_behind_unrelated_embed():
+    # The embed points to a legitimate, unsuppressed domain -- the real
+    # affiliate link only appears in the post's own text.
+    raw_json = {
+        "commit": {
+            "record": {
+                "embed": {
+                    "$type": "app.bsky.embed.external",
+                    "external": {"uri": "https://esahubble.org/images/heic0408a/"},
+                }
+            }
+        }
+    }
+    text = "Amazing telescope to start exploring the universe - https://amazon.com/dp/B00123 #TelescopeAdvisor"
+    assert content_filter.has_excluded_domain("bluesky", raw_json, text, DOMAINS) is True
+
+
+def test_has_excluded_domain_matches_second_of_two_text_urls():
+    text = "see https://example.com/info and also https://amazon.com/dp/B00123"
+    assert content_filter.has_excluded_domain("mastodon", {}, text, DOMAINS) is True
+
+
+def test_has_excluded_domain_does_not_match_when_neither_embed_nor_text_url_is_suppressed():
+    raw_json = {"card": {"url": "https://example.com/article"}}
+    text = "see also https://other.example.com/second"
+    assert content_filter.has_excluded_domain("mastodon", raw_json, text, DOMAINS) is False
+
+
+def test_has_excluded_domain_tolerates_a_malformed_url_among_valid_ones():
+    text = "check this http://[::1 out, also https://amazon.com/dp/B00123"
+    assert content_filter.has_excluded_domain("mastodon", {}, text, DOMAINS) is True
+
+
 def test_has_excluded_sensitive_media_matches_media_with_no_spoiler_text():
     # issue #72: the one sub-case a real production sample confirmed
     # high-precision for adult content.
