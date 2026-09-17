@@ -10,11 +10,13 @@ import type { FastifyInstance } from "fastify";
 //
 // "all" (every post in the study, reviewed or not) is the only real
 // browsing filter -- "flagged" narrows it to taxonomy-flagged posts.
-// There's deliberately no server-side "unreviewed" filter: fetching a
-// filtered-down list meant a just-labeled post immediately fell out of it,
-// so Prev/Next had nothing to go back to. Since "all" never drops a post
-// after it's labeled, Prev/Next always work, and "Go to unreviewed" jumps
-// within the in-memory list instead of re-querying.
+// Deliberately no server-side "unreviewed" filter: a filtered-down list
+// would make a just-labeled post fall out of it immediately, leaving
+// Prev/Next nothing to go back to. "all" never drops a post after it's
+// labeled, so Prev/Next always work, and "Go to unreviewed" jumps within
+// the in-memory list instead of re-querying. submitLabel()'s explicit
+// advance-on-first-label (not on a correction) is the other half of this:
+// see its own comment.
 
 const PICKER_HTML = `<!doctype html>
 <html lang="en">
@@ -285,9 +287,19 @@ function studyHtml(slug: string): string {
   }
 
   function submitLabel(post, category, extra) {
+    // Labeling a never-before-reviewed post advances to the next one --
+    // captured before the request, since post.maintainer_label reflects
+    // the state this call is about to change. Re-submitting a correction
+    // to an already-labeled post (e.g. after Prev'ing back to fix a
+    // mistake) must NOT advance, or there'd be no way to fix a mislabel
+    // and stay put to verify it.
+    var wasUnreviewed = !post.maintainer_label;
     var body = Object.assign({ category: category, taxonomy_flag: false, notes: "" }, post.maintainer_label || {}, extra || {}, { category: category });
     return api("/api/studies/" + STUDY_SLUG + "/posts/" + post.id + "/label", { method: "POST", body: JSON.stringify(body) })
-      .then(function () { showToast("Saved"); return loadPosts(); })
+      .then(function () {
+        showToast("Saved");
+        return loadPosts().then(function () { if (wasUnreviewed) advance(); });
+      })
       .catch(function (e) { showToast("Save failed: " + e.message); });
   }
 
