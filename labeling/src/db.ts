@@ -32,7 +32,7 @@ export async function getStudyBySlug(slug: string): Promise<Study | null> {
   return { ...r, created_at: r.created_at.toISOString() };
 }
 
-type PostFilter = "unreviewed" | "flagged" | "all";
+type PostFilter = "flagged" | "all";
 
 interface PostWithLabelsRow {
   id: string;
@@ -57,12 +57,7 @@ interface PostWithLabelsRow {
 // than a window function, since we only ever need the single latest row per
 // reviewer, not a ranked list.
 function postsQuery(studyId: string, filter: PostFilter) {
-  const filterClause =
-    filter === "unreviewed"
-      ? sql`AND ml.category IS NULL`
-      : filter === "flagged"
-        ? sql`AND ml.taxonomy_flag IS TRUE`
-        : sql``;
+  const filterClause = filter === "flagged" ? sql`AND ml.taxonomy_flag IS TRUE` : sql``;
 
   return sql<PostWithLabelsRow[]>`
     SELECT p.id, p.study_id, p.source, p.rank_score, p.original_created_at, p.text,

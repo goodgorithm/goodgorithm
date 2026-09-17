@@ -4,9 +4,17 @@ import type { FastifyInstance } from "fastify";
 // runtime via fetch(), so this file never needs the DB or per-request
 // server-side rendering. Porting the review UX validated in the original
 // Civic Tone Review artifact (category grid pre-highlighting the AI
-// suggestion, keyboard shortcuts, progress bar, unreviewed/flagged/all
-// filter) onto plain fetch() calls instead of that artifact's
-// self-publish-the-whole-document mechanism.
+// suggestion, keyboard shortcuts, progress bar, flagged/all filter) onto
+// plain fetch() calls instead of that artifact's self-publish-the-whole-
+// document mechanism.
+//
+// "all" (every post in the study, reviewed or not) is the only real
+// browsing filter -- "flagged" narrows it to taxonomy-flagged posts.
+// There's deliberately no server-side "unreviewed" filter: fetching a
+// filtered-down list meant a just-labeled post immediately fell out of it,
+// so Prev/Next had nothing to go back to. Since "all" never drops a post
+// after it's labeled, Prev/Next always work, and "Go to unreviewed" jumps
+// within the in-memory list instead of re-querying.
 
 const PICKER_HTML = `<!doctype html>
 <html lang="en">
@@ -86,6 +94,8 @@ function studyHtml(slug: string): string {
   .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
   #app { display: flex; min-height: 100vh; }
   .rail { width: 280px; flex: none; border-right: 1px solid var(--line); padding: 24px 20px; display: flex; flex-direction: column; gap: 24px; }
+  .home-link { all: unset; cursor: pointer; font-size: 12px; color: var(--ink-dim); display: inline-flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+  .home-link:hover { color: var(--ink); }
   .rail h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
   .rail .sub { font-size: 12.5px; color: var(--ink-dim); line-height: 1.5; }
   .progress-track { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
@@ -94,6 +104,8 @@ function studyHtml(slug: string): string {
   .filters { display: flex; flex-direction: column; gap: 4px; }
   .filter-btn { all: unset; cursor: pointer; padding: 7px 10px; border-radius: 7px; font-size: 12.5px; color: var(--ink-dim); display: flex; justify-content: space-between; }
   .filter-btn.active { background: var(--ground-raised); color: var(--ink); font-weight: 600; }
+  .goto-unreviewed-btn { all: unset; cursor: pointer; margin-top: 6px; padding: 7px 10px; border-radius: 7px; font-size: 12.5px; color: var(--accent); border: 1px dashed var(--line); text-align: center; }
+  .goto-unreviewed-btn:hover { border-color: var(--accent); }
   .keys { font-size: 11px; color: var(--ink-dim); line-height: 1.9; }
   .keys kbd { font-family: 'IBM Plex Mono', monospace; background: var(--ground-raised); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 10.5px; margin-right: 4px; }
   main { flex: 1; padding: 40px 48px; display: flex; flex-direction: column; align-items: center; }
@@ -138,7 +150,7 @@ function studyHtml(slug: string): string {
   var STUDY_SLUG = ${safeSlug};
   var TOKEN = localStorage.getItem("labeling_token") || "";
   var CATEGORIES = [];
-  var STATE = { filter: "unreviewed", index: 0, posts: [] };
+  var STATE = { filter: "all", index: 0, posts: [] };
 
   function api(path, opts) {
     opts = opts || {};
@@ -164,17 +176,47 @@ function studyHtml(slug: string): string {
     return c ? c.color : "#6B665D";
   }
 
-  function loadPosts() {
+  // Finds the first post without a maintainer_label, searching forward from
+  // fromIndex and wrapping around once. Used both for the initial "start on
+  // the first unreviewed post" load and the "Go to unreviewed" jump -- both
+  // are the same "find the next gap in an otherwise-linear list" operation,
+  // just with a different starting point. Returns -1 if every post in
+  // STATE.posts is already reviewed.
+  function firstUnreviewedIndex(fromIndex) {
+    var n = STATE.posts.length;
+    if (n === 0) return -1;
+    for (var i = 0; i < n; i++) {
+      var idx = (fromIndex + i) % n;
+      if (!STATE.posts[idx].maintainer_label) return idx;
+    }
+    return -1;
+  }
+
+  // opts.jumpToFirstUnreviewed only applies on a fresh list load (initial
+  // page load, or switching into the "all" filter) -- a reload triggered by
+  // submitLabel() must leave STATE.index exactly where the reviewer is, or
+  // every save would yank them back to wherever the next gap happens to be.
+  function loadPosts(opts) {
+    opts = opts || {};
     return api("/api/studies/" + STUDY_SLUG + "/posts?filter=" + STATE.filter).then(function (data) {
       CATEGORIES = data.study.categories;
       STATE.posts = data.posts;
-      if (STATE.index >= STATE.posts.length) STATE.index = Math.max(0, STATE.posts.length - 1);
+      if (opts.jumpToFirstUnreviewed) {
+        var idx = firstUnreviewedIndex(0);
+        STATE.index = idx === -1 ? 0 : idx;
+      } else if (STATE.index >= STATE.posts.length) {
+        STATE.index = Math.max(0, STATE.posts.length - 1);
+      }
       render();
     });
   }
 
   function counts() {
-    return { total: STATE.posts.length };
+    var reviewed = 0;
+    for (var i = 0; i < STATE.posts.length; i++) {
+      if (STATE.posts[i].maintainer_label) reviewed++;
+    }
+    return { total: STATE.posts.length, reviewed: reviewed, unreviewed: STATE.posts.length - reviewed };
   }
 
   function renderAttachment(a) {
@@ -196,13 +238,14 @@ function studyHtml(slug: string): string {
     var post = vis[STATE.index];
     var c = counts();
 
-    var railHtml = '<div><h1>' + esc(STUDY_SLUG) + '</h1><div class="sub">Labeling review</div></div>'
-      + '<div><div class="progress-label"><span>Queue</span><span class="mono">' + c.total + '</span></div>'
-      + '<div class="progress-track"><div class="progress-fill" style="width:' + (c.total ? 100 : 0) + '%"></div></div></div>'
+    var railHtml = '<div><a class="home-link" href="/">&larr; All studies</a><h1>' + esc(STUDY_SLUG) + '</h1><div class="sub">Labeling review</div></div>'
+      + '<div><div class="progress-label"><span>Reviewed</span><span class="mono">' + c.reviewed + ' / ' + c.total + '</span></div>'
+      + '<div class="progress-track"><div class="progress-fill" style="width:' + (c.total ? Math.round(100 * c.reviewed / c.total) : 0) + '%"></div></div></div>'
       + '<div class="filters">'
-      + ["unreviewed", "flagged", "all"].map(function (f) {
+      + ["all", "flagged"].map(function (f) {
           return '<button class="filter-btn' + (STATE.filter === f ? " active" : "") + '" data-filter="' + f + '">' + f + '</button>';
         }).join("")
+      + (STATE.filter === "all" ? '<button class="goto-unreviewed-btn" data-action="goto-unreviewed">Go to unreviewed (' + c.unreviewed + ')</button>' : '')
       + '</div>'
       + '<div class="keys"><div><kbd>1</kbd>-<kbd>' + CATEGORIES.length + '</kbd> pick category</div>'
       + '<div><kbd>&larr;</kbd><kbd>&rarr;</kbd> prev / next</div><div><kbd>&crarr;</kbd> confirm AI suggestion</div>'
@@ -261,7 +304,19 @@ function studyHtml(slug: string): string {
 
   function attachHandlers() {
     document.querySelectorAll(".filter-btn").forEach(function (btn) {
-      btn.addEventListener("click", function () { STATE.filter = btn.getAttribute("data-filter"); STATE.index = 0; loadPosts(); });
+      btn.addEventListener("click", function () {
+        var f = btn.getAttribute("data-filter");
+        STATE.filter = f;
+        STATE.index = 0;
+        loadPosts({ jumpToFirstUnreviewed: f === "all" });
+      });
+    });
+    var gotoBtn = document.querySelector('[data-action="goto-unreviewed"]');
+    if (gotoBtn) gotoBtn.addEventListener("click", function () {
+      var idx = firstUnreviewedIndex(STATE.index + 1);
+      if (idx === -1) { showToast("No unreviewed posts left"); return; }
+      STATE.index = idx;
+      render();
     });
     var post = STATE.posts[STATE.index];
     document.querySelectorAll(".cat-btn").forEach(function (btn) {
@@ -302,7 +357,7 @@ function studyHtml(slug: string): string {
     }
   });
 
-  loadPosts();
+  loadPosts({ jumpToFirstUnreviewed: true });
 })();
 </script>
 </body>

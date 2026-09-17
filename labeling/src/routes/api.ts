@@ -26,8 +26,8 @@ function requireAccessToken(request: FastifyRequest, reply: FastifyReply, done: 
   done();
 }
 
-function isFilter(value: unknown): value is "unreviewed" | "flagged" | "all" {
-  return value === "unreviewed" || value === "flagged" || value === "all";
+function isFilter(value: unknown): value is "flagged" | "all" {
+  return value === "flagged" || value === "all";
 }
 
 function csvField(value: string): string {
@@ -48,7 +48,7 @@ export async function apiRoutes(app: FastifyInstance): Promise<void> {
       const study = await db.getStudyBySlug(request.params.slug);
       if (!study) return reply.code(404).send({ error: "study not found" });
 
-      const filter = isFilter(request.query.filter) ? request.query.filter : "unreviewed";
+      const filter = isFilter(request.query.filter) ? request.query.filter : "all";
       const posts = await db.listPosts(study.id, filter);
       return { study, posts };
     },
