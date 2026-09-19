@@ -128,3 +128,37 @@ def fixture_category_onnx_bytes() -> bytes:
         options={id(clf): {"zipmap": False}},
     )
     return onnx_model.SerializeToString()
+
+
+@pytest.fixture
+def fixture_political_onnx_bytes() -> bytes:
+    """A real, tiny TF-IDF + binary LogisticRegression pipeline, trained on
+    trivial synthetic data and exported via skl2onnx exactly like the real
+    training notebook -- same reasoning as fixture_category_onnx_bytes, just
+    a plain (non-one-vs-rest) LogisticRegression since political_model.py's
+    target is binary, not multi-label."""
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import StringTensorType
+
+    texts = [
+        "the senate voted on the new bill today",
+        "the president signed the executive order",
+        "tried a new recipe for homemade pasta tonight",
+        "went for a long walk in the park today",
+    ] * 5
+    labels = [1, 1, 0, 0] * 5
+
+    vectorizer = TfidfVectorizer()
+    clf = LogisticRegression(max_iter=1000)
+    pipeline = Pipeline([("tfidf", vectorizer), ("clf", clf)])
+    pipeline.fit(texts, labels)
+
+    onnx_model = convert_sklearn(
+        pipeline,
+        initial_types=[("input", StringTensorType([None, 1]))],
+        options={id(clf): {"zipmap": False}},
+    )
+    return onnx_model.SerializeToString()
