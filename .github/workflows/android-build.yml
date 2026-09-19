@@ -37,8 +37,13 @@ jobs:
           java-version: "21"
           cache: gradle
       # Accepts SDK licenses and installs platform/build-tools 36 on demand
-      # (compileSdk/targetSdk = 36 in web/android/variables.gradle).
-      - uses: android-actions/setup-android@v3
+      # (compileSdk/targetSdk = 36 in web/android/variables.gradle). v4, not
+      # v3: v3's default `packages` input is "tools platform-tools", and
+      # Google has stopped serving the legacy `tools` package entirely
+      # (https://developer.android.com/tools#tools-sdk) -- sdkmanager now
+      # hard-fails on it. v4 dropped `tools` from the default and treats an
+      # explicit request for it as a skip-with-warning instead of a failure.
+      - uses: android-actions/setup-android@v4
       - run: npm ci
       # tsc -b && vite build --mode release (prod api via committed
       # web/.env.release) && cap sync android
