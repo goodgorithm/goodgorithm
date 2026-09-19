@@ -8,6 +8,23 @@ on GitHub.
 Goodgorithm is in early development, so expect this list to be sparse for now and the app
 itself to be rough around the edges.
 
+## 2026-09-19 — Less politics in the feed
+
+Political content — partisan arguments, outrage, campaign posts — doesn't really fit
+what Goodgorithm is for, but sentiment scoring alone can't tell it apart from genuine
+positivity: an angry political post can read as "enthusiastic" the same way a happy one
+does. So rather than guess, we measured it first: how much political content was
+actually reaching the feed, and what it looked like once it got there (a small slice
+overall, but skewed heavily toward outrage and partisan point-scoring rather than
+genuine civic warmth). We hand-labelled well over a thousand real examples to build a
+proper picture, then used that to build a detector.
+
+The result is live now: posts two independent checks both agree are political get
+filtered out before they're ever shown; anything less certain gets ranked lower instead
+of removed outright. It's not perfect — it can't yet tell a heartfelt civic moment from
+a heated political one, so both get treated the same for now — but it's already made a
+real, measurable dent in how much political noise reaches the feed.
+
 ## 2026-09-08 — The logo learned to wink
 
 The lowercase-`g` mark got a small rework: shift it over, add a left eye, and the
