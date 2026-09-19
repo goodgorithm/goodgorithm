@@ -18,7 +18,8 @@ def test_processed_posts_upsert_sql_skips_rows_whose_raw_post_vanished():
     assert "JOIN raw_posts r ON r.id = v.raw_post_id" in sql
     assert "FOR KEY SHARE OF r" in sql
     assert "ON CONFLICT (raw_post_id) DO UPDATE" in sql
-    assert sql.count("%s") == 3 * 19  # rows x columns, param count still bounded per chunk
+    column_count = len(db._PROCESSED_POSTS_COLUMNS.split(","))
+    assert sql.count("%s") == 3 * column_count  # rows x columns, param count still bounded per chunk
 
 
 def test_resolver_candidate_queries_filter_and_order_on_processed_posts():

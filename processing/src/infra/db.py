@@ -82,6 +82,8 @@ class ProcessedPostUpsert:
     penalty_multiplier: float = 1.0
     penalty_detail: dict | None = None
     generated_thumbnail_url: str | None = None
+    political_score: float | None = None
+    political_method: str | None = None
 
 
 DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE = int(os.environ.get("DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE", "500"))
@@ -90,7 +92,8 @@ _PROCESSED_POSTS_COLUMNS = (
     "raw_post_id, source, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
     "sentiment_score, sentiment_method, topicality_score, entities, "
     "base_score, rank_score, quote_content, category, category_method, "
-    "penalty_multiplier, penalty_detail, generated_thumbnail_url, pipeline_version"
+    "penalty_multiplier, penalty_detail, generated_thumbnail_url, pipeline_version, "
+    "political_score, political_method"
 )
 
 
@@ -102,7 +105,8 @@ _PROCESSED_POSTS_ROW_SQL = (
     "(%s::uuid, %s::text, %s::uuid, %s::boolean, %s::boolean, %s::real, "
     "%s::real, %s::text, %s::real, %s::jsonb, "
     "%s::real, %s::real, %s::jsonb, %s::text, %s::text, "
-    "%s::real, %s::jsonb, %s::text, %s::text)"
+    "%s::real, %s::jsonb, %s::text, %s::text, "
+    "%s::real, %s::text)"
 )
 
 
@@ -149,6 +153,8 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
             penalty_detail         = EXCLUDED.penalty_detail,
             generated_thumbnail_url = EXCLUDED.generated_thumbnail_url,
             pipeline_version       = EXCLUDED.pipeline_version,
+            political_score        = EXCLUDED.political_score,
+            political_method       = EXCLUDED.political_method,
             processed_at           = NOW()
         """
 
@@ -187,6 +193,8 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     Jsonb(row.penalty_detail) if row.penalty_detail is not None else None,
                     row.generated_thumbnail_url,
                     row.pipeline_version,
+                    row.political_score,
+                    row.political_method,
                 )
             ]
             conn.execute(_build_processed_posts_upsert_sql(len(chunk)), params)

@@ -20,6 +20,7 @@ from pipeline_stages import (
     language_filter,
     moderation_recheck,
     penalties,
+    political_model,
     quote_resolver,
     ranking,
     sentiment,
@@ -149,6 +150,11 @@ def run_cycle(batch_size: int) -> int:
     # Sentiment page.
     sentiment_results = sentiment.score_sentiment_batch(kept_posts)
 
+    # Observational only for now -- returns {} for every post if no model is
+    # loaded, rather than a partial/guessed score. Not read by penalties.py
+    # or any exclude check yet.
+    political_results = political_model.score_batch(kept_posts)
+
     # Batched/deduped resolve, not one call per post -- see the wiki's
     # Bluesky AppView Resolvers page.
     quote_uris_by_post = {post.id: quote_resolver.extract_quote_uri(post.raw_json) for post in kept_posts}
@@ -217,6 +223,8 @@ def run_cycle(batch_size: int) -> int:
         thumbnail_url = thumbnail_urls_by_post.get(post.id)
         generated_thumbnail_url = thumbnail_by_url.get(thumbnail_url) if thumbnail_url else None
 
+        political_score = political_results.get(post.id)
+
         upserts.append(
             db.ProcessedPostUpsert(
                 raw_post_id=post.id,
@@ -238,6 +246,8 @@ def run_cycle(batch_size: int) -> int:
                 penalty_multiplier=penalty.multiplier,
                 penalty_detail=penalty.detail,
                 generated_thumbnail_url=generated_thumbnail_url,
+                political_score=political_score,
+                political_method=political_model.POLITICAL_METHOD if political_score is not None else None,
             )
         )
 
