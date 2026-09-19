@@ -20,6 +20,8 @@ from pipeline_stages import (
     language_filter,
     moderation_recheck,
     penalties,
+    political_centroid,
+    political_exclude,
     political_model,
     quote_resolver,
     ranking,
@@ -50,7 +52,7 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
-PIPELINE_VERSION = "v17"
+PIPELINE_VERSION = "v18"
 
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
@@ -135,6 +137,34 @@ def run_cycle(batch_size: int) -> int:
         logger.info("processed 0 posts (%d content-filtered)", len(posts))
         return len(posts)
 
+    # Political scoring + the AND-gate hard-exclude, right after the cheap
+    # filter loop and before dedup/bot/topicality/sentiment/category all
+    # run -- an excluded post shouldn't waste any of that compute. Computed
+    # once here; political_results is reused below for the devalue penalty
+    # (the centroid score only matters for this exclude decision).
+    political_results = political_model.score_batch(kept_posts)
+    political_centroid_results = political_centroid.score_batch(kept_posts)
+
+    survivors = []
+    for post in kept_posts:
+        classifier_score = political_results.get(post.id)
+        centroid_score = political_centroid_results.get(post.id)
+        if political_exclude.is_political_excluded(classifier_score, centroid_score):
+            db.delete_raw_post(post.id)
+            logger.info(
+                "political-excluded post %s (classifier=%.3f centroid=%.3f)",
+                post.id,
+                classifier_score,
+                centroid_score,
+            )
+        else:
+            survivors.append(post)
+    kept_posts = survivors
+
+    if not kept_posts:
+        logger.info("processed 0 posts (%d content/political-filtered)", len(posts))
+        return len(posts)
+
     dedup_index = dedup.RedisDedupIndex()
     dedup_results = dedup.dedup_posts(kept_posts, dedup_index)
 
@@ -149,11 +179,6 @@ def run_cycle(batch_size: int) -> int:
     # Same batched shape as category_results above -- see the wiki's
     # Sentiment page.
     sentiment_results = sentiment.score_sentiment_batch(kept_posts)
-
-    # Observational only for now -- returns {} for every post if no model is
-    # loaded, rather than a partial/guessed score. Not read by penalties.py
-    # or any exclude check yet.
-    political_results = political_model.score_batch(kept_posts)
 
     # Batched/deduped resolve, not one call per post -- see the wiki's
     # Bluesky AppView Resolvers page.
@@ -187,6 +212,8 @@ def run_cycle(batch_size: int) -> int:
         quote_uri = quote_uris_by_post.get(post.id)
         quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None
 
+        political_score = political_results.get(post.id)
+
         penalty = penalties.apply(
             penalties.PenaltyContext(
                 source=post.source,
@@ -198,6 +225,7 @@ def run_cycle(batch_size: int) -> int:
                 syndication_domains=mod.syndication_domains,
                 shape_config=mod.post_shape_config,
                 quote_content=quote_content,
+                political_score=political_score,
             )
         )
 
@@ -222,8 +250,6 @@ def run_cycle(batch_size: int) -> int:
 
         thumbnail_url = thumbnail_urls_by_post.get(post.id)
         generated_thumbnail_url = thumbnail_by_url.get(thumbnail_url) if thumbnail_url else None
-
-        political_score = political_results.get(post.id)
 
         upserts.append(
             db.ProcessedPostUpsert(
