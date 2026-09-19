@@ -15,7 +15,7 @@ SHORTENERS = frozenset({"dlvr.it", "ift.tt"})
 # quote_resolver.py's exact blob for a quoted post that failed moderation
 QUOTE_FILTERED = {"status": "unavailable", "reason": "filtered"}
 
-_PENALTY_NAMES = ("context", "link_share", "hashtag_bag", "aggregator", "syndication", "quote", "shape")
+_PENALTY_NAMES = ("context", "link_share", "hashtag_bag", "aggregator", "syndication", "quote", "shape", "political")
 
 
 def _ctx(**overrides):
@@ -29,6 +29,7 @@ def _ctx(**overrides):
         syndication_domains=frozenset(),
         shape_config={},
         quote_content=None,
+        political_score=None,
     )
     base.update(overrides)
     return penalties.PenaltyContext(**base)
@@ -167,6 +168,21 @@ def test_apply_syndication_tolerates_a_malformed_url_among_valid_ones():
         _ctx(text="check this http://[::1 out, also http://dlvr.it/TVMgSf", syndication_domains=SHORTENERS)
     )
     assert result.detail["syndication"] == penalties.SYNDICATION_DEMOTE_MULTIPLIER
+
+
+def test_apply_political_devalue_triggers_above_threshold():
+    result = penalties.apply(_ctx(political_score=penalties.POLITICAL_DEVALUE_THRESHOLD))
+    assert result.detail["political"] == penalties.POLITICAL_DEMOTE_MULTIPLIER
+
+
+def test_apply_political_devalue_does_not_trigger_below_threshold():
+    result = penalties.apply(_ctx(political_score=penalties.POLITICAL_DEVALUE_THRESHOLD - 0.01))
+    assert result.detail["political"] == 1.0
+
+
+def test_apply_political_devalue_does_not_trigger_when_score_unavailable():
+    result = penalties.apply(_ctx(political_score=None))
+    assert result.detail["political"] == 1.0
 
 
 def test_apply_multiplier_equals_product_of_numeric_detail():

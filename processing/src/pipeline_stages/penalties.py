@@ -54,6 +54,18 @@ if not 0.0 < QUOTE_FILTERED_DEMOTE_MULTIPLIER <= 1.0:
         f"QUOTE_FILTERED_DEMOTE_MULTIPLIER ({QUOTE_FILTERED_DEMOTE_MULTIPLIER}) must be in (0.0, 1.0]"
     )
 
+# base_score multiplier for a post the trained political classifier scores
+# above threshold but the AND-gate hard-exclude in political_exclude.py
+# didn't already remove (that needs the independent centroid signal to also
+# agree; this needs only the classifier). The classifier's own natural
+# decision boundary (0.5, not a tuned budget) -- devalue is low-stakes
+# (the post stays visible, just ranked lower), so it uses the higher-recall
+# side of the tradeoff rather than the exclude gate's stricter pairing.
+POLITICAL_DEVALUE_THRESHOLD = float(os.environ.get("POLITICAL_DEVALUE_THRESHOLD", "0.5"))
+POLITICAL_DEMOTE_MULTIPLIER = float(os.environ.get("POLITICAL_DEMOTE_MULTIPLIER", "0.5"))
+if not 0.0 < POLITICAL_DEMOTE_MULTIPLIER <= 1.0:
+    raise ValueError(f"POLITICAL_DEMOTE_MULTIPLIER ({POLITICAL_DEMOTE_MULTIPLIER}) must be in (0.0, 1.0]")
+
 
 @dataclass(frozen=True)
 class PenaltyContext:
@@ -71,6 +83,7 @@ class PenaltyContext:
     syndication_domains: frozenset[str]
     shape_config: dict[str, post_shape.ShapeConfig]
     quote_content: dict | None
+    political_score: float | None
 
 
 def _context(ctx: PenaltyContext) -> tuple[float, dict]:
@@ -123,6 +136,12 @@ def _shape(ctx: PenaltyContext) -> tuple[float, dict]:
     return match.devalue_multiplier, {"shape_name": match.name}
 
 
+def _political(ctx: PenaltyContext) -> tuple[float, dict]:
+    if ctx.political_score is None or ctx.political_score < POLITICAL_DEVALUE_THRESHOLD:
+        return 1.0, {}
+    return POLITICAL_DEMOTE_MULTIPLIER, {}
+
+
 @dataclass(frozen=True)
 class Penalty:
     name: str
@@ -140,6 +159,7 @@ PENALTIES: tuple[Penalty, ...] = (
     Penalty("syndication", _syndication),
     Penalty("quote", _quote),
     Penalty("shape", _shape),
+    Penalty("political", _political),
 )
 
 

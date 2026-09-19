@@ -32,6 +32,7 @@ R2_MODELS_BUCKET_NAME = os.environ.get("R2_MODELS_BUCKET_NAME")
 SENTIMENT_MODEL_VERSION = os.environ.get("SENTIMENT_MODEL_VERSION")
 CATEGORY_MODEL_VERSION = os.environ.get("CATEGORY_MODEL_VERSION")
 POLITICAL_MODEL_VERSION = os.environ.get("POLITICAL_MODEL_VERSION")
+POLITICAL_CENTROID_MODEL_VERSION = os.environ.get("POLITICAL_CENTROID_MODEL_VERSION")
 
 # Text-corpus export — a separate R2 bucket and access key from the models
 # set above, kept independent so each store's config is self-contained.
