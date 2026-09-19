@@ -34,6 +34,8 @@ Usage:
     uv run python r2_release.py --model category list
     uv run python r2_release.py --model category publish <version>
     uv run python r2_release.py --model category upload <version> --path <local-dir>
+    uv run python r2_release.py --model political current
+    uv run python r2_release.py --model political publish <version>
 
 `upload` is the manual alternative to the training notebook's own R2 cell
 -- for when artifacts were produced somewhere other than an interactive
@@ -71,6 +73,10 @@ MODEL_REGISTRY = {
     },
     "category": {
         "prefix": "category-classifier",
+        "artifacts": ["model.onnx", "config.json"],
+    },
+    "political": {
+        "prefix": "political-classifier",
         "artifacts": ["model.onnx", "config.json"],
     },
 }
@@ -245,6 +251,7 @@ def main() -> None:
     registry_entry = MODEL_REGISTRY[args.model]
     prefix = registry_entry["prefix"]
     artifacts = registry_entry["artifacts"]
+    model_choices = f"<{'|'.join(sorted(MODEL_REGISTRY))}>"
 
     client = _client()
 
@@ -260,12 +267,12 @@ def main() -> None:
             print(f"{v}{'  <- latest' if v == live else ''}")
     elif args.command == "publish":
         if not args.version:
-            sys.exit("usage: uv run python r2_release.py --model <sentiment|category> publish <version>")
+            sys.exit(f"usage: uv run python r2_release.py --model {model_choices} publish <version>")
         publish(client, prefix, artifacts, args.version)
     elif args.command == "upload":
         if not args.version or not args.path:
             sys.exit(
-                "usage: uv run python r2_release.py --model <sentiment|category> upload <version> --path <local-dir>"
+                f"usage: uv run python r2_release.py --model {model_choices} upload <version> --path <local-dir>"
             )
         upload(client, prefix, artifacts, args.version, Path(args.path))
 
