@@ -1,0 +1,10 @@
+# Ephemeral outputs of running a training notebook locally -- each notebook
+# fetches its pinned shared-code dependency and writes its trained artifacts
+# into this directory when executed. The source is pinned by commit hash in
+# the notebook itself, and the artifacts are the ones that get versioned in
+# R2, not here.
+text_normalize.py
+sentiment_model.py
+model.onnx
+vocab.json
+config.json
