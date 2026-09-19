@@ -156,14 +156,37 @@ def create_github_release(client, prefix: str, artifacts: list[str], version: st
         return
 
     key_prefix = f"{prefix}/{version}"
-    model_config = json.loads(client.get_object(Bucket=_bucket(), Key=f"{key_prefix}/config.json")["Body"].read())
 
-    notes = (
-        f"`{prefix}` `{version}`, promoted to production.\n\n"
-        f"- Dataset composition: {json.dumps(model_config.get('dataset_composition', {}))}\n"
-        f"- Eval numbers: see `config.json` in this release's assets\n\n"
-        "See `CLAUDE.md` and the matching `release-*` skill for how this was trained and published."
-    )
+    # Not every model type has a config.json -- political-centroid's only
+    # artifact is centroids.json, which carries dataset_composition itself.
+    # Check each .json artifact rather than assuming a filename, so this
+    # stays generic over MODEL_REGISTRY's per-model artifact shape.
+    dataset_composition = None
+    composition_artifact = None
+    for artifact in artifacts:
+        if not artifact.endswith(".json"):
+            continue
+        try:
+            data = json.loads(client.get_object(Bucket=_bucket(), Key=f"{key_prefix}/{artifact}")["Body"].read())
+        except (client.exceptions.NoSuchKey, json.JSONDecodeError):
+            continue
+        if "dataset_composition" in data:
+            dataset_composition = data["dataset_composition"]
+            composition_artifact = artifact
+            break
+
+    if dataset_composition is not None:
+        notes = (
+            f"`{prefix}` `{version}`, promoted to production.\n\n"
+            f"- Dataset composition: {json.dumps(dataset_composition)}\n"
+            f"- Eval numbers: see `{composition_artifact}` in this release's assets\n\n"
+            "See `CLAUDE.md` and the matching `release-*` skill for how this was trained and published."
+        )
+    else:
+        notes = (
+            f"`{prefix}` `{version}`, promoted to production.\n\n"
+            "See `CLAUDE.md` and the matching `release-*` skill for how this was trained and published."
+        )
 
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
