@@ -65,8 +65,6 @@ describe("Feed", () => {
     expect(screen.queryByText("Loading feed…")).not.toBeInTheDocument();
     expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
     expect(screen.queryAllByRole("article")).toHaveLength(0);
-    // the category selector stays visible during the initial load
-    expect(screen.getByRole("button", { name: "Arts & Culture" })).toBeInTheDocument();
   });
 
   it("renders each post once when pages don't overlap", () => {

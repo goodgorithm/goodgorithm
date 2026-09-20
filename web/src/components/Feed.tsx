@@ -2,18 +2,15 @@ import { useEffect, useMemo, useRef } from "react";
 
 import type { FeedPost } from "../api/types";
 import { useFeed } from "../api/useFeed";
-import { CategorySelector } from "./CategorySelector";
 import styles from "./Feed.module.css";
 import { FeedEmpty, FeedError, FeedLoading } from "./FeedStatus";
 import { FeedSkeleton } from "./FeedSkeleton";
-import { useCategoryParam } from "../lib/useCategoryParam";
 import { relativeFractions, type RelativeFractions } from "../lib/scoreScale";
 import { PostCard } from "./PostCard";
 
 const NO_RELATIVE: RelativeFractions = { rank: 0 };
 
 export function Feed() {
-  const [category, setCategory] = useCategoryParam();
   const {
     data,
     error,
@@ -25,7 +22,7 @@ export function Feed() {
     carriedSeenIds,
     resetToTop,
     refetch,
-  } = useFeed(category);
+  } = useFeed();
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,8 +41,8 @@ export function Feed() {
   // the background re-ranking mutates rank_score between the page fetches
   // of one session, so a post can drop back across the cursor. The Set
   // catches that within a scroll, and is seeded from carriedSeenIds - the
-  // ids this category showed before a reload/resume (feedCursor.ts) - so
-  // a resumed session doesn't re-render them either. A re-served row that
+  // ids already shown before a reload/resume (feedCursor.ts) - so a
+  // resumed session doesn't re-render them either. A re-served row that
   // still slips through is dropped here and never reaches the screen.
   // See the wiki's Web Internals page.
   const posts = useMemo(() => {
@@ -76,10 +73,9 @@ export function Feed() {
 
   return (
     <div>
-      <CategorySelector selected={category} onSelect={setCategory} />
       {isPending && <FeedSkeleton />}
       {error && <FeedError message={error.message} onRetry={refetch} />}
-      {!isPending && !error && posts.length === 0 && <FeedEmpty category={category} />}
+      {!isPending && !error && posts.length === 0 && <FeedEmpty />}
       {!isPending && !error && resumed && (
         <button type="button" className={styles.backToTop} onClick={resetToTop}>
           ↑ Back to top

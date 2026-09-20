@@ -24,26 +24,22 @@
          is replaced with VITE_API_BASE_URL by the prepaintOptimizations
          plugin in vite.config.ts (build and dev). useFeed adopts the
          promise off window.__feedBootstrap -- see src/api/feedBootstrap.ts
-         and the wiki's Web Internals page. The category, limit and cursor
-         key below are hand-synced with useCategoryParam.ts's
-         DEFAULT_CATEGORY, client.ts's default limit, and feedCursor.ts's
+         and the wiki's Web Internals page. The limit and cursor key below
+         are hand-synced with client.ts's default limit and feedCursor.ts's
          storage key. -->
     <link rel="preconnect" href="__API_BASE__" crossorigin />
     <link rel="dns-prefetch" href="__API_BASE__" />
     <script>
       (function () {
         try {
-          // A specific ?category= (a deep link, or the hidden ?category=all)
-          // means the app decides what to load -- don't guess here.
-          if (new URLSearchParams(location.search).has("category")) return;
           // A fresh anti-repeat resume cursor means page 1 carries &cursor=,
           // which this URL wouldn't match -- let the app resume normally.
-          var stored = localStorage.getItem("goodgorithm:feedCursor:arts_culture");
+          var stored = localStorage.getItem("goodgorithm:feedCursor:all");
           if (stored) {
             var parsed = JSON.parse(stored);
             if (parsed && Date.now() - parsed.savedAt <= 3 * 60 * 60 * 1000) return;
           }
-          var promise = fetch("__API_BASE__/v1/feed?limit=20&category=arts_culture", {
+          var promise = fetch("__API_BASE__/v1/feed?limit=20", {
             credentials: "omit",
           }).then(function (response) {
             if (!response.ok) throw new Error("feed " + response.status);

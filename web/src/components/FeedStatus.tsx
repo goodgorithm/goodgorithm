@@ -1,20 +1,11 @@
-import { CATEGORY_LABELS, type Category } from "../api/types";
 import styles from "./FeedStatus.module.css";
 
 export function FeedLoading() {
   return <p role="status">Loading feed…</p>;
 }
 
-export function FeedEmpty({ category }: { category: Category | null }) {
-  if (category === null) {
-    return <p role="status">No posts yet.</p>;
-  }
-
-  return (
-    <div role="status" className={styles.notice}>
-      <p>No posts in {CATEGORY_LABELS[category]} yet.</p>
-    </div>
-  );
+export function FeedEmpty() {
+  return <p role="status">No posts yet.</p>;
 }
 
 // Deliberately never shows stale/cached posts here - a live-ranked feed
