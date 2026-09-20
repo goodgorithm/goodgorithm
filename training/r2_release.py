@@ -38,6 +38,8 @@ Usage:
     uv run python r2_release.py --model political publish <version>
     uv run python r2_release.py --model political-centroid current
     uv run python r2_release.py --model political-centroid publish <version>
+    uv run python r2_release.py --model quality current
+    uv run python r2_release.py --model quality publish <version>
 
 `upload` is the manual alternative to the training notebook's own R2 cell
 -- for when artifacts were produced somewhere other than an interactive
@@ -84,6 +86,10 @@ MODEL_REGISTRY = {
     "political-centroid": {
         "prefix": "political-centroid",
         "artifacts": ["centroids.json"],
+    },
+    "quality": {
+        "prefix": "quality-classifier",
+        "artifacts": ["model.onnx", "config.json"],
     },
 }
 
