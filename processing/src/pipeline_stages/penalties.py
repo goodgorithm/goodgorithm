@@ -32,8 +32,6 @@ class PenaltyContext:
 
     source: str
     author_id: str
-    raw_json: dict
-    text: str
     context_action: ContextClassification
     aggregator_instances: frozenset[str]
 

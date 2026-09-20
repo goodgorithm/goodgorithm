@@ -623,18 +623,6 @@ def fetch_aggregator_instances() -> frozenset[str]:
     return frozenset(row[0] for row in rows)
 
 
-def fetch_syndication_domains() -> frozenset[str]:
-    """Whole table -- dedicated RSS->social auto-poster / share-shortener
-    domains (dlvr.it, ift.tt, ...). A post linking through one is devalued
-    by penalties.py's `syndication` entry, on either platform (unlike
-    aggregator_instances, which is Mastodon-home-instance only). Called
-    through fetch_moderation_lists()'s cache below. See the wiki's
-    Configuration page."""
-    with pool.connection() as conn:
-        rows = conn.execute("SELECT domain FROM syndication_domains").fetchall()
-    return frozenset(row[0] for row in rows)
-
-
 @dataclass(frozen=True)
 class PostShapeConfig:
     """A `post_shapes` row's operational knobs for one registered
@@ -642,7 +630,6 @@ class PostShapeConfig:
     Satisfies post_shape.ShapeConfig structurally."""
 
     enabled: bool
-    devalue_multiplier: float
     repeat_threshold: int | None
 
 
@@ -650,26 +637,23 @@ def fetch_post_shape_config() -> dict[str, PostShapeConfig]:
     """Whole table, keyed by shape name -- same pattern as
     fetch_aggregator_instances, a separate moderatable list. The regex
     patterns themselves stay in post_shape.py's code registry; this table
-    only carries enable/disable and the two tunables. Called through
+    only carries enable/disable and the repeat threshold. Called through
     fetch_moderation_lists()'s cache below. See the wiki's Configuration
     page."""
     with pool.connection() as conn:
-        rows = conn.execute(
-            "SELECT name, enabled, devalue_multiplier, repeat_threshold FROM post_shapes"
-        ).fetchall()
-    return {row[0]: PostShapeConfig(enabled=row[1], devalue_multiplier=row[2], repeat_threshold=row[3]) for row in rows}
+        rows = conn.execute("SELECT name, enabled, repeat_threshold FROM post_shapes").fetchall()
+    return {row[0]: PostShapeConfig(enabled=row[1], repeat_threshold=row[2]) for row in rows}
 
 
 @dataclass(frozen=True)
 class ModerationLists:
     """One cache line for every moderator-curated table run_cycle reads per
-    cycle. Named fields rather than a positional tuple -- four of the five
+    cycle. Named fields rather than a positional tuple -- three of the four
     are `frozenset[str]` and can't be told apart at a call site."""
 
     suppressed_terms: frozenset[str]
     suppressed_domains: frozenset[str]
     aggregator_instances: frozenset[str]
-    syndication_domains: frozenset[str]
     post_shape_config: dict[str, PostShapeConfig]
 
 
@@ -703,7 +687,6 @@ def fetch_moderation_lists() -> ModerationLists:
             suppressed_terms=fetch_suppressed_terms(),
             suppressed_domains=fetch_suppressed_domains(),
             aggregator_instances=fetch_aggregator_instances(),
-            syndication_domains=fetch_syndication_domains(),
             post_shape_config=fetch_post_shape_config(),
         )
         _moderation_lists_cached_at = now

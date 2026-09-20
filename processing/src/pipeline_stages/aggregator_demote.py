@@ -1,13 +1,14 @@
-"""Down-weights a post whose Mastodon home instance is a known content
-aggregator -- Flipboard's federating "magazine" accounts and similar
-services that syndicate curated headline/link reposts into the fediverse
-rather than posting original content. Enthusiastic headline text can read
-as genuinely uplifting on its own, so without this one automated
-aggregator can dominate a large share of the ranked feed (flipboard.com
-alone was ~34% of ranked Mastodon content). Not off-mission enough to
-hard-exclude the way content_filter/context_dependency do -- some reshares
-are genuinely worth seeing -- so this is a base_score devalue multiplier,
-the same category as context_dependency.py.
+"""Flags a post whose Mastodon home instance is a known content aggregator
+-- Flipboard's federating "magazine" accounts and similar services that
+syndicate curated headline/link reposts into the fediverse rather than
+posting original content. Enthusiastic headline text can read as genuinely
+uplifting on its own, so without this one automated aggregator can
+dominate a large share of the ranked feed (flipboard.com alone was ~34% of
+ranked Mastodon content). Not off-mission enough to hard-exclude the way
+content_filter/context_dependency do -- some reshares are genuinely worth
+seeing -- so this produces a devalue multiplier, the same category as
+context_dependency.py's devalue half; penalties.py persists it for audit,
+same as that module (see CLAUDE.md's constraint #2).
 
 The instance list is db.fetch_aggregator_instances()'s whole-table read
 (the aggregator_instances table), moderator-curated and refreshed via
@@ -38,7 +39,6 @@ if not 0.0 < AGGREGATOR_DEMOTE_MULTIPLIER <= 1.0:
 
 @dataclass(frozen=True)
 class AggregatorClassification:
-    is_aggregator: bool
     devalue_multiplier: float = 1.0  # base_score multiplier; 1.0 == no penalty
 
 
@@ -49,14 +49,12 @@ def classify(
     if so, the base_score multiplier to apply. A Bluesky post, a Mastodon
     post from an unlisted instance, or an empty list is unaffected."""
     if source != "mastodon" or not aggregator_instances:
-        return AggregatorClassification(is_aggregator=False)
+        return AggregatorClassification()
 
     # canonical_account_id yields `user@host`, reconstructing
     # `user@{polled_instance}` when the polled instance is the account's own
     # home instance (so a bare local `acct` still resolves to a real host).
     home_instance = bot_filter.canonical_account_id(source, author_id).rpartition("@")[2].lower()
     if home_instance and matches_domain_list(home_instance, aggregator_instances):
-        return AggregatorClassification(
-            is_aggregator=True, devalue_multiplier=AGGREGATOR_DEMOTE_MULTIPLIER
-        )
-    return AggregatorClassification(is_aggregator=False)
+        return AggregatorClassification(devalue_multiplier=AGGREGATOR_DEMOTE_MULTIPLIER)
+    return AggregatorClassification()

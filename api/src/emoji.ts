@@ -1,7 +1,5 @@
 import type { CustomEmoji } from "./types";
 
-export type { CustomEmoji } from "./types";
-
 // shortcode/url come verbatim from arbitrary Mastodon instances' raw_json -
 // cheaper and safer to validate here once than to trust every downstream
 // renderer never to trip on a malformed entry.

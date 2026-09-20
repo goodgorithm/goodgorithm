@@ -32,7 +32,6 @@ interface Label {
   uri: string;
   val: string;
   neg?: boolean;
-  cts: string;
 }
 
 interface LabelsPayload {

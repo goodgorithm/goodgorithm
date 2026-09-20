@@ -106,9 +106,9 @@ def test_rank_posts_orders_by_base_score_when_no_topical_overlap():
 
     results = ranking.rank_posts([high, mid, low], now=NOW)
 
-    assert results[high.id].rank_position == 0
-    assert results[mid.id].rank_position == 1
-    assert results[low.id].rank_position == 2
+    # dict insertion order faithfully reflects MMR's selection order --
+    # rank_posts inserts each round's winner once, in round order.
+    assert list(results.keys()) == [high.id, mid.id, low.id]
 
 
 def test_rank_score_is_non_increasing_across_selection_order():
@@ -117,8 +117,7 @@ def test_rank_score_is_non_increasing_across_selection_order():
         for i, s in enumerate([0.9, 0.4, 0.7, 0.5, 0.3])
     ]
     results = ranking.rank_posts(posts, now=NOW)
-    ordered = sorted(results.values(), key=lambda r: r.rank_position)
-    scores = [r.rank_score for r in ordered]
+    scores = [r.rank_score for r in results.values()]  # dict order == MMR selection order
     assert scores == sorted(scores, reverse=True)
 
 
@@ -145,8 +144,7 @@ def test_mmr_spreads_out_near_duplicate_topics():
     )
 
     results = ranking.rank_posts([e1, e2, e3, diverse], now=NOW)
-    ordered = sorted(results.items(), key=lambda kv: kv[1].rank_position)
-    order = [post_id for post_id, _ in ordered]
+    order = list(results.keys())  # dict order == MMR selection order
 
     assert order[0] == e1.id  # highest raw base_score still goes first
     assert order.index(diverse.id) < order.index(e2.id)
@@ -180,8 +178,7 @@ def test_mmr_spreads_out_same_author_regardless_of_topic():
     )
 
     results = ranking.rank_posts([a1, a2, a3, diverse], now=NOW)
-    ordered = sorted(results.items(), key=lambda kv: kv[1].rank_position)
-    order = [post_id for post_id, _ in ordered]
+    order = list(results.keys())  # dict order == MMR selection order
 
     assert order[0] == a1.id  # highest raw base_score still goes first
     assert order.index(diverse.id) < order.index(a2.id)

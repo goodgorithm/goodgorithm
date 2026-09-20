@@ -12,8 +12,6 @@ def _ctx(**overrides):
     base = dict(
         source="bluesky",
         author_id=f"did:plc:{uuid4().hex}",
-        raw_json={},
-        text="a plain post about a walk in the park",
         context_action=ContextClassification(action="none"),
         aggregator_instances=frozenset(),
     )

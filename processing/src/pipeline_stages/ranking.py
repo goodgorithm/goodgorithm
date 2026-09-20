@@ -62,7 +62,6 @@ class RankablePost:
 class RankResult:
     base_score: float
     rank_score: float
-    rank_position: int  # 0-indexed selection order from the MMR pass
 
 
 MIN_DECAY = 1e-30  # comfortably above float4/REAL's underflow range (~1.4e-45)
@@ -220,7 +219,7 @@ def rank_posts(posts: list[RankablePost], now: datetime | None = None) -> dict[U
     max_sim_to_selected = np.zeros(n)
     remaining_mask = np.ones(n, dtype=bool)
 
-    for rank_position in range(n):
+    for _ in range(n):
         mmr_values = RANKING_MMR_LAMBDA * base_scores_arr - (1 - RANKING_MMR_LAMBDA) * max_sim_to_selected
         mmr_values = np.where(remaining_mask, mmr_values, -np.inf)
         best_idx = int(np.argmax(mmr_values))
@@ -229,7 +228,6 @@ def rank_posts(posts: list[RankablePost], now: datetime | None = None) -> dict[U
         results[post.id] = RankResult(
             base_score=base_scores[post.id],
             rank_score=float(mmr_values[best_idx]),
-            rank_position=rank_position,
         )
 
         remaining_mask[best_idx] = False

@@ -164,7 +164,7 @@ def test_run_cycle_language_gate_covers_untrusted_bluesky_tags(monkeypatch):
     monkeypatch.setattr(
         pipeline.db,
         "fetch_moderation_lists",
-        lambda: pipeline.db.ModerationLists(frozenset(), frozenset(), frozenset(), frozenset(), {}),
+        lambda: pipeline.db.ModerationLists(frozenset(), frozenset(), frozenset(), {}),
     )
     monkeypatch.setattr(pipeline.content_filter, "is_content_excluded", lambda *a, **k: False)
 

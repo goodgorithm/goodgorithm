@@ -40,11 +40,3 @@ class CorpusStore:
         for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
             keys.extend(obj["Key"] for obj in page.get("Contents", []))
         return keys
-
-    def delete_keys(self, keys: list[str]) -> None:
-        """S3 DeleteObjects caps at 1000 keys per call."""
-        for i in range(0, len(keys), 1000):
-            chunk = keys[i : i + 1000]
-            self.client.delete_objects(
-                Bucket=self.bucket, Delete={"Objects": [{"Key": k} for k in chunk]}
-            )
