@@ -20,10 +20,10 @@ export function QuoteLink({ quote }: { quote: ContextAttachment }) {
   const { content } = quote;
   const copy = COPY[quote.kind];
 
-  // content is null for Mastodon posts (unreachable, no quotes/replies
-  // there yet -- see issue #293), and for any row scored before context
-  // resolution shipped - falls back to the original plain-link behavior
-  // rather than a broken empty card.
+  // content is null when resolution hasn't produced a result yet (still
+  // pending) or for a row scored before context resolution shipped -
+  // falls back to the original plain-link behavior rather than a broken
+  // empty card.
   if (content === null) {
     return (
       <a href={quote.url} target="_blank" rel="noreferrer noopener" className={styles.link}>

@@ -51,7 +51,15 @@ class FakeResponse:
         return self._payload
 
 
-def status_payload(content="<p>a lovely status</p>", display_name="Someone", acct="someone", avatar="https://example.com/a.jpg", sensitive=False, spoiler_text=""):
+def status_payload(
+    content="<p>a lovely status</p>",
+    display_name="Someone",
+    acct="someone",
+    avatar="https://example.com/a.jpg",
+    sensitive=False,
+    spoiler_text="",
+    url="https://mastodon.example/@someone/42",
+):
     return {
         "content": content,
         "created_at": "2026-08-10T12:00:00Z",
@@ -61,6 +69,7 @@ def status_payload(content="<p>a lovely status</p>", display_name="Someone", acc
         "account": {"display_name": display_name, "acct": acct, "username": acct, "avatar": avatar},
         "favourites_count": 9999,  # must never surface in the mapped output
         "reblogs_count": 9999,
+        "url": url,
     }
 
 
@@ -78,10 +87,22 @@ def test_resolve_context_maps_a_resolvable_status(monkeypatch):
         "avatarUrl": "https://example.com/a.jpg",
     }
     assert result[target]["createdAt"] == "2026-08-10T12:00:00Z"
+    assert result[target]["url"] == "https://mastodon.example/@someone/42"
     assert "favourites_count" not in result[target]
     assert "reblogs_count" not in result[target]
     # bare-local acct qualified with the target's own origin instance
     assert author_ids[target] == "someone@mastodon.example"
+
+
+def test_resolve_context_missing_url_maps_to_none(monkeypatch):
+    target = "mastodon.example/42"
+    payload = status_payload()
+    del payload["url"]
+    monkeypatch.setattr(requests, "get", lambda url, timeout, headers: FakeResponse(payload))
+
+    result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
+
+    assert result[target]["url"] is None
 
 
 def test_resolve_context_strips_html_and_collapses_whitespace(monkeypatch):
