@@ -169,6 +169,7 @@ def test_resolve_context_maps_a_resolvable_post(monkeypatch):
         "avatarUrl": "https://example.com/a.jpg",
     }
     assert result[uri]["createdAt"] == "2026-08-10T12:00:00Z"
+    assert result[uri]["url"] == "https://bsky.app/profile/did:plc:abc/post/xyz"
     # engagement counts must never leak into the mapped shape
     assert "likeCount" not in result[uri]
     assert "repostCount" not in result[uri]

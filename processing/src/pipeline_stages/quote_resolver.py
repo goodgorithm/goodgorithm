@@ -71,6 +71,20 @@ def _chunk(items: list[str], size: int) -> list[list[str]]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
+def _at_uri_to_bsky_url(uri: str) -> str | None:
+    """at://{did}/app.bsky.feed.post/{rkey} -> a bsky.app permalink, using
+    the resolved postView's own uri -- always a DID, never whatever
+    identifier form (DID or handle) the referencing post originally typed.
+    Consumed by api/'s Mastodon quote-inline/RE: display path (context.py's
+    only api/-facing source of a URL for that cross-platform case); inert
+    for Bluesky-native display, which builds its own permalink directly
+    from the referencing post's own raw_json instead."""
+    parts = uri.split("/")
+    if len(parts) != 5 or parts[3] != "app.bsky.feed.post":
+        return None
+    return f"https://bsky.app/profile/{parts[2]}/post/{parts[4]}"
+
+
 def _map_post_view(post_view: dict, suppressed_terms: frozenset[str], suppressed_domains: frozenset[str]) -> dict:
     """Maps a hydrated postView into the exact display shape api/ serves
     verbatim. Never reads likeCount/repostCount/replyCount/quoteCount/
@@ -107,6 +121,7 @@ def _map_post_view(post_view: dict, suppressed_terms: frozenset[str], suppressed
     handle = author.get("handle")
     avatar = author.get("avatar")
     created_at = record.get("createdAt")
+    uri = post_view.get("uri")
 
     return {
         "status": "available",
@@ -117,6 +132,7 @@ def _map_post_view(post_view: dict, suppressed_terms: frozenset[str], suppressed
         },
         "text": text,
         "createdAt": created_at if isinstance(created_at, str) else None,
+        "url": _at_uri_to_bsky_url(uri) if isinstance(uri, str) else None,
     }
 
 

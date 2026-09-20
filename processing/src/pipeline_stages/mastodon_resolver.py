@@ -77,6 +77,7 @@ def _map_status(status: dict, suppressed_terms: frozenset[str], suppressed_domai
     acct = account.get("acct") or account.get("username")
     avatar = account.get("avatar")
     created_at = status.get("created_at")
+    url = status.get("url")
 
     return {
         "status": "available",
@@ -87,6 +88,13 @@ def _map_status(status: dict, suppressed_terms: frozenset[str], suppressed_domai
         },
         "text": text,
         "createdAt": created_at if isinstance(created_at, str) else None,
+        # Mastodon's own canonical permalink for the status -- unlike a
+        # Bluesky AT-URI, a status id alone (even qualified by instance)
+        # isn't a real URL without the author's username, which we don't
+        # have without this live fetch. api/'s only source for the
+        # attachment's clickable url on a Mastodon-target reply. See
+        # CLAUDE.md's Post attachments & embeds section.
+        "url": url if isinstance(url, str) else None,
     }
 
 

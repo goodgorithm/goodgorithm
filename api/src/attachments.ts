@@ -6,8 +6,7 @@ export interface AttachmentSource {
   author_id: string;
   text: string;
   bluesky_embed: unknown;
-  // record.reply, raw -- only Bluesky's structured-reply field; Mastodon
-  // reply/quote-inline resolution is issue #293, not this pass.
+  // record.reply, raw -- only Bluesky's structured-reply field.
   bluesky_reply: unknown;
   mastodon_media: unknown;
   mastodon_card: unknown;
@@ -17,6 +16,15 @@ export interface AttachmentSource {
   // a fallback for a row processing/ scored before it existed.
   context_content: unknown;
   quote_content: unknown;
+  // processing/'s context_dependency.classify() already determined this
+  // once (quote takes priority over reply by construction, so it's never
+  // both) -- trusted directly for a Mastodon row rather than re-derived
+  // from raw_json/text here, which would duplicate that module's
+  // quote-inline/RE:/in_reply_to_id detection regexes across the
+  // Python<->TypeScript boundary a second time. Unused on the Bluesky
+  // side, which re-derives quote-vs-reply from its own embed/reply shape
+  // directly (unambiguous there, no regex needed).
+  context_kind: string | null;
   generated_thumbnail_url: string | null;
 }
 
@@ -226,6 +234,35 @@ function parseContextContent(raw: unknown): QuoteContent | null {
   }
 
   return null;
+}
+
+// The raw context_content blob carries a url field (added by
+// processing/'s quote_resolver.py/mastodon_resolver.py) that never makes
+// it into the publicly-typed QuoteContent above -- QuoteContent is purely
+// the display shape (author/text/createdAt), while url is this file's own
+// internal signal for whether there's anything to link a Mastodon
+// quote/reply attachment to yet at all. Bluesky's own quote/reply display
+// never needs this -- it builds its permalink separately, straight from
+// the referencing post's own raw_json, no network call required.
+function extractContextUrl(raw: unknown): string | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const url = (raw as { url?: unknown }).url;
+  return isHttpUrl(url) ? url : null;
+}
+
+// Mastodon's own equivalent of parseBlueskyQuote/parseBlueskyReply --
+// diverges from them because Mastodon's raw_json never carries a
+// ready-to-use target URL of its own (see extractContextUrl above), so
+// there's nothing to attach until resolution has actually produced one.
+// context_kind is already "quote" xor "reply" xor null by construction
+// (context_dependency.classify() resolves at most one target per post),
+// so no additional priority logic is needed here the way Bluesky's
+// quote-before-reply check requires.
+function parseMastodonContext(contextKind: string | null, raw: unknown): Attachment | null {
+  if (contextKind !== "quote" && contextKind !== "reply") return null;
+  const url = extractContextUrl(raw);
+  if (url === null) return null; // not yet resolved (pending), or a pre-migration row
+  return { kind: contextKind, url, content: parseContextContent(raw) };
 }
 
 function parseBlueskyQuote(record: unknown, quoteContent: QuoteContent | null): Attachment | null {
@@ -443,6 +480,13 @@ export function buildAttachments(row: AttachmentSource): AttachmentResult {
   } else {
     const card = parseMastodonCard(row.mastodon_card, row.generated_thumbnail_url);
     attachments = [...parseMastodonMedia(row.mastodon_media), ...(card ? [card] : [])];
+
+    // No quote_content fallback here -- that legacy column only ever held
+    // Bluesky-resolved content (Mastodon reply/quote-inline resolution
+    // didn't exist before context_content), so it's always null on a
+    // Mastodon row.
+    const context = parseMastodonContext(row.context_kind, row.context_content);
+    if (context) attachments = [...attachments, context];
   }
 
   return { attachments, sensitive: isSensitive(row.mastodon_sensitive, row.bluesky_labels) };

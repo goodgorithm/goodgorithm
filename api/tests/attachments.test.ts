@@ -25,6 +25,7 @@ function bskyRow(
     bluesky_labels: labels,
     context_content: contextContent,
     quote_content: null,
+    context_kind: null,
     generated_thumbnail_url: generatedThumbnailUrl,
   };
 }
@@ -34,6 +35,8 @@ function mastodonRow(
   card: unknown = null,
   sensitive: boolean | null = null,
   generatedThumbnailUrl: string | null = null,
+  contextKind: string | null = null,
+  contextContent: unknown = null,
 ): AttachmentSource {
   return {
     source: "mastodon",
@@ -45,8 +48,9 @@ function mastodonRow(
     mastodon_card: card,
     mastodon_sensitive: sensitive,
     bluesky_labels: null,
-    context_content: null,
+    context_content: contextContent,
     quote_content: null,
+    context_kind: contextKind,
     generated_thumbnail_url: generatedThumbnailUrl,
   };
 }
@@ -329,6 +333,7 @@ test("quote_content is read only as a fallback when context_content is absent", 
     bluesky_labels: null,
     context_content: null,
     quote_content: { status: "unavailable", reason: "filtered" },
+    context_kind: null,
     generated_thumbnail_url: null,
   };
   const { attachments } = buildAttachments(row);
@@ -789,6 +794,98 @@ test("mastodon audio media_attachment is still dropped (not a supported kind)", 
   const { attachments } = buildAttachments(
     mastodonRow([{ type: "audio", url: "https://example.com/a.mp3", preview_url: null }]),
   );
+  assert.deepEqual(attachments, []);
+});
+
+// --- mastodon reply/quote-inline context (issue #296) ---
+
+const MASTODON_CONTEXT_CONTENT = {
+  status: "available",
+  author: { displayName: "Someone", handle: "someone@fosstodon.org", avatarUrl: null },
+  text: "the parent status text",
+  createdAt: "2026-08-10T12:00:00Z",
+  url: "https://fosstodon.org/@someone/12345",
+};
+
+test("mastodon reply with resolved context builds the reply attachment", () => {
+  const { attachments } = buildAttachments(mastodonRow(null, null, null, null, "reply", MASTODON_CONTEXT_CONTENT));
+  assert.equal(attachments.length, 1);
+  assert.equal(attachments[0]?.kind, "reply");
+  if (attachments[0]?.kind === "reply") {
+    assert.equal(attachments[0].url, "https://fosstodon.org/@someone/12345");
+    assert.deepEqual(attachments[0].content, {
+      status: "available",
+      author: { displayName: "Someone", handle: "someone@fosstodon.org", avatarUrl: null },
+      text: "the parent status text",
+      createdAt: "2026-08-10T12:00:00Z",
+    });
+  }
+});
+
+test("mastodon quote-inline with resolved context builds the quote attachment", () => {
+  const { attachments } = buildAttachments(mastodonRow(null, null, null, null, "quote", MASTODON_CONTEXT_CONTENT));
+  assert.equal(attachments.length, 1);
+  assert.equal(attachments[0]?.kind, "quote");
+});
+
+test("mastodon context still pending (context_content null) produces no attachment", () => {
+  const { attachments } = buildAttachments(mastodonRow(null, null, null, null, "reply", null));
+  assert.deepEqual(attachments, []);
+});
+
+test("mastodon context resolved but urlless (no url field) produces no attachment", () => {
+  const { status, author, text, createdAt } = MASTODON_CONTEXT_CONTENT;
+  const { attachments } = buildAttachments(
+    mastodonRow(null, null, null, null, "reply", { status, author, text, createdAt }),
+  );
+  assert.deepEqual(attachments, []);
+});
+
+test("mastodon context_kind null (not context-dependent) produces no attachment even with context_content present", () => {
+  const { attachments } = buildAttachments(mastodonRow(null, null, null, null, null, MASTODON_CONTEXT_CONTENT));
+  assert.deepEqual(attachments, []);
+});
+
+test("mastodon unavailable (filtered) resolved context still builds the attachment, with unavailable content", () => {
+  const { attachments } = buildAttachments(
+    mastodonRow(null, null, null, null, "reply", {
+      status: "unavailable",
+      reason: "filtered",
+      url: "https://fosstodon.org/@someone/12345",
+    }),
+  );
+  assert.equal(attachments.length, 1);
+  if (attachments[0]?.kind === "reply") {
+    assert.deepEqual(attachments[0].content, { status: "unavailable", reason: "filtered" });
+  }
+});
+
+test("mastodon context with a non-http(s) url is dropped", () => {
+  const { attachments } = buildAttachments(
+    mastodonRow(null, null, null, null, "reply", { ...MASTODON_CONTEXT_CONTENT, url: "javascript:alert(1)" }),
+  );
+  assert.deepEqual(attachments, []);
+});
+
+test("mastodon context appended after media/card attachments", () => {
+  const { attachments } = buildAttachments(
+    mastodonRow(
+      [{ type: "image", url: "https://example.com/a.jpg", preview_url: null }],
+      null,
+      null,
+      null,
+      "reply",
+      MASTODON_CONTEXT_CONTENT,
+    ),
+  );
+  assert.deepEqual(
+    attachments.map((a) => a.kind),
+    ["image", "reply"],
+  );
+});
+
+test("mastodon malformed context_content does not throw", () => {
+  const { attachments } = buildAttachments(mastodonRow(null, null, null, null, "reply", "not-an-object"));
   assert.deepEqual(attachments, []);
 });
 

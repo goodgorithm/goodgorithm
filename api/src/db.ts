@@ -62,6 +62,12 @@ export interface FeedRow {
   bluesky_labels: unknown;
   context_content: unknown;
   quote_content: unknown;
+  // "quote" | "reply" | null -- attachments.ts's only source for whether/
+  // which kind of context attachment to build on a Mastodon row (trusted
+  // directly rather than re-derived from raw_json there). Bluesky's own
+  // display path ignores this, re-deriving quote-vs-reply from its own
+  // embed/reply shape instead.
+  context_kind: string | null;
   category: string | null;
   generated_thumbnail_url: string | null;
 }
@@ -106,6 +112,7 @@ function fetchFeedQuery(limit: number, cursor: Cursor | null, category: string |
            r.raw_json->'commit'->'record'->'labels' AS bluesky_labels,
            p.context_content,
            p.quote_content,
+           p.context_kind,
            p.category,
            p.generated_thumbnail_url
     FROM processed_posts p
