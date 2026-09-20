@@ -442,6 +442,17 @@ class _ScorableText:
     text: str
 
 
+def _resolved_base_score(created_at: datetime, quality_score: float | None, now: datetime) -> float:
+    """Mirrors ranking.compute_base_score() without needing a full
+    RankablePost -- resolve_context() has no entities/is_bot/
+    is_dedup_canonical to give it (compute_base_score doesn't read any of
+    those), and faking placeholders for unused fields would be more
+    confusing than calling the one line this actually is."""
+    if quality_score is None:
+        return 0.0
+    return quality_score * ranking.recency_decay(created_at, now)
+
+
 def resolve_context() -> int:
     """Resolves a batch of replies/quote-posts pending their target's
     content (see context_dependency.py, quote_resolver.py,
@@ -474,6 +485,7 @@ def resolve_context() -> int:
     if not pending:
         return 0
 
+    now = datetime.now(timezone.utc)
     mod = db.fetch_moderation_lists()
     targets_by_post = {
         post.raw_post_id: context_dependency.classify(
@@ -532,6 +544,7 @@ def resolve_context() -> int:
                         quality_score=own_score,
                         quality_method=quality_model.QUALITY_METHOD if own_score is not None else None,
                         context_content=None,
+                        base_score=_resolved_base_score(post.created_at, own_score, now),
                     )
                 )
             continue
@@ -583,6 +596,7 @@ def resolve_context() -> int:
                 quality_score=combined_score,
                 quality_method=quality_model.QUALITY_METHOD if combined_score is not None else None,
                 context_content=content,
+                base_score=_resolved_base_score(post.created_at, combined_score, now),
             )
         )
 
