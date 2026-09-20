@@ -8,7 +8,6 @@ class Cfg:
     """Stand-in for db.PostShapeConfig (satisfies post_shape.ShapeConfig)."""
 
     enabled: bool = True
-    devalue_multiplier: float = 0.3
     repeat_threshold: int | None = 3
 
 
@@ -43,7 +42,6 @@ def test_structured_nowplaying_matches_with_registry_defaults():
         match = post_shape.classify(text)
         assert match is not None, text
         assert match.name == "nowplaying"
-        assert match.devalue_multiplier == 0.3
         assert match.repeat_threshold == 3
 
 
@@ -59,8 +57,7 @@ def test_genuine_or_incidental_text_does_not_match():
 
 
 def test_db_row_overrides_the_registry_literals():
-    match = post_shape.classify(HOT21, {"nowplaying": Cfg(devalue_multiplier=0.5, repeat_threshold=10)})
-    assert match.devalue_multiplier == 0.5
+    match = post_shape.classify(HOT21, {"nowplaying": Cfg(repeat_threshold=10)})
     assert match.repeat_threshold == 10
 
 
@@ -71,7 +68,7 @@ def test_disabled_shape_is_skipped():
 def test_unknown_shape_name_in_config_is_ignored():
     match = post_shape.classify(HOT21, {"flight_tracker": Cfg(enabled=False)})
     assert match is not None and match.name == "nowplaying"
-    assert match.devalue_multiplier == 0.3  # registry literal, no override for "nowplaying"
+    assert match.repeat_threshold == 3  # registry literal, no override for "nowplaying"
 
 
 def test_devalue_only_shape_config_carries_null_threshold():
@@ -120,7 +117,6 @@ def test_promo_groups_match_with_registry_defaults():
         assert match is not None, group
         assert match.name == "promo", group
         assert match.key == group
-        assert match.devalue_multiplier == 0.35
         assert match.repeat_threshold == 6
 
 
@@ -137,9 +133,8 @@ def test_genuine_prose_does_not_match_promo():
 
 
 def test_promo_db_row_overrides_the_registry_literals():
-    match = post_shape.classify(PROMO["vote"], {"promo": Cfg(devalue_multiplier=0.5, repeat_threshold=10)})
+    match = post_shape.classify(PROMO["vote"], {"promo": Cfg(repeat_threshold=10)})
     assert match.name == "promo"
-    assert match.devalue_multiplier == 0.5
     assert match.repeat_threshold == 10
 
 

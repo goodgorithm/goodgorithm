@@ -369,7 +369,7 @@ def test_score_bot_disabled_shape_config_suppresses_the_override():
     from infra.db import PostShapeConfig
 
     index = InMemoryBotFilterIndex()
-    disabled = {"nowplaying": PostShapeConfig(enabled=False, devalue_multiplier=1.0, repeat_threshold=3)}
+    disabled = {"nowplaying": PostShapeConfig(enabled=False, repeat_threshold=3)}
     for _ in range(5):
         last = bot_filter.score_bot("bluesky", "did:plc:jointradio", JOINT_REGGAE_1, uuid4(), index, disabled)
     assert last.shape_component == 0.0

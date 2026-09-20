@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchFeed, fetchHealth } from "../../src/api/client";
+import { fetchFeed } from "../../src/api/client";
 
 describe("api client", () => {
   beforeEach(() => {
@@ -9,17 +9,6 @@ describe("api client", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-  });
-
-  it("fetches /health", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ status: "ok" }), { status: 200 }),
-    );
-
-    const result = await fetchHealth();
-
-    expect(result).toEqual({ status: "ok" });
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/health"));
   });
 
   it("fetches from /v1/feed, passing the cursor through when present", async () => {
@@ -49,6 +38,6 @@ describe("api client", () => {
   it("throws on a non-OK response", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response("nope", { status: 500 }));
 
-    await expect(fetchHealth()).rejects.toThrow("500");
+    await expect(fetchFeed(null)).rejects.toThrow("500");
   });
 });

@@ -1,4 +1,4 @@
-import type { FeedResponse, HealthResponse } from "./types";
+import type { FeedResponse } from "./types";
 
 const BASE_URL: string = import.meta.env.VITE_API_BASE_URL;
 
@@ -12,10 +12,6 @@ async function getJson<T>(path: string): Promise<T> {
     throw new Error(`${path} responded with ${response.status}`);
   }
   return response.json() as Promise<T>;
-}
-
-export function fetchHealth(): Promise<HealthResponse> {
-  return getJson<HealthResponse>("/health");
 }
 
 export function fetchFeed(cursor: string | null, limit = 20): Promise<FeedResponse> {

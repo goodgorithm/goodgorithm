@@ -1,8 +1,6 @@
 import { buildBlueskyPostUrl } from "./permalink";
 import type { Attachment, QuoteContent } from "./types";
 
-export type { Attachment, QuoteContent } from "./types";
-
 export interface AttachmentSource {
   source: "bluesky" | "mastodon";
   author_id: string;

@@ -8,22 +8,6 @@ from datetime import datetime
 
 from infra.db import ExportablePost
 
-# Raw text plus the minimum metadata to filter the corpus later without
-# re-deriving it. Deliberately no sentiment_score (circular for training a
-# sentiment model), no author id, no engagement counts. Near-duplicate
-# rows are kept, not dropped -- is_dedup_canonical + dedup_cluster_id let a
-# training pipeline collapse them (or not) as it needs.
-RECORD_FIELDS = (
-    "text",
-    "source",
-    "created_at",
-    "category",
-    "category_method",
-    "pipeline_version",
-    "dedup_cluster_id",
-    "is_dedup_canonical",
-)
-
 
 @dataclass
 class CorpusObject:
@@ -32,6 +16,11 @@ class CorpusObject:
     raw_post_ids: list
 
 
+# Raw text plus the minimum metadata to filter the corpus later without
+# re-deriving it. Deliberately no sentiment_score/quality_score (circular
+# for training the project's own embeddings), no author id, no engagement
+# counts. Near-duplicate rows are kept, not dropped -- is_dedup_canonical +
+# dedup_cluster_id let a training pipeline collapse them (or not) as it needs.
 def _record(post: ExportablePost) -> dict:
     return {
         "text": post.text,

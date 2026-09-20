@@ -242,8 +242,6 @@ def run_cycle(batch_size: int) -> int:
             penalties.PenaltyContext(
                 source=post.source,
                 author_id=post.author_id,
-                raw_json=post.raw_json,
-                text=post.text,
                 context_action=context_classifications[post.id],
                 aggregator_instances=mod.aggregator_instances,
             )

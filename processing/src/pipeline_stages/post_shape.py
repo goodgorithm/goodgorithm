@@ -1,10 +1,9 @@
 """Registry of "post shapes" -- named, structured, largely-automated post
-patterns that carry a devalue_multiplier config (currently unread -- no
-penalties.py entry applies it) and, optionally, feed the bot filter's
-repeat-gated is_bot override. "now playing on <station>" radio/
-stream bots are the first entry; flight-tracker bots, affiliate/counterfeit
-spam and campaign-donation keyword posts are the same kind of gap (see the
-wiki's Content Policy page).
+patterns that feed the bot filter's repeat-gated is_bot override.
+"now playing on <station>" radio/stream bots are the first entry;
+flight-tracker bots, affiliate/counterfeit spam and campaign-donation
+keyword posts are the same kind of gap (see the wiki's Content Policy
+page).
 
 One registry, structured like context_dependency.py's PLATFORM_POLICIES --
 adding a shape means one SHAPES entry plus its true/false-positive fixture
@@ -16,9 +15,9 @@ The regex patterns live here in code, never the DB: processing/ is one
 long-lived loop, stdlib `re` has no timeout and there's no linear-time
 engine available, so a catastrophic-backtracking pattern from the DB would
 hang the whole pipeline with no mitigation. The `post_shapes` DB table
-carries only the operational knobs (enabled / devalue_multiplier /
-repeat_threshold), overriding the code defaults below -- see
-db.fetch_post_shape_config and the wiki's Configuration page.
+carries only the operational knobs (enabled / repeat_threshold),
+overriding the code defaults below -- see db.fetch_post_shape_config and
+the wiki's Configuration page.
 """
 
 import re
@@ -201,13 +200,12 @@ def _promo_match(text: str) -> str | None:
 class PostShape:
     name: str  # lowercase slug; the `post_shapes` DB row is keyed by this
     match: Callable[[str], str | None]  # -> per-entity grouping key, or None
-    devalue_multiplier: float  # code default; a post_shapes row overrides it
-    repeat_threshold: int | None  # None -> devalue only, no is_bot override
+    repeat_threshold: int | None  # None -> no is_bot override
 
 
 SHAPES: tuple[PostShape, ...] = (
-    PostShape(name="nowplaying", match=_nowplaying_match, devalue_multiplier=0.3, repeat_threshold=3),
-    PostShape(name="promo", match=_promo_match, devalue_multiplier=0.35, repeat_threshold=6),
+    PostShape(name="nowplaying", match=_nowplaying_match, repeat_threshold=3),
+    PostShape(name="promo", match=_promo_match, repeat_threshold=6),
 )
 
 
@@ -217,7 +215,6 @@ class ShapeConfig(Protocol):
     shape with no row falls back to its PostShape registry literals."""
 
     enabled: bool
-    devalue_multiplier: float
     repeat_threshold: int | None
 
 
@@ -225,7 +222,6 @@ class ShapeConfig(Protocol):
 class ShapeMatch:
     name: str
     key: str  # the shape's per-entity grouping key ("" if the shape has no sub-key)
-    devalue_multiplier: float
     repeat_threshold: int | None
 
 
@@ -241,6 +237,6 @@ def classify(text: str, shape_config: dict[str, ShapeConfig] | None = None) -> S
         if key is None:
             continue
         if cfg is not None:
-            return ShapeMatch(shape.name, key, cfg.devalue_multiplier, cfg.repeat_threshold)
-        return ShapeMatch(shape.name, key, shape.devalue_multiplier, shape.repeat_threshold)
+            return ShapeMatch(shape.name, key, cfg.repeat_threshold)
+        return ShapeMatch(shape.name, key, shape.repeat_threshold)
     return None
