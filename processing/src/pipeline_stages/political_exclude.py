@@ -11,10 +11,7 @@ import os
 # Both signals must independently clear their threshold before a post is
 # excluded -- excluding is irreversible and invisible to the user, so this
 # uses the stricter, higher-precision operating point (99.2% precision /
-# ~32% recall on the held-out political/civic-tone evaluation set). The
-# looser, higher-recall threshold lives on the devalue penalty instead
-# (pipeline_stages/penalties.py's POLITICAL_DEVALUE_THRESHOLD), since a
-# devalued post stays visible and a wrong call there costs far less.
+# ~32% recall on the held-out political/civic-tone evaluation set).
 POLITICAL_EXCLUDE_CLASSIFIER_THRESHOLD = float(
     os.environ.get("POLITICAL_EXCLUDE_CLASSIFIER_THRESHOLD", "0.7128")
 )

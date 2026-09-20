@@ -211,44 +211,41 @@ class RankableRow:
     raw_post_id: UUID
     text: str
     created_at: datetime
-    sentiment_score: float
-    topicality_score: float
+    quality_score: float | None
     entities: list
     is_bot: bool
     is_dedup_canonical: bool
-    penalty_multiplier: float
     source: str
     author_id: str
 
 
-def fetch_rankable_posts(since: datetime, min_sentiment: float, pool_size: int) -> list[RankableRow]:
-    """Pushes filter_eligible's is_bot/is_dedup_canonical/sentiment checks
-    and the RANKING_MMR_CANDIDATE_POOL_SIZE cap into SQL, rather than
-    fetching every eligible post's full text for the whole time window and
-    filtering/capping in Python. ORDER BY p.base_score uses each row's
-    previous-cycle value (at most REFRESH_RANKINGS_INTERVAL_SECONDS stale,
-    since this same process rewrites it every cycle) as a proxy for this
-    cycle's own ranking cutoff -- close enough given how little recency
-    decay moves in that window. rank_posts() still re-filters/re-caps in
-    Python too, so behavior stays correct even when it's called with an
-    arbitrary post list (tests, a REPL) that didn't come through this
-    query. See the wiki's Processing Infrastructure page."""
+def fetch_rankable_posts(since: datetime, pool_size: int) -> list[RankableRow]:
+    """Pushes filter_eligible's is_bot/is_dedup_canonical checks and the
+    RANKING_MMR_CANDIDATE_POOL_SIZE cap into SQL, rather than fetching every
+    eligible post's full text for the whole time window and filtering/
+    capping in Python. ORDER BY p.base_score uses each row's previous-cycle
+    value (at most REFRESH_RANKINGS_INTERVAL_SECONDS stale, since this same
+    process rewrites it every cycle) as a proxy for this cycle's own ranking
+    cutoff -- close enough given how little recency decay moves in that
+    window. rank_posts() still re-filters/re-caps in Python too, so
+    behavior stays correct even when it's called with an arbitrary post
+    list (tests, a REPL) that didn't come through this query. See the
+    wiki's Processing Infrastructure page."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
-            SELECT r.id, r.text, r.created_at, p.sentiment_score, p.topicality_score,
-                   p.entities, p.is_bot, p.is_dedup_canonical, p.penalty_multiplier,
+            SELECT r.id, r.text, r.created_at, p.quality_score,
+                   p.entities, p.is_bot, p.is_dedup_canonical,
                    r.source, r.author_id
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
             WHERE r.created_at >= %s
               AND p.is_bot = false
               AND p.is_dedup_canonical = true
-              AND p.sentiment_score >= %s
             ORDER BY p.base_score DESC NULLS LAST
             LIMIT %s
             """,
-            (since, min_sentiment, pool_size),
+            (since, pool_size),
         ).fetchall()
     return [RankableRow(*row) for row in rows]
 

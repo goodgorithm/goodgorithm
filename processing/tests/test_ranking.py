@@ -10,14 +10,12 @@ NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def make_post(
-    sentiment_score=0.5,
-    topicality_score=1.0,
+    quality_score=0.5,
     entities=None,
     age_hours=0.0,
     is_bot=False,
     is_dedup_canonical=True,
     text="a distinct post about nothing in particular",
-    penalty_multiplier=1.0,
     source=None,
     author_id=None,
 ):
@@ -28,21 +26,13 @@ def make_post(
         id=uuid4(),
         text=text,
         created_at=NOW - timedelta(hours=age_hours),
-        sentiment_score=sentiment_score,
-        topicality_score=topicality_score,
+        quality_score=quality_score,
         entities=entities or [],
         is_bot=is_bot,
         is_dedup_canonical=is_dedup_canonical,
         source=source or "bluesky",
         author_id=author_id or str(uuid4()),
-        penalty_multiplier=penalty_multiplier,
     )
-
-
-def test_positivity_clamps_negative_to_zero():
-    assert ranking.positivity(-0.5) == 0.0
-    assert ranking.positivity(0.0) == 0.0
-    assert ranking.positivity(0.8) == 0.8
 
 
 def test_recency_decay_half_life():
@@ -64,29 +54,31 @@ def test_recency_decay_snaps_to_zero_for_very_old_posts():
     assert ranking.recency_decay(very_old.created_at, NOW) == 0.0
 
 
-def test_compute_base_score_multiplies_components():
-    post = make_post(sentiment_score=0.5, topicality_score=2.0, age_hours=0.0)
-    assert abs(ranking.compute_base_score(post, NOW) - 1.0) < 1e-9  # positivity(0.5) * 2.0 * decay(1.0)
+def test_compute_base_score_multiplies_quality_by_recency():
+    post = make_post(quality_score=0.8, age_hours=0.0)
+    assert abs(ranking.compute_base_score(post, NOW) - 0.8) < 1e-9  # 0.8 * decay(1.0)
 
 
-def test_compute_base_score_applies_penalty_multiplier():
-    # base_score scales linearly with penalty_multiplier -- the single
-    # combined devalue product from penalties.py (see test_penalties.py for
-    # how the individual penalties compose into it).
-    full = make_post(sentiment_score=0.5, topicality_score=2.0, penalty_multiplier=1.0)
-    devalued = make_post(sentiment_score=0.5, topicality_score=2.0, penalty_multiplier=0.12)
-    assert abs(
-        ranking.compute_base_score(devalued, NOW) - ranking.compute_base_score(full, NOW) * 0.12
-    ) < 1e-9
+def test_compute_base_score_scales_with_recency_decay():
+    fresh = make_post(quality_score=0.8, age_hours=0.0)
+    half_life = make_post(quality_score=0.8, age_hours=ranking.RANKING_HALF_LIFE_HOURS)
+    assert abs(ranking.compute_base_score(half_life, NOW) - ranking.compute_base_score(fresh, NOW) * 0.5) < 1e-9
 
 
-def test_filter_eligible_excludes_bots_duplicates_and_low_sentiment():
-    good = make_post(sentiment_score=0.5)
-    bot = make_post(sentiment_score=0.5, is_bot=True)
-    duplicate = make_post(sentiment_score=0.5, is_dedup_canonical=False)
-    too_neutral = make_post(sentiment_score=ranking.RANKING_POSITIVITY_THRESHOLD - 0.01)
+def test_compute_base_score_degrades_to_zero_when_quality_score_missing():
+    # quality_score is only ever None during a quality-model outage
+    # (quality_exclude.py fails open rather than blocking the whole feed) --
+    # compute_base_score must degrade, not crash on None * float.
+    post = make_post(quality_score=None)
+    assert ranking.compute_base_score(post, NOW) == 0.0
 
-    eligible = ranking.filter_eligible([good, bot, duplicate, too_neutral])
+
+def test_filter_eligible_excludes_bots_and_duplicates():
+    good = make_post()
+    bot = make_post(is_bot=True)
+    duplicate = make_post(is_dedup_canonical=False)
+
+    eligible = ranking.filter_eligible([good, bot, duplicate])
 
     assert eligible == [good]
 
@@ -108,9 +100,9 @@ def test_rank_posts_empty_input_returns_empty():
 def test_rank_posts_orders_by_base_score_when_no_topical_overlap():
     # three unrelated posts, no shared entities/text — MMR's diversity term
     # is ~0 for all pairs, so order should just follow base_score.
-    high = make_post(sentiment_score=0.9, topicality_score=1.0, text="a big story about volcanoes erupting")
-    mid = make_post(sentiment_score=0.5, topicality_score=1.0, text="a smaller story about local gardening")
-    low = make_post(sentiment_score=0.3, topicality_score=1.0, text="a quiet note about weekend weather")
+    high = make_post(quality_score=0.9, text="a big story about volcanoes erupting")
+    mid = make_post(quality_score=0.5, text="a smaller story about local gardening")
+    low = make_post(quality_score=0.3, text="a quiet note about weekend weather")
 
     results = ranking.rank_posts([high, mid, low], now=NOW)
 
@@ -121,7 +113,7 @@ def test_rank_posts_orders_by_base_score_when_no_topical_overlap():
 
 def test_rank_score_is_non_increasing_across_selection_order():
     posts = [
-        make_post(sentiment_score=s, topicality_score=1.0, text=f"story number {i} about topic {i}")
+        make_post(quality_score=s, text=f"story number {i} about topic {i}")
         for i, s in enumerate([0.9, 0.4, 0.7, 0.5, 0.3])
     ]
     results = ranking.rank_posts(posts, now=NOW)
@@ -136,19 +128,19 @@ def test_mmr_spreads_out_near_duplicate_topics():
     # the distinct post ahead of at least one higher-scoring duplicate.
     earthquake_entities = ["california", "earthquake"]
     e1 = make_post(
-        sentiment_score=0.5, topicality_score=1.0, entities=earthquake_entities,
+        quality_score=1.0, entities=earthquake_entities,
         text="Earthquake strikes California coast this morning",
     )
     e2 = make_post(
-        sentiment_score=0.5, topicality_score=0.95, entities=earthquake_entities,
+        quality_score=0.95, entities=earthquake_entities,
         text="California earthquake confirmed by seismologists",
     )
     e3 = make_post(
-        sentiment_score=0.5, topicality_score=0.9, entities=earthquake_entities,
+        quality_score=0.9, entities=earthquake_entities,
         text="More details emerge on the California earthquake",
     )
     diverse = make_post(
-        sentiment_score=0.5, topicality_score=0.7, entities=["sourdough"],
+        quality_score=0.7, entities=["sourdough"],
         text="Local bakery wins national award for best sourdough",
     )
 
@@ -171,19 +163,19 @@ def test_mmr_spreads_out_same_author_regardless_of_topic():
     # nothing about content similarity would do that on its own.
     author = "prolific@example.social"
     a1 = make_post(
-        sentiment_score=0.5, topicality_score=1.0, source="mastodon", author_id=author,
+        quality_score=1.0, source="mastodon", author_id=author,
         entities=["jazz album"], text="reviewing a new jazz album from a local artist",
     )
     a2 = make_post(
-        sentiment_score=0.5, topicality_score=0.95, source="mastodon", author_id=author,
+        quality_score=0.95, source="mastodon", author_id=author,
         entities=["short film"], text="a short film premiered at the neighborhood theater",
     )
     a3 = make_post(
-        sentiment_score=0.5, topicality_score=0.9, source="mastodon", author_id=author,
+        quality_score=0.9, source="mastodon", author_id=author,
         entities=["mural"], text="a mural was painted downtown this weekend",
     )
     diverse = make_post(
-        sentiment_score=0.5, topicality_score=0.7, source="mastodon", author_id="other@example.social",
+        quality_score=0.7, source="mastodon", author_id="other@example.social",
         entities=["bridge"], text="a bridge reopened after repairs",
     )
 
@@ -256,8 +248,7 @@ def test_rank_posts_scales_to_production_volume():
             id=uuid4(),
             text=text,
             created_at=NOW - timedelta(minutes=i),
-            sentiment_score=rng.uniform(0.3, 1.0),
-            topicality_score=rng.uniform(0.5, 2.0),
+            quality_score=rng.uniform(0.39, 1.0),
             entities=entities,
             is_bot=False,
             is_dedup_canonical=True,
@@ -287,8 +278,7 @@ def test_rank_posts_caps_candidate_pool_by_base_score():
             id=uuid4(),
             text=f"distinct post number {i} about nothing in particular",
             created_at=NOW,
-            sentiment_score=0.3 + (i / n) * 0.7,  # strictly increasing base_score
-            topicality_score=1.0,
+            quality_score=0.39 + (i / n) * 0.61,  # strictly increasing base_score
             entities=[],
             is_bot=False,
             is_dedup_canonical=True,
@@ -305,4 +295,4 @@ def test_rank_posts_caps_candidate_pool_by_base_score():
     kept_ids = set(results)
     dropped = [p for p in posts if p.id not in kept_ids]
     kept = [p for p in posts if p.id in kept_ids]
-    assert max(p.sentiment_score for p in dropped) <= min(p.sentiment_score for p in kept)
+    assert max(p.quality_score for p in dropped) <= min(p.quality_score for p in kept)

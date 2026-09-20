@@ -246,10 +246,6 @@ def run_cycle(batch_size: int) -> int:
                 text=post.text,
                 context_action=context_classifications[post.id],
                 aggregator_instances=mod.aggregator_instances,
-                syndication_domains=mod.syndication_domains,
-                shape_config=mod.post_shape_config,
-                quote_content=quote_content,
-                political_score=political_score,
             )
         )
 
@@ -257,14 +253,12 @@ def run_cycle(batch_size: int) -> int:
             id=post.id,
             text=post.text,
             created_at=post.created_at,
-            sentiment_score=sentiment_score,
-            topicality_score=topic.score,
+            quality_score=quality_score,
             entities=topic.entities,
             is_bot=bot_score.is_bot,
             is_dedup_canonical=cluster.is_canonical,
             source=post.source,
             author_id=post.author_id,
-            penalty_multiplier=penalty.multiplier,
         )
         base_score = ranking.compute_base_score(rankable, now)
 
@@ -321,21 +315,19 @@ def refresh_rankings() -> int:
     which changes MMR's diversity trade-offs for everyone still in it. See
     the wiki's Pipeline Internals and Configuration pages."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=ranking.RANKING_MMR_WINDOW_HOURS)
-    rows = db.fetch_rankable_posts(cutoff, ranking.RANKING_POSITIVITY_THRESHOLD, ranking.RANKING_MMR_CANDIDATE_POOL_SIZE)
+    rows = db.fetch_rankable_posts(cutoff, ranking.RANKING_MMR_CANDIDATE_POOL_SIZE)
 
     posts = [
         ranking.RankablePost(
             id=row.raw_post_id,
             text=row.text,
             created_at=row.created_at,
-            sentiment_score=row.sentiment_score,
-            topicality_score=row.topicality_score,
+            quality_score=row.quality_score,
             entities=row.entities or [],
             is_bot=row.is_bot,
             is_dedup_canonical=row.is_dedup_canonical,
             source=row.source,
             author_id=row.author_id,
-            penalty_multiplier=row.penalty_multiplier,
         )
         for row in rows
     ]

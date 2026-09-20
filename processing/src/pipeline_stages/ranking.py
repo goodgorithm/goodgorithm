@@ -13,7 +13,6 @@ from util.text_normalize import normalize_text
 
 # See the wiki's Ranking page for what each of these controls and why the
 # defaults are what they are.
-RANKING_POSITIVITY_THRESHOLD = float(os.environ.get("RANKING_POSITIVITY_THRESHOLD", "0.3"))
 RANKING_HALF_LIFE_HOURS = float(os.environ.get("RANKING_HALF_LIFE_HOURS", "12.0"))
 if RANKING_HALF_LIFE_HOURS <= 0:
     raise ValueError(f"RANKING_HALF_LIFE_HOURS ({RANKING_HALF_LIFE_HOURS}) must be greater than 0")
@@ -44,8 +43,13 @@ class RankablePost:
     id: UUID
     text: str
     created_at: datetime
-    sentiment_score: float
-    topicality_score: float
+    # The trained quality classifier's P(genuinely-uplifting-and-
+    # substantive) -- the sole content-quality input to compute_base_score.
+    # Every post reaching this dataclass already cleared quality_exclude.py's
+    # hard-exclude gate (score >= QUALITY_EXCLUDE_THRESHOLD), with one
+    # exception: quality_exclude.py fails open when the model isn't loaded
+    # at all, so None can reach here too -- compute_base_score handles it.
+    quality_score: float | None
     entities: list[str]
     is_bot: bool
     is_dedup_canonical: bool
@@ -56,13 +60,6 @@ class RankablePost:
     # doesn't fragment into several apparently-diverse "authors" here too.
     source: str
     author_id: str
-    # penalties.py's combined devalue multiplier -- the product of every
-    # registered penalty (context-dependency, bare link-share, aggregator
-    # instance, post shape, ...), 1.0 when none apply. Every factor is
-    # content-derived, never an engagement signal. See the wiki's Penalties
-    # page; the per-penalty breakdown is persisted separately as
-    # processed_posts.penalty_detail.
-    penalty_multiplier: float = 1.0
 
 
 @dataclass
@@ -70,10 +67,6 @@ class RankResult:
     base_score: float
     rank_score: float
     rank_position: int  # 0-indexed selection order from the MMR pass
-
-
-def positivity(sentiment_score: float) -> float:
-    return max(0.0, sentiment_score)
 
 
 MIN_DECAY = 1e-30  # comfortably above float4/REAL's underflow range (~1.4e-45)
@@ -91,23 +84,19 @@ def recency_decay(created_at: datetime, now: datetime) -> float:
 
 
 def compute_base_score(post: RankablePost, now: datetime) -> float:
-    """Content-derived only — positivity x topicality x recency x
-    penalty_multiplier (penalties.py's combined devalue product). No
-    engagement field exists on RankablePost for this to accidentally read."""
-    return (
-        positivity(post.sentiment_score)
-        * post.topicality_score
-        * recency_decay(post.created_at, now)
-        * post.penalty_multiplier
-    )
+    """Content-derived only — quality_score x recency. No engagement field
+    exists on RankablePost for this to accidentally read. quality_score is
+    only ever None during a quality-model outage (quality_exclude.py fails
+    open rather than blocking the whole feed) -- degrades to a pure-
+    diversity MMR pass (every unscored post ties at 0.0) rather than
+    crashing the cycle."""
+    if post.quality_score is None:
+        return 0.0
+    return post.quality_score * recency_decay(post.created_at, now)
 
 
 def filter_eligible(posts: list[RankablePost]) -> list[RankablePost]:
-    return [
-        p
-        for p in posts
-        if not p.is_bot and p.is_dedup_canonical and p.sentiment_score >= RANKING_POSITIVITY_THRESHOLD
-    ]
+    return [p for p in posts if not p.is_bot and p.is_dedup_canonical]
 
 
 def _entity_similarity_matrix(entity_lists: list[list[str]]) -> np.ndarray:
@@ -193,7 +182,7 @@ def _similarity_matrix(posts: list[RankablePost]) -> np.ndarray:
 
 def rank_posts(posts: list[RankablePost], now: datetime | None = None) -> dict[UUID, RankResult]:
     """Filters to eligible posts within a recent window, computes a content-
-    derived base_score (positivity x topicality x recency), then greedily
+    derived base_score (quality_score x recency), then greedily
     selects posts by Maximal Marginal Relevance so near-duplicate topics
     don't dominate the feed. Selection order becomes rank_score — provably
     non-increasing across rounds (each round's winner is bounded by the
