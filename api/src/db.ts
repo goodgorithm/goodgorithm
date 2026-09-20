@@ -55,10 +55,12 @@ export interface FeedRow {
   mastodon_account_emojis: unknown;
   mastodon_status_emojis: unknown;
   bluesky_embed: unknown;
+  bluesky_reply: unknown;
   mastodon_media: unknown;
   mastodon_card: unknown;
   mastodon_sensitive: boolean | null;
   bluesky_labels: unknown;
+  context_content: unknown;
   quote_content: unknown;
   category: string | null;
   generated_thumbnail_url: string | null;
@@ -97,10 +99,12 @@ function fetchFeedQuery(limit: number, cursor: Cursor | null, category: string |
            r.raw_json->'account'->'emojis' AS mastodon_account_emojis,
            r.raw_json->'emojis' AS mastodon_status_emojis,
            r.raw_json->'commit'->'record'->'embed' AS bluesky_embed,
+           r.raw_json->'commit'->'record'->'reply' AS bluesky_reply,
            r.raw_json->'media_attachments' AS mastodon_media,
            r.raw_json->'card' AS mastodon_card,
            (r.raw_json->>'sensitive')::boolean AS mastodon_sensitive,
            r.raw_json->'commit'->'record'->'labels' AS bluesky_labels,
+           p.context_content,
            p.quote_content,
            p.category,
            p.generated_thumbnail_url

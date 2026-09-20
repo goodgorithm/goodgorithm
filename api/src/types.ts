@@ -59,9 +59,12 @@ export interface FeedPostAuthor {
 // Pre-shaped by processing/'s quote_resolver.py at scoring time (batched
 // AppView calls, content-filtered before storage) and passed straight
 // through here - api/ does no further shaping or network calls of its
-// own. "not_found" covers deleted/blocked/detached alike (getPosts, the
-// batch endpoint used to resolve these, doesn't distinguish which - only
-// per-thread embed views do, and resolving each quote's own thread just
+// own. Shared shape for both a quote-post's target and a reply's parent
+// (see the "quote"/"reply" Attachment kinds below) - Bluesky's AppView
+// resolves either the same way, so the display shape is identical.
+// "not_found" covers deleted/blocked/detached alike (getPosts, the batch
+// endpoint used to resolve these, doesn't distinguish which - only
+// per-thread embed views do, and resolving each target's own thread just
 // for that distinction isn't worth the extra AppView calls.
 export type QuoteContent =
   | {
@@ -97,7 +100,8 @@ export type Attachment =
       width: number | null;
       height: number | null;
     }
-  | { kind: "quote"; url: string; content: QuoteContent | null };
+  | { kind: "quote"; url: string; content: QuoteContent | null }
+  | { kind: "reply"; url: string; content: QuoteContent | null };
 
 export interface FeedPost {
   id: string;

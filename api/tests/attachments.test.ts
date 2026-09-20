@@ -8,20 +8,23 @@ const DID = "did:plc:ibf6ehn7ba3va4jyqhzx6vv3";
 function bskyRow(
   embed: unknown,
   labels: unknown = null,
-  quoteContent: unknown = null,
+  contextContent: unknown = null,
   generatedThumbnailUrl: string | null = null,
   text = "",
+  reply: unknown = null,
 ): AttachmentSource {
   return {
     source: "bluesky",
     author_id: DID,
     text,
     bluesky_embed: embed,
+    bluesky_reply: reply,
     mastodon_media: null,
     mastodon_card: null,
     mastodon_sensitive: null,
     bluesky_labels: labels,
-    quote_content: quoteContent,
+    context_content: contextContent,
+    quote_content: null,
     generated_thumbnail_url: generatedThumbnailUrl,
   };
 }
@@ -37,10 +40,12 @@ function mastodonRow(
     author_id: "fosstodon.org/someone",
     text: "",
     bluesky_embed: null,
+    bluesky_reply: null,
     mastodon_media: media,
     mastodon_card: card,
     mastodon_sensitive: sensitive,
     bluesky_labels: null,
+    context_content: null,
     quote_content: null,
     generated_thumbnail_url: generatedThumbnailUrl,
   };
@@ -305,6 +310,106 @@ test("bluesky quote of a non-post collection (e.g. a list) is skipped", () => {
       record: { cid: "x", uri: "at://did:plc:abc/app.bsky.graph.list/xyz" },
     }),
   );
+  assert.deepEqual(attachments, []);
+});
+
+test("quote_content is read only as a fallback when context_content is absent", () => {
+  const row: AttachmentSource = {
+    source: "bluesky",
+    author_id: DID,
+    text: "",
+    bluesky_embed: {
+      $type: "app.bsky.embed.record",
+      record: { cid: "x", uri: "at://did:plc:abc/app.bsky.feed.post/xyz" },
+    },
+    bluesky_reply: null,
+    mastodon_media: null,
+    mastodon_card: null,
+    mastodon_sensitive: null,
+    bluesky_labels: null,
+    context_content: null,
+    quote_content: { status: "unavailable", reason: "filtered" },
+    generated_thumbnail_url: null,
+  };
+  const { attachments } = buildAttachments(row);
+
+  assert.equal(attachments[0]?.kind, "quote");
+  if (attachments[0]?.kind === "quote") {
+    assert.deepEqual(attachments[0].content, { status: "unavailable", reason: "filtered" });
+  }
+});
+
+// --- Bluesky replies ---
+
+test("bluesky reply to a real post builds a permalink", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(
+      null,
+      null,
+      null,
+      null,
+      "",
+      { parent: { cid: "x", uri: "at://did:plc:7gtqafwrxxrqfjeq5vgjauir/app.bsky.feed.post/3msljo7hyxc2o" } },
+    ),
+  );
+
+  assert.deepEqual(attachments, [
+    {
+      kind: "reply",
+      url: "https://bsky.app/profile/did:plc:7gtqafwrxxrqfjeq5vgjauir/post/3msljo7hyxc2o",
+      content: null,
+    },
+  ]);
+});
+
+test("bluesky reply with resolved context (available)", () => {
+  const { attachments } = buildAttachments(
+    bskyRow(
+      null,
+      null,
+      {
+        status: "available",
+        author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: null },
+        text: "the post being replied to",
+        createdAt: "2026-09-20T00:00:00Z",
+      },
+      null,
+      "",
+      { parent: { cid: "x", uri: "at://did:plc:abc/app.bsky.feed.post/xyz" } },
+    ),
+  );
+
+  assert.equal(attachments[0]?.kind, "reply");
+  if (attachments[0]?.kind === "reply") {
+    assert.equal(attachments[0].content?.status, "available");
+  }
+});
+
+test("a post with both a quote embed and a reply parent only gets a quote attachment", () => {
+  // Mirrors processing/'s own priority (quote_resolver.extract_context_target):
+  // only one context target is ever resolved/scored per post, so api/ must
+  // apply the same priority or it would show reply-shaped UI for content
+  // that's actually the quote's resolved text, or vice versa.
+  const { attachments } = buildAttachments(
+    bskyRow(
+      {
+        $type: "app.bsky.embed.record",
+        record: { cid: "q", uri: "at://did:plc:quoted/app.bsky.feed.post/q1" },
+      },
+      null,
+      null,
+      null,
+      "",
+      { parent: { cid: "r", uri: "at://did:plc:parent/app.bsky.feed.post/r1" } },
+    ),
+  );
+
+  assert.equal(attachments.length, 1);
+  assert.equal(attachments[0]?.kind, "quote");
+});
+
+test("bluesky reply with no parent uri produces no attachment", () => {
+  const { attachments } = buildAttachments(bskyRow(null, null, null, null, "", { parent: {} }));
   assert.deepEqual(attachments, []);
 });
 

@@ -39,6 +39,16 @@ def test_resolver_candidate_queries_filter_and_order_on_processed_posts():
         assert "ORDER BY r.created_at" not in src
 
 
+def test_fetch_context_pending_filters_and_orders_on_processed_posts():
+    # issue #292: same reasoning as the resolver candidate queries above --
+    # processed_posts_context_pending_idx only serves the query if it
+    # decides "pending" from processed_posts alone.
+    src = inspect.getsource(db.fetch_context_pending)
+    assert "WHERE p.context_status = 'pending'" in src
+    assert "ORDER BY p.processed_at DESC" in src
+    assert "WHERE r." not in src
+
+
 def _reset_moderation_cache(monkeypatch):
     monkeypatch.setattr(db, "_moderation_lists_cache", None)
     monkeypatch.setattr(db, "_moderation_lists_cached_at", 0.0)

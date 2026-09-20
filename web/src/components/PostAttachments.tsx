@@ -23,6 +23,7 @@ export function PostAttachments({ post, priority = false }: { post: FeedPost; pr
   const links = post.attachments.filter(isKind("link"));
   const videos = post.attachments.filter(isKind("video"));
   const quotes = post.attachments.filter(isKind("quote"));
+  const replies = post.attachments.filter(isKind("reply"));
 
   return (
     <div>
@@ -48,6 +49,9 @@ export function PostAttachments({ post, priority = false }: { post: FeedPost; pr
       )}
       {quotes.map((quote) => (
         <QuoteLink key={quote.url} quote={quote} />
+      ))}
+      {replies.map((reply) => (
+        <QuoteLink key={reply.url} quote={reply} />
       ))}
     </div>
   );

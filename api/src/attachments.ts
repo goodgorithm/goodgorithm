@@ -6,10 +6,16 @@ export interface AttachmentSource {
   author_id: string;
   text: string;
   bluesky_embed: unknown;
+  // record.reply, raw -- only Bluesky's structured-reply field; Mastodon
+  // reply/quote-inline resolution is issue #293, not this pass.
+  bluesky_reply: unknown;
   mastodon_media: unknown;
   mastodon_card: unknown;
   mastodon_sensitive: boolean | null;
   bluesky_labels: unknown;
+  // context_content is the current column; quote_content is read only as
+  // a fallback for a row processing/ scored before it existed.
+  context_content: unknown;
   quote_content: unknown;
   generated_thumbnail_url: string | null;
 }
@@ -188,11 +194,14 @@ function parseBlueskyVideo(did: string, embed: unknown): Attachment | null {
 
 const AT_URI_PATTERN = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/;
 
-// quote_content is a straight column on processed_posts, written by
-// processing/'s quote_resolver.py in the exact shape below - this is a
-// defensive validation pass (never trust stored JSON blindly, same rule
-// every other field in this file follows), not a transform.
-function parseQuoteContent(raw: unknown): QuoteContent | null {
+// context_content (or, for a pre-migration row, quote_content) is a
+// straight column on processed_posts, written by processing/'s
+// quote_resolver.py in the exact shape below - this is a defensive
+// validation pass (never trust stored JSON blindly, same rule every
+// other field in this file follows), not a transform. Shared by both the
+// "quote" and "reply" Attachment kinds below -- same resolved shape
+// either way.
+function parseContextContent(raw: unknown): QuoteContent | null {
   if (typeof raw !== "object" || raw === null) return null;
   const typed = raw as { status?: unknown; text?: unknown; author?: unknown; createdAt?: unknown; reason?: unknown };
 
@@ -233,6 +242,23 @@ function parseBlueskyQuote(record: unknown, quoteContent: QuoteContent | null): 
   if (collection !== "app.bsky.feed.post") return null;
 
   return { kind: "quote", url: buildBlueskyPostUrl(did, rkey), content: quoteContent };
+}
+
+// Mirrors parseBlueskyQuote's shape exactly, just reading record.reply's
+// parent.uri instead of embed.record.uri -- same AT-URI form either way.
+function parseBlueskyReply(reply: unknown, contextContent: QuoteContent | null): Attachment | null {
+  if (typeof reply !== "object" || reply === null) return null;
+  const parent = (reply as { parent?: unknown }).parent;
+  if (typeof parent !== "object" || parent === null) return null;
+  const uri = (parent as { uri?: unknown }).uri;
+  if (typeof uri !== "string") return null;
+
+  const match = AT_URI_PATTERN.exec(uri);
+  if (!match) return null;
+  const [, did, collection, rkey] = match;
+  if (collection !== "app.bsky.feed.post") return null;
+
+  return { kind: "reply", url: buildBlueskyPostUrl(did, rkey), content: contextContent };
 }
 
 function parseBlueskyMediaUnion(did: string, media: unknown, generatedThumbnailUrl: string | null): Attachment[] {
@@ -403,13 +429,17 @@ function isSensitive(mastodonSensitive: boolean | null, blueskyLabels: unknown):
 export function buildAttachments(row: AttachmentSource): AttachmentResult {
   let attachments: Attachment[];
   if (row.source === "bluesky") {
-    attachments = parseBlueskyEmbed(
-      row.author_id,
-      row.bluesky_embed,
-      parseQuoteContent(row.quote_content),
-      row.generated_thumbnail_url,
-      row.text,
-    );
+    const contextContent = parseContextContent(row.context_content ?? row.quote_content);
+    attachments = parseBlueskyEmbed(row.author_id, row.bluesky_embed, contextContent, row.generated_thumbnail_url, row.text);
+
+    // A reply attachment only applies when the post isn't already a quote
+    // -- processing/'s context_dependency.py resolves (and scores) at most
+    // one context target per post, quote taking priority, so context_content
+    // only ever describes whichever one it actually resolved.
+    if (!attachments.some((a) => a.kind === "quote")) {
+      const reply = parseBlueskyReply(row.bluesky_reply, contextContent);
+      if (reply) attachments = [...attachments, reply];
+    }
   } else {
     const card = parseMastodonCard(row.mastodon_card, row.generated_thumbnail_url);
     attachments = [...parseMastodonMedia(row.mastodon_media), ...(card ? [card] : [])];

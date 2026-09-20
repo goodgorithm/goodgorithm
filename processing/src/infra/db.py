@@ -76,7 +76,6 @@ class ProcessedPostUpsert:
     entities: list | None = None
     base_score: float | None = None
     rank_score: float | None = None
-    quote_content: dict | None = None
     category: str | None = None
     category_method: str | None = None
     penalty_multiplier: float = 1.0
@@ -86,6 +85,13 @@ class ProcessedPostUpsert:
     political_method: str | None = None
     quality_score: float | None = None
     quality_method: str | None = None
+    # None/"pending"/"resolved"/"unavailable" -- see quote_resolver.py and
+    # pipeline.resolve_context(). context_content mirrors the older
+    # quote_content column's shape, generalized to a quote target or a
+    # reply-parent target; this dataclass never sets quote_content itself.
+    context_status: str | None = None
+    context_kind: str | None = None
+    context_content: dict | None = None
 
 
 DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE = int(os.environ.get("DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE", "500"))
@@ -93,9 +99,10 @@ DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE = int(os.environ.get("DB_UPSERT_PROCESSED_P
 _PROCESSED_POSTS_COLUMNS = (
     "raw_post_id, source, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
     "sentiment_score, sentiment_method, topicality_score, entities, "
-    "base_score, rank_score, quote_content, category, category_method, "
+    "base_score, rank_score, category, category_method, "
     "penalty_multiplier, penalty_detail, generated_thumbnail_url, pipeline_version, "
-    "political_score, political_method, quality_score, quality_method"
+    "political_score, political_method, quality_score, quality_method, "
+    "context_status, context_kind, context_content"
 )
 
 
@@ -106,9 +113,10 @@ _PROCESSED_POSTS_COLUMNS = (
 _PROCESSED_POSTS_ROW_SQL = (
     "(%s::uuid, %s::text, %s::uuid, %s::boolean, %s::boolean, %s::real, "
     "%s::real, %s::text, %s::real, %s::jsonb, "
-    "%s::real, %s::real, %s::jsonb, %s::text, %s::text, "
+    "%s::real, %s::real, %s::text, %s::text, "
     "%s::real, %s::jsonb, %s::text, %s::text, "
-    "%s::real, %s::text, %s::real, %s::text)"
+    "%s::real, %s::text, %s::real, %s::text, "
+    "%s::text, %s::text, %s::jsonb)"
 )
 
 
@@ -148,7 +156,6 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
             entities               = EXCLUDED.entities,
             base_score             = EXCLUDED.base_score,
             rank_score             = EXCLUDED.rank_score,
-            quote_content          = EXCLUDED.quote_content,
             category               = EXCLUDED.category,
             category_method        = EXCLUDED.category_method,
             penalty_multiplier     = EXCLUDED.penalty_multiplier,
@@ -159,6 +166,9 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
             political_method       = EXCLUDED.political_method,
             quality_score          = EXCLUDED.quality_score,
             quality_method         = EXCLUDED.quality_method,
+            context_status         = EXCLUDED.context_status,
+            context_kind           = EXCLUDED.context_kind,
+            context_content        = EXCLUDED.context_content,
             processed_at           = NOW()
         """
 
@@ -190,7 +200,6 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     Jsonb(row.entities) if row.entities is not None else None,
                     row.base_score,
                     row.rank_score,
-                    Jsonb(row.quote_content) if row.quote_content is not None else None,
                     row.category,
                     row.category_method,
                     row.penalty_multiplier,
@@ -201,6 +210,9 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.political_method,
                     row.quality_score,
                     row.quality_method,
+                    row.context_status,
+                    row.context_kind,
+                    Jsonb(row.context_content) if row.context_content is not None else None,
                 )
             ]
             conn.execute(_build_processed_posts_upsert_sql(len(chunk)), params)
@@ -424,6 +436,113 @@ def fetch_bluesky_posts_needing_author_resolution(batch_size: int) -> list[Unres
             (batch_size,),
         ).fetchall()
     return [UnresolvedAuthorPost(*row) for row in rows]
+
+
+@dataclass
+class ContextPendingPost:
+    raw_post_id: UUID
+    source: str
+    text: str
+    raw_json: dict
+    context_kind: str
+
+
+def fetch_context_pending(batch_size: int) -> list[ContextPendingPost]:
+    """Bounded batch of posts whose reply/quote target hasn't been
+    resolved yet. resolve_context() re-derives the target URI from
+    raw_json each sweep rather than persisting it, same as
+    moderation_recheck.py re-deriving its AT-URI from source_id every
+    sweep instead of storing one. Filters/orders on processed_posts alone
+    via processed_posts_context_pending_idx; raw_posts is joined only for
+    the columns the resolver/quality-classifier need."""
+    with pool.connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.raw_post_id, r.source, r.text, r.raw_json, p.context_kind
+            FROM processed_posts p
+            JOIN raw_posts r ON r.id = p.raw_post_id
+            WHERE p.context_status = 'pending'
+            ORDER BY p.processed_at DESC
+            LIMIT %s
+            """,
+            (batch_size,),
+        ).fetchall()
+    return [ContextPendingPost(*row) for row in rows]
+
+
+@dataclass
+class ContextResolution:
+    raw_post_id: UUID
+    quality_score: float | None
+    quality_method: str | None
+    context_content: dict | None
+
+
+def apply_context_resolution(resolutions: list[ContextResolution]) -> None:
+    """Bulk-writes resolve_context()'s successful/unavailable-fallback
+    results -- each row carries distinct quality_score/context_content
+    values, so this is its own chunked multi-row UPDATE, same
+    DB_RANK_SCORE_UPDATE_CHUNK_SIZE pattern as mark_authors_resolved/
+    update_rank_scores. A post the sweep decides to exclude outright (its
+    resolved target failed content/language/political filtering, or its
+    author has a recent is_bot verdict) goes through delete_raw_post
+    instead -- never passed here. context_status is always 'resolved' or
+    'unavailable' by the time this is called; base_score/rank_score are
+    left for the next refresh_rankings() pass to pick up the new
+    quality_score, not written here."""
+    if not resolutions:
+        return
+    with pool.connection() as conn:
+        for i in range(0, len(resolutions), DB_RANK_SCORE_UPDATE_CHUNK_SIZE):
+            chunk = resolutions[i : i + DB_RANK_SCORE_UPDATE_CHUNK_SIZE]
+            values_sql = ", ".join(["(%s::uuid, %s::real, %s::text, %s::jsonb)"] * len(chunk))
+            params = [
+                value
+                for r in chunk
+                for value in (
+                    r.raw_post_id,
+                    r.quality_score,
+                    r.quality_method,
+                    Jsonb(r.context_content) if r.context_content is not None else None,
+                )
+            ]
+            conn.execute(
+                f"""
+                UPDATE processed_posts AS p
+                SET quality_score = v.quality_score,
+                    quality_method = v.quality_method,
+                    context_status = CASE WHEN v.context_content IS NULL THEN 'unavailable' ELSE 'resolved' END,
+                    context_content = v.context_content
+                FROM (VALUES {values_sql}) AS v(raw_post_id, quality_score, quality_method, context_content)
+                WHERE p.raw_post_id = v.raw_post_id
+                """,
+                params,
+            )
+
+
+def recent_bot_verdict(source: str, author_id: str) -> bool | None:
+    """Whether we've already scored this author's own post recently and
+    flagged them is_bot -- reused for a resolved reply/quote-target's
+    author rather than calling bot_filter.score_bot() fresh against them,
+    which would mutate that account's real velocity/template Redis
+    counters with a resolution-driven bump instead of one from a real
+    post of theirs. None if we have no recent row for this author --
+    fail-open, same discipline as every other model-backed stage. Scoped
+    to whatever's still in processed_posts, which is already bounded by
+    the 24h retention window -- no separate time filter needed."""
+    with pool.connection() as conn:
+        row = conn.execute(
+            """
+            SELECT p.is_bot
+            FROM processed_posts p
+            JOIN raw_posts r ON r.id = p.raw_post_id
+            WHERE r.source = %s AND r.author_id = %s
+            ORDER BY p.processed_at DESC
+            LIMIT 1
+            """,
+            (source, author_id),
+        ).fetchone()
+    return bool(row[0]) if row is not None else None
 
 
 def mark_authors_resolved(results: list[tuple[UUID, dict | None]]) -> None:
