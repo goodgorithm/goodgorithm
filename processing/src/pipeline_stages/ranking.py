@@ -43,12 +43,8 @@ class RankablePost:
     id: UUID
     text: str
     created_at: datetime
-    # The trained quality classifier's P(genuinely-uplifting-and-
-    # substantive) -- the sole content-quality input to compute_base_score.
-    # Every post reaching this dataclass already cleared quality_exclude.py's
-    # hard-exclude gate (score >= QUALITY_EXCLUDE_THRESHOLD), with one
-    # exception: quality_exclude.py fails open when the model isn't loaded
-    # at all, so None can reach here too -- compute_base_score handles it.
+    # None only when the quality model isn't loaded (quality_exclude.py
+    # fails open) -- compute_base_score handles that case.
     quality_score: float | None
     entities: list[str]
     is_bot: bool
