@@ -446,6 +446,7 @@ class ContextPendingPost:
     text: str
     raw_json: dict
     context_kind: str
+    created_at: datetime
 
 
 def fetch_context_pending(batch_size: int) -> list[ContextPendingPost]:
@@ -456,11 +457,13 @@ def fetch_context_pending(batch_size: int) -> list[ContextPendingPost]:
     moderation_recheck.py re-deriving its AT-URI from source_id every
     sweep instead of storing one. Filters/orders on processed_posts alone
     via processed_posts_context_pending_idx; raw_posts is joined only for
-    the columns the resolver/quality-classifier need."""
+    the columns the resolver/quality-classifier need -- created_at is
+    needed to recompute base_score (recency_decay) once resolved, same
+    reasoning run_cycle's own first-pass upsert already needs it for."""
     with pool.connection() as conn:
         rows = conn.execute(
             """
-            SELECT p.raw_post_id, r.source, r.author_id, r.text, r.raw_json, p.context_kind
+            SELECT p.raw_post_id, r.source, r.author_id, r.text, r.raw_json, p.context_kind, r.created_at
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
             WHERE p.context_status = 'pending'
@@ -478,26 +481,38 @@ class ContextResolution:
     quality_score: float | None
     quality_method: str | None
     context_content: dict | None
+    base_score: float
 
 
 def apply_context_resolution(resolutions: list[ContextResolution]) -> None:
     """Bulk-writes resolve_context()'s successful/unavailable-fallback
-    results -- each row carries distinct quality_score/context_content
-    values, so this is its own chunked multi-row UPDATE, same
+    results -- each row carries distinct quality_score/context_content/
+    base_score values, so this is its own chunked multi-row UPDATE, same
     DB_RANK_SCORE_UPDATE_CHUNK_SIZE pattern as mark_authors_resolved/
     update_rank_scores. A post the sweep decides to exclude outright (its
     resolved target failed content/language/political filtering, or its
     author has a recent is_bot verdict) goes through delete_raw_post
     instead -- never passed here. context_status is always 'resolved' or
-    'unavailable' by the time this is called; base_score/rank_score are
-    left for the next refresh_rankings() pass to pick up the new
-    quality_score, not written here."""
+    'unavailable' by the time this is called.
+
+    base_score is written here, immediately, not left for the next
+    refresh_rankings() pass -- fetch_rankable_posts's candidate query
+    selects its working set by ORDER BY p.base_score DESC LIMIT pool_size,
+    using the *stored* value as a proxy for this cycle's cutoff. A row
+    still holding its first-pass pending base_score of 0.0 sorts to the
+    very bottom and never enters that top-pool_size result, so it'd never
+    reach rank_posts() to get base_score recomputed there -- a permanent
+    deadlock once eligible volume exceeds RANKING_MMR_CANDIDATE_POOL_SIZE,
+    not a one-cycle lag. rank_score genuinely is still left for the next
+    refresh_rankings() pass -- MMR needs the full eligible pool, not just
+    this batch, same reasoning run_cycle's own upsert already follows for
+    a brand new post."""
     if not resolutions:
         return
     with pool.connection() as conn:
         for i in range(0, len(resolutions), DB_RANK_SCORE_UPDATE_CHUNK_SIZE):
             chunk = resolutions[i : i + DB_RANK_SCORE_UPDATE_CHUNK_SIZE]
-            values_sql = ", ".join(["(%s::uuid, %s::real, %s::text, %s::jsonb)"] * len(chunk))
+            values_sql = ", ".join(["(%s::uuid, %s::real, %s::text, %s::jsonb, %s::real)"] * len(chunk))
             params = [
                 value
                 for r in chunk
@@ -506,6 +521,7 @@ def apply_context_resolution(resolutions: list[ContextResolution]) -> None:
                     r.quality_score,
                     r.quality_method,
                     Jsonb(r.context_content) if r.context_content is not None else None,
+                    r.base_score,
                 )
             ]
             conn.execute(
@@ -514,8 +530,9 @@ def apply_context_resolution(resolutions: list[ContextResolution]) -> None:
                 SET quality_score = v.quality_score,
                     quality_method = v.quality_method,
                     context_status = CASE WHEN v.context_content IS NULL THEN 'unavailable' ELSE 'resolved' END,
-                    context_content = v.context_content
-                FROM (VALUES {values_sql}) AS v(raw_post_id, quality_score, quality_method, context_content)
+                    context_content = v.context_content,
+                    base_score = v.base_score
+                FROM (VALUES {values_sql}) AS v(raw_post_id, quality_score, quality_method, context_content, base_score)
                 WHERE p.raw_post_id = v.raw_post_id
                 """,
                 params,

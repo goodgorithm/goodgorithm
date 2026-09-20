@@ -1,3 +1,7 @@
+from datetime import datetime, timezone
+
+import pytest
+
 import pipeline
 from infra.db import ContextPendingPost
 
@@ -7,6 +11,7 @@ def _reply_post(
     parent_uri="at://did:plc:parent/app.bsky.feed.post/p1",
     text="Yumm!",
     author_id="did:plc:author123",
+    created_at=None,
 ):
     return ContextPendingPost(
         raw_post_id=raw_post_id,
@@ -15,6 +20,10 @@ def _reply_post(
         text=text,
         raw_json={"commit": {"record": {"reply": {"parent": {"uri": parent_uri}}}}},
         context_kind="reply",
+        # Effectively "now" -- age ~0 makes recency_decay ~1.0, so a
+        # resolution's base_score assertion can compare directly against
+        # its quality_score without needing to reproduce the decay math.
+        created_at=created_at if created_at is not None else datetime.now(timezone.utc),
     )
 
 
@@ -23,6 +32,7 @@ def _mastodon_reply_post(
     in_reply_to_id="42",
     text="Yumm!",
     author_id="mastodon.example/someone",
+    created_at=None,
 ):
     return ContextPendingPost(
         raw_post_id=raw_post_id,
@@ -31,6 +41,7 @@ def _mastodon_reply_post(
         text=text,
         raw_json={"id": "99", "in_reply_to_id": in_reply_to_id, "content": "reply text"},
         context_kind="reply",
+        created_at=created_at if created_at is not None else datetime.now(timezone.utc),
     )
 
 
@@ -92,6 +103,8 @@ def test_resolve_context_resolves_and_takes_min_of_own_and_target_quality(monkey
     assert result.raw_post_id == "reply-id"
     assert result.quality_score == 0.5  # min(0.5, 0.9)
     assert result.context_content["text"] == "the context text"
+    # created_at ~ now, so recency_decay ~ 1.0
+    assert result.base_score == pytest.approx(0.5, rel=1e-4)
 
 
 def test_resolve_context_filtered_target_excludes_post(monkeypatch):
@@ -140,6 +153,9 @@ def test_resolve_context_not_found_falls_back_to_standalone_own_score(monkeypatc
     assert len(applied) == 1
     assert applied[0].quality_score == 0.6
     assert applied[0].context_content is None  # written as context_status = 'unavailable'
+    # The standalone-fallback path must still get a real base_score, not
+    # the stale 0.0 from the first pending pass -- issue #299.
+    assert applied[0].base_score == pytest.approx(0.6, rel=1e-4)
 
 
 def test_resolve_context_non_english_target_excludes_post(monkeypatch):
@@ -265,6 +281,7 @@ def test_resolve_context_resolves_mastodon_target(monkeypatch):
     assert result.raw_post_id == "masto-reply-id"
     assert result.quality_score == 0.5  # min(0.5, 0.9)
     assert result.context_content["text"] == "the parent status text"
+    assert result.base_score == pytest.approx(0.5, rel=1e-4)
 
 
 def test_resolve_context_mastodon_target_bot_author_uses_mastodon_source(monkeypatch):
@@ -347,6 +364,8 @@ def test_resolve_context_mixed_batch_dispatches_by_target_shape(monkeypatch):
     assert bsky_calls == [[bsky_target]]
     assert masto_calls == [[masto_target]]
     assert {r.raw_post_id for r in applied} == {"bsky-reply-id", "masto-reply-id"}
+    for r in applied:
+        assert r.base_score == pytest.approx(0.9, rel=1e-4)  # min(0.9, 0.9)
 
 
 def test_resolve_context_combined_score_below_threshold_excludes_post(monkeypatch):
