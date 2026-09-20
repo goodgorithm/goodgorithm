@@ -20,6 +20,7 @@ from pipeline_stages import (
     dedup,
     existence_recheck,
     language_filter,
+    mastodon_resolver,
     moderation_recheck,
     penalties,
     political_centroid,
@@ -133,7 +134,7 @@ def run_cycle(batch_size: int) -> int:
             reason = "no tag" if post.lang is None else f"tagged {post.lang!r}"
             logger.info("language-filtered post %s (%s, detected non-English)", post.id, reason)
         else:
-            classification = context_dependency.classify(post.source, post.raw_json, post.text)
+            classification = context_dependency.classify(post.source, post.author_id, post.raw_json, post.text)
             if classification.action == "exclude":
                 db.delete_raw_post(post.id)
                 logger.info("context-dependency-excluded post %s (%s)", post.id, post.source)
@@ -442,25 +443,31 @@ class _ScorableText:
 
 
 def resolve_context() -> int:
-    """Resolves a batch of Bluesky replies/quote-posts pending their
-    target's content (see context_dependency.py, quote_resolver.py). A
-    separate sweep, not inline in run_cycle -- reply volume is roughly
-    half of Bluesky's stream, far more than resolving synchronously
-    within run_cycle could absorb without hurting throughput. Throttled
-    by the caller (main.py), same reasoning as recheck_moderation -- calls
-    an external API in batches. See issue #292 and the wiki's Pipeline
-    Internals page.
+    """Resolves a batch of replies/quote-posts pending their target's
+    content (see context_dependency.py, quote_resolver.py,
+    mastodon_resolver.py). A separate sweep, not inline in run_cycle --
+    reply volume is roughly half of Bluesky's stream, far more than
+    resolving synchronously within run_cycle could absorb without hurting
+    throughput. Throttled by the caller (main.py), same reasoning as
+    recheck_moderation -- calls an external API in batches. See issue
+    #292/#293 and the wiki's Pipeline Internals page.
 
-    A target that fails content-filtering/an adult label
-    (quote_resolver's own "filtered" status), fails language_filter,
-    fails political_exclude, or belongs to an author with a recent is_bot
+    Dispatches each target to Bluesky's AppView or a Mastodon instance's
+    status endpoint by the target's own shape (an at:// AT-URI vs an
+    {instance}/{id} pair) -- a Mastodon post's quote-inline/RE: target is
+    a *Bluesky* post, so source alone can't decide the resolver. See
+    context_dependency.py's module docstring.
+
+    A target that fails content-filtering/an adult label (either
+    resolver's own "filtered" status), fails language_filter, fails
+    political_exclude, or belongs to an author with a recent is_bot
     verdict of their own excludes the whole post -- not just a devalue,
     since this actually looks at what's being referenced. A target that
     resolves cleanly gets its own quality_score computed and combined via
     min() with the pending post's own quality_score -- a conservative
     floor, not a boost: a thread never scores better than its weaker
     half. A target that can't be resolved at all (not_found, or a failed
-    AppView batch) falls back to scoring the pending post standalone,
+    batch/request) falls back to scoring the pending post standalone,
     marked context_status = 'unavailable' so a future UI pass can
     surface that it happened."""
     pending = db.fetch_context_pending(CONTEXT_RESOLVE_BATCH_SIZE)
@@ -468,18 +475,31 @@ def resolve_context() -> int:
         return 0
 
     mod = db.fetch_moderation_lists()
-    targets_by_post = {post.raw_post_id: quote_resolver.extract_context_target(post.raw_json) for post in pending}
-    target_uris = [target[1] for target in targets_by_post.values() if target is not None]
-    content_by_uri, author_did_by_uri = quote_resolver.resolve_context(
-        target_uris, mod.suppressed_terms, mod.suppressed_domains
+    targets_by_post = {
+        post.raw_post_id: context_dependency.classify(
+            post.source, post.author_id, post.raw_json, post.text
+        ).context_target
+        for post in pending
+    }
+    all_targets = [t for t in targets_by_post.values() if t is not None]
+    bluesky_targets = [t for t in all_targets if t.startswith("at://")]
+    mastodon_targets = [t for t in all_targets if not t.startswith("at://")]
+
+    bsky_content, bsky_author_ids = quote_resolver.resolve_context(
+        bluesky_targets, mod.suppressed_terms, mod.suppressed_domains
     )
+    masto_content, masto_author_ids = mastodon_resolver.resolve_context(
+        mastodon_targets, mod.suppressed_terms, mod.suppressed_domains
+    )
+    content_by_target = {**bsky_content, **masto_content}
+    author_id_by_target = {**bsky_author_ids, **masto_author_ids}
 
     # Batched, not per-post -- only for targets that actually resolved,
     # since there's nothing to political-check/quality-score otherwise.
     available_by_post: dict[UUID, dict] = {}
     for post in pending:
         target = targets_by_post.get(post.raw_post_id)
-        content = content_by_uri.get(target[1]) if target is not None else None
+        content = content_by_target.get(target) if target is not None else None
         if content is not None and content.get("status") == "available":
             available_by_post[post.raw_post_id] = content
 
@@ -499,8 +519,8 @@ def resolve_context() -> int:
 
         if content is None:
             target = targets_by_post.get(post.raw_post_id)
-            resolved_but_unavailable = target is not None and content_by_uri.get(target[1]) is not None
-            reason = content_by_uri.get(target[1], {}).get("reason") if resolved_but_unavailable else "not_found"
+            resolved_but_unavailable = target is not None and content_by_target.get(target) is not None
+            reason = content_by_target.get(target, {}).get("reason") if resolved_but_unavailable else "not_found"
             if reason == "filtered":
                 db.delete_raw_post(post.raw_post_id)
                 purged += 1
@@ -516,7 +536,7 @@ def resolve_context() -> int:
                 )
             continue
 
-        target_uri = targets_by_post[post.raw_post_id][1]
+        target = targets_by_post[post.raw_post_id]
 
         if language_filter.is_non_english(content["text"]):
             db.delete_raw_post(post.raw_post_id)
@@ -532,8 +552,12 @@ def resolve_context() -> int:
             logger.info("context-resolution-excluded post %s (target political)", post.raw_post_id)
             continue
 
-        target_author_did = author_did_by_uri.get(target_uri)
-        if target_author_did is not None and db.recent_bot_verdict("bluesky", target_author_did):
+        # The target's own platform, not post.source -- a Mastodon post's
+        # quote-inline/RE: target is Bluesky content, so post.source alone
+        # would give the wrong answer here for that case.
+        target_source = "bluesky" if target.startswith("at://") else "mastodon"
+        target_author_id = author_id_by_target.get(target)
+        if target_author_id is not None and db.recent_bot_verdict(target_source, target_author_id):
             db.delete_raw_post(post.raw_post_id)
             purged += 1
             logger.info("context-resolution-excluded post %s (target author is_bot)", post.raw_post_id)
