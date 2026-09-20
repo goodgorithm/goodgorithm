@@ -35,18 +35,7 @@ describe("api client", () => {
     expect(calledUrl).toContain("limit=10");
   });
 
-  it("passes the category through to /v1/feed when present", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ posts: [], next_cursor: null }), { status: 200 }),
-    );
-
-    await fetchFeed(null, 10, "science_technology");
-
-    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
-    expect(calledUrl).toContain("category=science_technology");
-  });
-
-  it("omits the category param when not provided", async () => {
+  it("never sends a category param (frontend category filtering is removed, issue #279)", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify({ posts: [], next_cursor: null }), { status: 200 }),
     );

@@ -6,9 +6,7 @@ import styles from "./HeaderNav.module.css";
 // Header nav: an inline pill row on wide viewports, collapsed behind a burger
 // button on narrow ones. The item set grows over time (FAQ, Updates, Privacy,
 // ...), so on a narrow phone viewport the inline row can't fit. matchMedia
-// (not element measurement) picks the mode, matching how CategorySelector
-// solved its analogous layout problem with a media query rather than JS
-// geometry.
+// (not element measurement) picks the mode.
 const NARROW_QUERY = "(max-width: 30rem)";
 
 function matchesNarrow(): boolean {

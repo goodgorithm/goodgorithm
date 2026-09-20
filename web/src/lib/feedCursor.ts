@@ -1,8 +1,4 @@
-import type { Category } from "../api/types";
-
-function storageKey(category: Category | null): string {
-  return `goodgorithm:feedCursor:${category ?? "all"}`;
-}
+const STORAGE_KEY = "goodgorithm:feedCursor:all";
 
 // Real inflow is a few thousand posts/hour, so a resumed cursor goes stale
 // fast - past this window we'd rather show fresh top-of-feed content than
@@ -24,15 +20,14 @@ interface StoredCursor {
   savedAt: number;
 }
 
-function readStored(category: Category | null): StoredCursor | null {
+function readStored(): StoredCursor | null {
   try {
-    const key = storageKey(category);
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as StoredCursor;
     if (Date.now() - parsed.savedAt > EXPIRY_MS) {
-      localStorage.removeItem(key);
+      localStorage.removeItem(STORAGE_KEY);
       return null;
     }
     return parsed;
@@ -41,28 +36,23 @@ function readStored(category: Category | null): StoredCursor | null {
   }
 }
 
-export function loadCursor(category: Category | null): string | null {
-  const parsed = readStored(category);
+export function loadCursor(): string | null {
+  const parsed = readStored();
   return parsed && typeof parsed.cursor === "string" ? parsed.cursor : null;
 }
 
-// The ids Feed.tsx should treat as already-seen when resuming this
-// category. Empty when nothing is stored, the entry has expired, or the
-// blob is malformed - resuming without a seed is the safe fallback.
-export function loadSeenIds(category: Category | null): string[] {
-  const parsed = readStored(category);
+// The ids Feed.tsx should treat as already-seen when resuming. Empty when
+// nothing is stored, the entry has expired, or the blob is malformed -
+// resuming without a seed is the safe fallback.
+export function loadSeenIds(): string[] {
+  const parsed = readStored();
   return parsed && Array.isArray(parsed.seenIds) ? parsed.seenIds : [];
 }
 
-export function saveCursor(
-  category: Category | null,
-  cursor: string | null,
-  seenIds: string[] = [],
-): void {
+export function saveCursor(cursor: string | null, seenIds: string[] = []): void {
   try {
-    const key = storageKey(category);
     if (!cursor) {
-      localStorage.removeItem(key);
+      localStorage.removeItem(STORAGE_KEY);
       return;
     }
     const value: StoredCursor = {
@@ -70,15 +60,15 @@ export function saveCursor(
       seenIds: seenIds.slice(-MAX_SEEN_IDS),
       savedAt: Date.now(),
     };
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
   } catch {
     // localStorage unavailable (private mode, quota) - resuming is best-effort
   }
 }
 
-export function clearCursor(category: Category | null): void {
+export function clearCursor(): void {
   try {
-    localStorage.removeItem(storageKey(category));
+    localStorage.removeItem(STORAGE_KEY);
   } catch {
     // ignore
   }

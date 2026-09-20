@@ -36,7 +36,7 @@ describe("useFeed", () => {
   it("starts from the top when no cursor is persisted", async () => {
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse("next-1"));
 
-    renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    renderHook(() => useFeed(), { wrapper: createWrapper() });
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
@@ -44,10 +44,10 @@ describe("useFeed", () => {
   });
 
   it("resumes from a persisted cursor", async () => {
-    saveCursor(null, "resume-me");
+    saveCursor("resume-me");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
-    renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    renderHook(() => useFeed(), { wrapper: createWrapper() });
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
@@ -57,155 +57,88 @@ describe("useFeed", () => {
   it("persists the next cursor once a page loads", async () => {
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse("next-1"));
 
-    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeed(), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(loadCursor(null)).toBe("next-1");
+    expect(loadCursor()).toBe("next-1");
   });
 
   it("resetToTop clears the persisted cursor and re-fetches from the top", async () => {
-    saveCursor(null, "resume-me");
+    saveCursor("resume-me");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
-    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeed(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.data).toBeDefined());
     expect(result.current.resumed).toBe(true);
 
     act(() => result.current.resetToTop());
 
     await waitFor(() => expect(result.current.resumed).toBe(false));
-    expect(loadCursor(null)).toBeNull();
+    expect(loadCursor()).toBeNull();
 
     const lastCallUrl = vi.mocked(fetch).mock.calls.at(-1)?.[0] as string;
     expect(lastCallUrl).not.toContain("cursor=");
   });
 
-  it("adopts the inline-script feed promise for page 1 of the default category", async () => {
-    // The inline <script> in index.html pre-fetches ?category=arts_culture
-    // and parks the promise on window.__feedBootstrap; useFeed's first page
+  it("adopts the inline-script feed promise for page 1 when there's no resume cursor", async () => {
+    // The inline <script> in index.html pre-fetches the unfiltered feed and
+    // parks the promise on window.__feedBootstrap; useFeed's first page
     // should use it instead of firing its own request.
     window.__feedBootstrap = {
       promise: Promise.resolve({ posts: [], next_cursor: "boot-next" }),
     };
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse("net-next"));
 
-    const { result } = renderHook(() => useFeed("arts_culture"), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeed(), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.data).toBeDefined());
     expect(fetch).not.toHaveBeenCalled();
-    expect(loadCursor("arts_culture")).toBe("boot-next");
+    expect(loadCursor()).toBe("boot-next");
   });
 
-  it("falls back to a normal fetch when the bootstrap category doesn't match", async () => {
+  it("falls back to a normal fetch when a resume cursor is persisted", async () => {
     window.__feedBootstrap = {
       promise: Promise.resolve({ posts: [], next_cursor: "boot-next" }),
     };
+    saveCursor("resume-me");
     vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
 
-    renderHook(() => useFeed("science_technology"), { wrapper: createWrapper() });
+    renderHook(() => useFeed(), { wrapper: createWrapper() });
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
-    expect((vi.mocked(fetch).mock.calls[0][0] as string)).toContain("category=science_technology");
-  });
-
-  it("passes the selected category through to the /feed request", async () => {
-    vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
-
-    renderHook(() => useFeed("science_technology"), { wrapper: createWrapper() });
-
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
-    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
-    expect(calledUrl).toContain("category=science_technology");
-  });
-
-  it("resumes each category from its own persisted cursor, not another category's", async () => {
-    // regression test: initialCursor used to be computed once at mount and
-    // frozen, so switching category would silently resume using whatever
-    // cursor was loaded for the category the hook happened to start on.
-    saveCursor("science_technology", "tech-cursor");
-    saveCursor("diaries_daily_life", "diaries_daily_life-cursor");
-    vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
-
-    const { rerender } = renderHook(({ category }) => useFeed(category), {
-      wrapper: createWrapper(),
-      initialProps: { category: "science_technology" as const },
-    });
-
-    await waitFor(() => expect(fetch).toHaveBeenCalled());
-    expect((vi.mocked(fetch).mock.calls[0][0] as string)).toContain("cursor=tech-cursor");
-
-    rerender({ category: "diaries_daily_life" as const });
-
-    await waitFor(() =>
-      expect(vi.mocked(fetch).mock.calls.some((call) => (call[0] as string).includes("cursor=diaries_daily_life-cursor"))).toBe(
-        true,
-      ),
-    );
+    expect(vi.mocked(fetch).mock.calls[0][0] as string).toContain("cursor=resume-me");
   });
 
   it("persists the seen post ids once a page loads (issue #38)", async () => {
     vi.mocked(fetch).mockResolvedValue(mockFeedResponseWithPosts(["a", "b", "c"], "next-1"));
 
-    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeed(), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(loadSeenIds(null)).toEqual(["a", "b", "c"]);
+    expect(loadSeenIds()).toEqual(["a", "b", "c"]);
   });
 
   it("carries prior seen ids into a resumed session and merges them with the new pages", async () => {
-    saveCursor(null, "resume-me", ["x", "y"]);
+    saveCursor("resume-me", ["x", "y"]);
     vi.mocked(fetch).mockResolvedValue(mockFeedResponseWithPosts(["a"], "next-1"));
 
-    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeed(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.data).toBeDefined());
 
     expect(result.current.carriedSeenIds).toEqual(["x", "y"]);
-    expect(loadSeenIds(null)).toEqual(["x", "y", "a"]);
+    expect(loadSeenIds()).toEqual(["x", "y", "a"]);
   });
 
   it("resetToTop drops the carried seen ids so the fresh session starts clean", async () => {
-    saveCursor(null, "resume-me", ["x", "y"]);
+    saveCursor("resume-me", ["x", "y"]);
     vi.mocked(fetch).mockResolvedValue(mockFeedResponseWithPosts(["a"], "next-1"));
 
-    const { result } = renderHook(() => useFeed(null), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useFeed(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.carriedSeenIds).toEqual(["x", "y"]));
 
     act(() => result.current.resetToTop());
 
     await waitFor(() => expect(result.current.carriedSeenIds).toEqual([]));
     expect(result.current.resumed).toBe(false);
-  });
-
-  it("keeps each category's seen ids independent", async () => {
-    saveCursor("science_technology", "tech-cursor", ["t1"]);
-    vi.mocked(fetch).mockResolvedValue(mockFeedResponseWithPosts(["d1"], "next-1"));
-
-    const { result } = renderHook(() => useFeed("diaries_daily_life"), { wrapper: createWrapper() });
-    await waitFor(() => expect(result.current.data).toBeDefined());
-
-    expect(result.current.carriedSeenIds).toEqual([]);
-    expect(loadSeenIds("science_technology")).toEqual(["t1"]);
-    expect(loadSeenIds("diaries_daily_life")).toEqual(["d1"]);
-  });
-
-  it("resetToTop on one category doesn't force another category back to the top", async () => {
-    // regression test: resetToTop used to bump a single shared nonce, so
-    // resetting one category's feed would also suppress resume for the
-    // next category switched to, even if that category was never reset.
-    saveCursor("science_technology", "tech-cursor");
-    saveCursor("diaries_daily_life", "diaries_daily_life-cursor");
-    vi.mocked(fetch).mockResolvedValue(mockFeedResponse(null));
-
-    const { result, rerender } = renderHook(({ category }) => useFeed(category), {
-      wrapper: createWrapper(),
-      initialProps: { category: "science_technology" as const },
-    });
-    await waitFor(() => expect(result.current.resumed).toBe(true));
-
-    act(() => result.current.resetToTop());
-    await waitFor(() => expect(result.current.resumed).toBe(false));
-
-    rerender({ category: "diaries_daily_life" as const });
-    await waitFor(() => expect(result.current.resumed).toBe(true));
   });
 });
