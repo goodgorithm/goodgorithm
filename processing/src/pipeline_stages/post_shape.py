@@ -1,6 +1,7 @@
 """Registry of "post shapes" -- named, structured, largely-automated post
-patterns that earn a base_score devalue and, optionally, feed the bot
-filter's repeat-gated is_bot override. "now playing on <station>" radio/
+patterns that carry a devalue_multiplier config (currently unread -- no
+penalties.py entry applies it) and, optionally, feed the bot filter's
+repeat-gated is_bot override. "now playing on <station>" radio/
 stream bots are the first entry; flight-tracker bots, affiliate/counterfeit
 spam and campaign-donation keyword posts are the same kind of gap (see the
 wiki's Content Policy page).

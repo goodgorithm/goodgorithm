@@ -90,12 +90,12 @@ def enforce_redis_capacity() -> None:
 
 
 def run_cycle(batch_size: int) -> int:
-    """Fetches a batch of unprocessed posts and scores them through dedup,
-    bot filter, topicality, and sentiment, computing base_score (positivity
-    x topicality x recency) per post directly. rank_score is left for
-    refresh_rankings — MMR needs the full eligible pool, not just this
-    batch. See the wiki's Pipeline Internals page for the full per-stage
-    walkthrough."""
+    """Fetches a batch of unprocessed posts and scores them through political/
+    quality screening, dedup, bot filter, topicality, category, and sentiment,
+    computing base_score (quality_score x recency) per post directly.
+    rank_score is left for refresh_rankings — MMR needs the full eligible
+    pool, not just this batch. See the wiki's Pipeline Internals page for
+    the full per-stage walkthrough."""
     posts = db.fetch_unprocessed_posts(batch_size)
     if not posts:
         return 0
