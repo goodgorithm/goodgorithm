@@ -23,6 +23,8 @@ from pipeline_stages import (
     political_centroid,
     political_exclude,
     political_model,
+    quality_exclude,
+    quality_model,
     quote_resolver,
     ranking,
     sentiment,
@@ -165,6 +167,27 @@ def run_cycle(batch_size: int) -> int:
         logger.info("processed 0 posts (%d content/political-filtered)", len(posts))
         return len(posts)
 
+    # Quality scoring + hard-exclude at the decided threshold (0.39), same
+    # "before dedup/bot/topicality/sentiment/category" placement and
+    # compute-saving reasoning as the political block above. Single-signal,
+    # unlike political's AND-gate -- see quality_exclude.py's own docstring
+    # for why.
+    quality_results = quality_model.score_batch(kept_posts)
+
+    survivors = []
+    for post in kept_posts:
+        quality_score = quality_results.get(post.id)
+        if quality_exclude.is_quality_excluded(quality_score):
+            db.delete_raw_post(post.id)
+            logger.info("quality-excluded post %s (score=%.3f)", post.id, quality_score)
+        else:
+            survivors.append(post)
+    kept_posts = survivors
+
+    if not kept_posts:
+        logger.info("processed 0 posts (%d content/political/quality-filtered)", len(posts))
+        return len(posts)
+
     dedup_index = dedup.RedisDedupIndex()
     dedup_results = dedup.dedup_posts(kept_posts, dedup_index)
 
@@ -213,6 +236,7 @@ def run_cycle(batch_size: int) -> int:
         quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None
 
         political_score = political_results.get(post.id)
+        quality_score = quality_results.get(post.id)
 
         penalty = penalties.apply(
             penalties.PenaltyContext(
@@ -274,6 +298,8 @@ def run_cycle(batch_size: int) -> int:
                 generated_thumbnail_url=generated_thumbnail_url,
                 political_score=political_score,
                 political_method=political_model.POLITICAL_METHOD if political_score is not None else None,
+                quality_score=quality_score,
+                quality_method=quality_model.QUALITY_METHOD if quality_score is not None else None,
             )
         )
 

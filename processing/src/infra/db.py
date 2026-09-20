@@ -84,6 +84,8 @@ class ProcessedPostUpsert:
     generated_thumbnail_url: str | None = None
     political_score: float | None = None
     political_method: str | None = None
+    quality_score: float | None = None
+    quality_method: str | None = None
 
 
 DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE = int(os.environ.get("DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE", "500"))
@@ -93,7 +95,7 @@ _PROCESSED_POSTS_COLUMNS = (
     "sentiment_score, sentiment_method, topicality_score, entities, "
     "base_score, rank_score, quote_content, category, category_method, "
     "penalty_multiplier, penalty_detail, generated_thumbnail_url, pipeline_version, "
-    "political_score, political_method"
+    "political_score, political_method, quality_score, quality_method"
 )
 
 
@@ -106,7 +108,7 @@ _PROCESSED_POSTS_ROW_SQL = (
     "%s::real, %s::text, %s::real, %s::jsonb, "
     "%s::real, %s::real, %s::jsonb, %s::text, %s::text, "
     "%s::real, %s::jsonb, %s::text, %s::text, "
-    "%s::real, %s::text)"
+    "%s::real, %s::text, %s::real, %s::text)"
 )
 
 
@@ -155,6 +157,8 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
             pipeline_version       = EXCLUDED.pipeline_version,
             political_score        = EXCLUDED.political_score,
             political_method       = EXCLUDED.political_method,
+            quality_score          = EXCLUDED.quality_score,
+            quality_method         = EXCLUDED.quality_method,
             processed_at           = NOW()
         """
 
@@ -195,6 +199,8 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.pipeline_version,
                     row.political_score,
                     row.political_method,
+                    row.quality_score,
+                    row.quality_method,
                 )
             ]
             conn.execute(_build_processed_posts_upsert_sql(len(chunk)), params)
