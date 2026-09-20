@@ -2,7 +2,7 @@
 
 ## What is Goodgorithm?
 
-An algorithmic feed of positive, uplifting public posts from [Bluesky](https://bsky.app) and [Mastodon](https://joinmastodon.org). Nothing is written or curated by a person — an algorithm reads the same open, public feeds everyone else does and ranks what's already there for genuine positivity and topical substance, instead of for what keeps you scrolling. See the [Mission](https://github.com/goodgorithm/goodgorithm/wiki/Mission) wiki page for the full reasoning.
+An algorithmic feed of positive, uplifting public posts from [Bluesky](https://bsky.app) and [Mastodon](https://joinmastodon.org). Nothing is written or curated by a person — an algorithm reads the same open, public feeds everyone else does and ranks what's already there for genuine quality and substance, instead of for what keeps you scrolling. See the [Mission](https://github.com/goodgorithm/goodgorithm/wiki/Mission) wiki page for the full reasoning.
 
 ## Why "algorithm"? Isn't that the thing that's usually the problem?
 
@@ -10,7 +10,7 @@ That's the point. Mainstream feed algorithms aren't neutral — they're tuned to
 
 ## Does an LLM decide what shows up in my feed?
 
-No. Content selection — sentiment scoring, topic detection, ranking — runs on classical, auditable machine learning (TF-IDF, named-entity recognition, a small trained neural network for sentiment), not a large language model. That's a deliberate, non-negotiable constraint: an LLM can drift or hallucinate in ways that would undermine the whole "trust why a post got selected" premise. (LLM tools, including Claude, are used openly to help *build* the project — that's a separate question from what powers the algorithm itself.) Full mechanics: [Algorithm](https://github.com/goodgorithm/goodgorithm/wiki/Algorithm).
+No. Content selection — quality/topic classification, ranking — runs on classical, auditable machine learning (TF-IDF + trained classifiers, named-entity recognition), not a large language model. That's a deliberate, non-negotiable constraint: an LLM can drift or hallucinate in ways that would undermine the whole "trust why a post got selected" premise. (LLM tools, including Claude, are used openly to help *build* the project — that's a separate question from what powers the algorithm itself.) Full mechanics: [Algorithm](https://github.com/goodgorithm/goodgorithm/wiki/Algorithm).
 
 ## Why only Mastodon and Bluesky, and why only four categories?
 
@@ -18,7 +18,7 @@ Both platforms have free, open, unauthenticated public feeds — no paid API, no
 
 ## Does it use likes, reposts, or follower counts to rank posts?
 
-Never. No engagement metric from the source platform factors into scoring or ranking, anywhere. Ranking runs purely on a post's own content: sentiment, topicality, and recency.
+Never. No engagement metric from the source platform factors into scoring or ranking, anywhere. Ranking runs purely on a post's own content: a trained quality classifier's judgment of overall substance, and recency.
 
 ## Why is there no share button on the posts?
 
@@ -54,7 +54,7 @@ On most browsers you can "Add to Home Screen" for an app-like experience. Native
 
 ## Why did I see a negative or off-topic post?
 
-Because the algorithm *favors* positive, on-topic content — it doesn't perfectly filter out everything else, and it never will. It scores posts on sentiment and topical substance and ranks the best to the top, but misjudgments happen. On top of that, Goodgorithm is in alpha, so expect plain bugs too: broken layouts, gaps in the feed, rough edges throughout. A feed that leans toward the good is the goal, not a sealed oasis.
+Because the algorithm *favors* positive, on-topic content — it doesn't perfectly filter out everything else, and it never will. It scores posts on overall quality and substance and ranks the best to the top, but misjudgments happen. On top of that, Goodgorithm is in alpha, so expect plain bugs too: broken layouts, gaps in the feed, rough edges throughout. A feed that leans toward the good is the goal, not a sealed oasis.
 
 ## Can I contribute?
 

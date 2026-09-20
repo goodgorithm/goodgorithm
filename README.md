@@ -7,7 +7,7 @@ An open-source algorithmic feed of positive/uplifting public social posts, curat
 ## What this is
 
 - Aggregates public posts from open, free protocols (Bluesky Jetstream, Mastodon public timelines) — no paid APIs, no scraping behind logins.
-- Scores and ranks with classical ML — MinHash/LSH dedup, a small CNN for sentiment, TF-IDF + spaCy NER for topicality, MMR for diversity — not an LLM. See [A note on LLMs](#a-note-on-llms).
+- Scores and ranks with classical ML — MinHash/LSH dedup, a trained quality classifier judging overall substance, MMR for diversity — not an LLM. See [A note on LLMs](#a-note-on-llms).
 - Never reads likes, reposts, replies, or follower counts from the source platform anywhere in scoring or ranking. A deliberate, load-bearing constraint, not an aspiration.
 - Free forever, no ads, no revenue on the core product.
 
@@ -18,7 +18,7 @@ For the full step-by-step walkthrough of how a post moves from ingestion to the 
 | Path | Language | What it does |
 |---|---|---|
 | `ingestion/` | TypeScript | Long-lived process consuming Bluesky Jetstream + polling Mastodon, writes raw posts to Postgres. |
-| `processing/` | Python | Dedup, bot filter, topicality, sentiment, ranking — the actual algorithm. |
+| `processing/` | Python | Dedup, bot filter, quality/political classification, ranking — the actual algorithm. |
 | `api/` | TypeScript (Fastify) | Read-only `/v1/feed` and `/health` endpoints. |
 | `web/` | TypeScript (React + Vite) | PWA frontend — infinite-scroll feed, deployed as static assets on Cloudflare Workers. |
 | `training/` | Python (notebook) | Sentiment CNN training, run manually on Colab/Kaggle, plus model-release tooling. |
@@ -39,7 +39,7 @@ The app itself only surfaces a condensed FAQ in-app (`web/src/content/faq.md`, l
 
 ## A note on LLMs
 
-The content-selection pipeline itself — sentiment scoring, topic/newsworthiness detection, ranking — runs on classic, well-understood ML: TF-IDF, named entity recognition, small CNNs over word embeddings. Not a large language model.
+The content-selection pipeline itself — quality/topic/political classification, ranking — runs on classic, well-understood ML: TF-IDF + logistic regression classifiers, named entity recognition, small CNNs over word embeddings. Not a large language model.
 
 That's a fit-for-purpose choice, not a blanket stance against LLMs. The whole premise of this project is that people can trust *why* a post got selected. Classical ML gives us models that are small, auditable, and predictable in ways LLMs generally aren't today — the training data and decision logic can be published and inspected end to end, and behavior doesn't drift or hallucinate the way a less constrained model can. For a feed whose entire pitch is "trust the selection," that predictability matters more to us than the extra flexibility an LLM could offer elsewhere in the pipeline.
 
