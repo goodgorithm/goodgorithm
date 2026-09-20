@@ -10,7 +10,7 @@ import { useCategoryParam } from "../lib/useCategoryParam";
 import { relativeFractions, type RelativeFractions } from "../lib/scoreScale";
 import { PostCard } from "./PostCard";
 
-const NO_RELATIVE: RelativeFractions = { topicality: 0, base: 0, rank: 0 };
+const NO_RELATIVE: RelativeFractions = { rank: 0 };
 
 export function Feed() {
   const [category, setCategory] = useCategoryParam();

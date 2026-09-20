@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import { ScoreDetails } from "../../src/components/ScoreDetails";
 
-const scores = { sentiment: 0.65, topicality: 1.2, base: 0.8, rank: 0.42 };
-const relative = { topicality: 0.9, base: 0.5, rank: 0.1 };
+const scores = { sentiment: 0.65, topicality: 1.2, base: 0.72, rank: 0.42, quality: 0.8 };
+const relative = { rank: 0.1 };
 
 describe("ScoreDetails", () => {
   it("shows a bar and label at a glance, collapsed by default", () => {
@@ -17,29 +17,31 @@ describe("ScoreDetails", () => {
     render(<ScoreDetails scores={scores} relative={relative} />);
 
     const summary = screen.getByText("Scores").closest("summary");
-    expect(summary).toHaveAttribute(
-      "title",
-      "Sentiment 0.65 · Topicality 1.20 · Base 0.80 · Rank 0.42",
-    );
+    expect(summary).toHaveAttribute("title", "Quality 0.80 · Recency 0.90 · Rank 0.42");
   });
 
-  it("shows all four scores, each with its own bar, when expanded", () => {
+  it("shows quality, recency, and rank, each with its own bar, when expanded", () => {
     render(<ScoreDetails scores={scores} relative={relative} />);
 
-    expect(screen.getByText("Sentiment")).toBeInTheDocument();
-    expect(screen.getByText("Topicality")).toBeInTheDocument();
-    expect(screen.getByText("Base")).toBeInTheDocument();
+    expect(screen.getByText("Quality")).toBeInTheDocument();
+    expect(screen.getByText("Recency")).toBeInTheDocument();
     expect(screen.getByText("Rank")).toBeInTheDocument();
-    expect(screen.getByText("0.65")).toBeInTheDocument();
-    expect(screen.getByText("1.20")).toBeInTheDocument();
     expect(screen.getByText("0.80")).toBeInTheDocument();
+    expect(screen.getByText("0.90")).toBeInTheDocument();
     expect(screen.getByText("0.42")).toBeInTheDocument();
   });
 
-  it("labels the relative scores as batch-relative, not absolute", () => {
+  it("labels only rank as batch-relative, not absolute", () => {
     render(<ScoreDetails scores={scores} relative={relative} />);
 
-    expect(screen.getAllByText("vs. this batch")).toHaveLength(3);
+    expect(screen.getAllByText("vs. this batch")).toHaveLength(1);
+  });
+
+  it("shows a dash, not NaN, when quality is null (quality-model outage)", () => {
+    const outageScores = { ...scores, quality: null };
+    render(<ScoreDetails scores={outageScores} relative={relative} />);
+
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 
   it("links externally to the Wiki's Algorithm page for the full explanation (issue #31)", () => {

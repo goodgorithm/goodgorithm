@@ -16,7 +16,7 @@ const bskyPost: FeedPost = {
   permalink: "https://bsky.app/profile/did:plc:abc123/post/xyz",
   author: { display_name: null, avatar_url: null, emojis: [] },
   emojis: [],
-  scores: { sentiment: 0.9, topicality: 1.2, base: 1.1, rank: 0.8 },
+  scores: { sentiment: 0.9, topicality: 1.2, base: 1.1, rank: 0.8, quality: 0.7 },
   pipeline_version: "v1",
   attachments: [],
   sensitive: false,
@@ -74,7 +74,7 @@ describe("PostCard", () => {
   it("exposes raw scores behind a details toggle", () => {
     render(<PostCard post={bskyPost} relative={noRelative} />);
     expect(screen.getByText("Scores")).toBeInTheDocument();
-    expect(screen.getByText("0.90")).toBeInTheDocument();
+    expect(screen.getByText("0.70")).toBeInTheDocument(); // quality
   });
 
   it("links Report to the moderation issue template, pre-filled with the permalink (issue #7)", () => {

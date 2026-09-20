@@ -18,7 +18,7 @@ function makePost(id: string, text: string): FeedPost {
     permalink: `https://example.com/post/${id}`,
     author: { display_name: null, avatar_url: null, emojis: [] },
     emojis: [],
-    scores: { sentiment: 0.5, topicality: 0.5, base: 0.5, rank: 0.5 },
+    scores: { sentiment: 0.5, topicality: 0.5, base: 0.5, rank: 0.5, quality: 0.5 },
     pipeline_version: "v1",
     attachments: [],
     sensitive: false,

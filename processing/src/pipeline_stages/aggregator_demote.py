@@ -1,13 +1,13 @@
 """Down-weights a post whose Mastodon home instance is a known content
 aggregator -- Flipboard's federating "magazine" accounts and similar
 services that syndicate curated headline/link reposts into the fediverse
-rather than posting original content. Enthusiastic headline text scores
-well on sentiment and clears the topicality floor, so without this one
-automated aggregator can dominate a large share of the ranked feed
-(flipboard.com alone was ~34% of ranked Mastodon content). Not off-mission
-enough to hard-exclude the way content_filter/context_dependency do -- some
-reshares are genuinely worth seeing -- so this is a base_score devalue
-multiplier, the same category as context_dependency.py / link_share.py.
+rather than posting original content. Enthusiastic headline text can read
+as genuinely uplifting on its own, so without this one automated
+aggregator can dominate a large share of the ranked feed (flipboard.com
+alone was ~34% of ranked Mastodon content). Not off-mission enough to
+hard-exclude the way content_filter/context_dependency do -- some reshares
+are genuinely worth seeing -- so this is a base_score devalue multiplier,
+the same category as context_dependency.py.
 
 The instance list is db.fetch_aggregator_instances()'s whole-table read
 (the aggregator_instances table), moderator-curated and refreshed via
@@ -26,10 +26,9 @@ from pipeline_stages import bot_filter
 from pipeline_stages.content_filter import matches_domain_list
 
 # base_score multiplier for a post from a listed aggregator instance --
-# harder than context_dependency.py's / link_share.py's 0.4 default,
-# reflecting that these carry no original commentary at all. See the wiki's
-# Ranking page. Treat any non-default value as unvalidated against real
-# production data.
+# harder than context_dependency.py's 0.4 default, reflecting that these
+# carry no original commentary at all. See the wiki's Ranking page. Treat
+# any non-default value as unvalidated against real production data.
 AGGREGATOR_DEMOTE_MULTIPLIER = float(os.environ.get("AGGREGATOR_DEMOTE_MULTIPLIER", "0.3"))
 if not 0.0 < AGGREGATOR_DEMOTE_MULTIPLIER <= 1.0:
     raise ValueError(

@@ -39,6 +39,9 @@ export interface FeedPostScores {
   topicality: number;
   base: number;
   rank: number;
+  // null only when the quality model isn't loaded (quality_exclude.py
+  // fails open).
+  quality: number | null;
 }
 
 // Mastodon's custom-emoji shortcode mechanism - a `:shortcode:` in

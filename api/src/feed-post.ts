@@ -30,6 +30,7 @@ export function rowToFeedPost(row: FeedRow): FeedPost {
       topicality: row.topicality_score,
       base: row.base_score,
       rank: row.rank_score,
+      quality: row.quality_score,
     },
     pipeline_version: row.pipeline_version,
     attachments,
