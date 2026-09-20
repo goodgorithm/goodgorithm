@@ -29,6 +29,7 @@ function makeRow(overrides: Partial<FeedRow>): FeedRow {
     topicality_score: 4.1,
     base_score: 3.36,
     rank_score: 3.36,
+    quality_score: 0.72,
     pipeline_version: "v5",
     mastodon_permalink: null,
     mastodon_display_name: null,

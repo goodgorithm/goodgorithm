@@ -37,6 +37,7 @@ export interface FeedRow {
   topicality_score: number;
   base_score: number;
   rank_score: number;
+  quality_score: number | null;
   pipeline_version: string;
   mastodon_permalink: string | null;
   mastodon_display_name: string | null;
@@ -86,7 +87,7 @@ export async function fetchFeed(
 function fetchFeedQuery(limit: number, cursor: Cursor | null, category: string | null): Promise<FeedRow[]> {
   return sql<FeedRow[]>`
     SELECT r.id, r.source, r.source_id, r.author_id, r.text, r.created_at, p.entities,
-           p.sentiment_score, p.topicality_score, p.base_score, p.rank_score,
+           p.sentiment_score, p.topicality_score, p.base_score, p.rank_score, p.quality_score,
            p.pipeline_version,
            r.raw_json->>'url' AS mastodon_permalink,
            r.raw_json->'account'->>'display_name' AS mastodon_display_name,

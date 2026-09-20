@@ -1,35 +1,57 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  deriveRecency,
   percentileRank,
-  POSITIVITY_THRESHOLD,
+  QUALITY_THRESHOLD,
+  qualityFraction,
   relativeFractions,
-  sentimentFraction,
 } from "../../src/lib/scoreScale";
 
-describe("sentimentFraction", () => {
-  it("maps the positivity floor to 0", () => {
-    expect(sentimentFraction(POSITIVITY_THRESHOLD)).toBe(0);
+describe("qualityFraction", () => {
+  it("maps the quality-exclude floor to 0", () => {
+    expect(qualityFraction(QUALITY_THRESHOLD)).toBe(0);
   });
 
-  it("maps the maximum sentiment to 1", () => {
-    expect(sentimentFraction(1)).toBe(1);
+  it("maps the maximum quality to 1", () => {
+    expect(qualityFraction(1)).toBe(1);
   });
 
   it("maps the midpoint of the realistic range to 0.5", () => {
-    const midpoint = (POSITIVITY_THRESHOLD + 1) / 2;
-    expect(sentimentFraction(midpoint)).toBeCloseTo(0.5);
+    const midpoint = (QUALITY_THRESHOLD + 1) / 2;
+    expect(qualityFraction(midpoint)).toBeCloseTo(0.5);
   });
 
-  it("clamps values below the positivity floor to 0", () => {
+  it("clamps values below the quality floor to 0", () => {
     // Shouldn't happen in practice (ranking eligibility already enforces
     // this), but the bar must never render a negative fill if it does.
-    expect(sentimentFraction(-1)).toBe(0);
-    expect(sentimentFraction(0)).toBe(0);
+    expect(qualityFraction(0)).toBe(0);
   });
 
   it("clamps values above 1 to 1", () => {
-    expect(sentimentFraction(1.5)).toBe(1);
+    expect(qualityFraction(1.5)).toBe(1);
+  });
+
+  it("returns 0 for a null quality (quality-model outage)", () => {
+    expect(qualityFraction(null)).toBe(0);
+  });
+});
+
+describe("deriveRecency", () => {
+  it("recovers the decay factor from base / quality", () => {
+    expect(deriveRecency({ sentiment: 0, topicality: 0, base: 0.45, rank: 0, quality: 0.9 })).toBeCloseTo(0.5);
+  });
+
+  it("clamps to 1 for a fresh post (base == quality)", () => {
+    expect(deriveRecency({ sentiment: 0, topicality: 0, base: 0.7, rank: 0, quality: 0.7 })).toBeCloseTo(1);
+  });
+
+  it("returns 0 when quality is null (quality-model outage)", () => {
+    expect(deriveRecency({ sentiment: 0, topicality: 0, base: 0, rank: 0, quality: null })).toBe(0);
+  });
+
+  it("returns 0 when quality is 0 (avoids a divide-by-zero)", () => {
+    expect(deriveRecency({ sentiment: 0, topicality: 0, base: 0, rank: 0, quality: 0 })).toBe(0);
   });
 });
 
@@ -57,27 +79,27 @@ describe("percentileRank", () => {
 });
 
 describe("relativeFractions", () => {
-  function post(id: string, topicality: number, base: number, rank: number) {
-    return { id, scores: { sentiment: 0.5, topicality, base, rank } } as never;
+  function post(id: string, rank: number) {
+    return { id, scores: { sentiment: 0.5, topicality: 1, base: 0.5, rank, quality: 0.5 } } as never;
   }
 
-  it("computes independent percentile ranks per metric", () => {
-    const posts = [post("a", 1, 10, 100), post("b", 2, 20, 50), post("c", 3, 5, 200)];
+  it("computes independent percentile ranks for rank", () => {
+    const posts = [post("a", 100), post("b", 50), post("c", 200)];
 
     const result = relativeFractions(posts);
 
-    expect(result.get("a")).toEqual({ topicality: 1 / 3, base: 2 / 3, rank: 2 / 3 });
-    expect(result.get("b")).toEqual({ topicality: 2 / 3, base: 1, rank: 1 / 3 });
-    expect(result.get("c")).toEqual({ topicality: 1, base: 1 / 3, rank: 1 });
+    expect(result.get("a")).toEqual({ rank: 2 / 3 });
+    expect(result.get("b")).toEqual({ rank: 1 / 3 });
+    expect(result.get("c")).toEqual({ rank: 1 });
   });
 
   it("gives every post fraction 1 when all values in the batch are equal", () => {
-    const posts = [post("a", 1, 1, 1), post("b", 1, 1, 1)];
+    const posts = [post("a", 1), post("b", 1)];
 
     const result = relativeFractions(posts);
 
-    expect(result.get("a")).toEqual({ topicality: 1, base: 1, rank: 1 });
-    expect(result.get("b")).toEqual({ topicality: 1, base: 1, rank: 1 });
+    expect(result.get("a")).toEqual({ rank: 1 });
+    expect(result.get("b")).toEqual({ rank: 1 });
   });
 
   it("returns an empty map for an empty batch", () => {

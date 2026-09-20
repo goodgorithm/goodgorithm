@@ -1,5 +1,5 @@
 import type { FeedPostScores } from "../api/types";
-import { sentimentFraction, type RelativeFractions } from "../lib/scoreScale";
+import { deriveRecency, qualityFraction, type RelativeFractions } from "../lib/scoreScale";
 import styles from "./ScoreDetails.module.css";
 
 // Fraction (0-1) is the primary signal - bar length, not color, carries the
@@ -26,40 +26,31 @@ export function ScoreDetails({
   scores: FeedPostScores;
   relative: RelativeFractions;
 }) {
-  const sentiment = sentimentFraction(scores.sentiment);
+  const quality = qualityFraction(scores.quality);
+  const recency = deriveRecency(scores);
+  const qualityLabel = scores.quality === null ? "—" : scores.quality.toFixed(2);
 
   return (
     <details className={styles.details}>
       <summary
         className={styles.summary}
-        title={`Sentiment ${scores.sentiment.toFixed(2)} · Topicality ${scores.topicality.toFixed(2)} · Base ${scores.base.toFixed(2)} · Rank ${scores.rank.toFixed(2)}`}
+        title={`Quality ${qualityLabel} · Recency ${recency.toFixed(2)} · Rank ${scores.rank.toFixed(2)}`}
       >
         <span className={styles.miniBar}>
-          <ScoreBar fraction={sentiment} />
+          <ScoreBar fraction={quality} />
         </span>
         <span>Scores</span>
       </summary>
       <div className={styles.rows}>
         <div className={styles.row}>
-          <span className={styles.rowLabel}>Sentiment</span>
-          <ScoreBar fraction={sentiment} />
-          <span className={styles.rowValue}>{scores.sentiment.toFixed(2)}</span>
+          <span className={styles.rowLabel}>Quality</span>
+          <ScoreBar fraction={quality} />
+          <span className={styles.rowValue}>{qualityLabel}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.rowLabel}>
-            Topicality
-            <small>vs. this batch</small>
-          </span>
-          <ScoreBar fraction={relative.topicality} />
-          <span className={styles.rowValue}>{scores.topicality.toFixed(2)}</span>
-        </div>
-        <div className={styles.row}>
-          <span className={styles.rowLabel}>
-            Base
-            <small>vs. this batch</small>
-          </span>
-          <ScoreBar fraction={relative.base} />
-          <span className={styles.rowValue}>{scores.base.toFixed(2)}</span>
+          <span className={styles.rowLabel}>Recency</span>
+          <ScoreBar fraction={recency} />
+          <span className={styles.rowValue}>{recency.toFixed(2)}</span>
         </div>
         <div className={styles.row}>
           <span className={styles.rowLabel}>

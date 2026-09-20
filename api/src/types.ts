@@ -28,6 +28,13 @@ export interface FeedPostScores {
   topicality: number;
   base: number;
   rank: number;
+  // The trained quality classifier's score -- the sole input to base_score
+  // now (base = quality x recency_decay). null only during a quality-model
+  // outage (quality_exclude.py fails open rather than blocking the whole
+  // feed) -- sentiment/topicality/base/rank stay above for the frozen
+  // Android contract (api/tests/contracts/android-feed-contract.ts); the
+  // current web UI displays quality/recency/rank instead.
+  quality: number | null;
 }
 
 // Mastodon's custom-emoji shortcode mechanism - a `:shortcode:` in
