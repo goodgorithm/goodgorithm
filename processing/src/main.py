@@ -83,6 +83,16 @@ def main() -> None:
         type=int,
         default=int(os.environ.get("MODERATION_RECHECK_INTERVAL_SECONDS", 10)),
     )
+    # Same external-API-in-batches throttling reasoning as
+    # --moderation-recheck-interval. Must run before --refresh-interval in
+    # the loop below, not after -- so a post it resolves this cycle gets
+    # picked up by the same cycle's refresh_rankings() pass instead of
+    # waiting an extra full interval. See the wiki's Configuration page.
+    parser.add_argument(
+        "--context-resolve-interval",
+        type=int,
+        default=int(os.environ.get("CONTEXT_RESOLVE_INTERVAL_SECONDS", 10)),
+    )
     # A cheap, well-indexed DB-only join (see the wiki's Pipeline Internals
     # page) -- throttled anyway, since blocklist entries are rare and this
     # only governs how quickly a newly-blocked author's already-ingested
@@ -163,6 +173,7 @@ def main() -> None:
         pipeline.enforce_redis_capacity()
         pipeline.run_cycle(args.batch_size)
         pipeline.recheck_moderation()
+        pipeline.resolve_context()
         pipeline.refresh_rankings()
         pipeline.resolve_authors()
         pipeline.recheck_existence(args.existence_recheck_stale_hours)
@@ -192,6 +203,7 @@ def main() -> None:
             "backlog_buffer_seconds": args.backlog_buffer,
             "refresh_interval_seconds": args.refresh_interval,
             "moderation_recheck_interval_seconds": args.moderation_recheck_interval,
+            "context_resolve_interval_seconds": args.context_resolve_interval,
             "purge_blocked_authors_interval_seconds": args.purge_blocked_authors_interval,
             "author_resolve_interval_seconds": args.author_resolve_interval,
             "existence_recheck_interval_seconds": args.existence_recheck_interval,
@@ -206,6 +218,7 @@ def main() -> None:
     last_network_detection_time = 0.0
     last_redis_guard_time = 0.0
     last_moderation_recheck_time = 0.0
+    last_context_resolve_time = 0.0
     last_author_resolve_time = 0.0
     last_existence_recheck_time = 0.0
     last_purge_blocked_authors_time = 0.0
@@ -223,6 +236,10 @@ def main() -> None:
         if now - last_moderation_recheck_time >= args.moderation_recheck_interval:
             pipeline.recheck_moderation()
             last_moderation_recheck_time = now
+
+        if now - last_context_resolve_time >= args.context_resolve_interval:
+            pipeline.resolve_context()
+            last_context_resolve_time = now
 
         if now - last_refresh_time >= args.refresh_interval:
             pipeline.refresh_rankings()

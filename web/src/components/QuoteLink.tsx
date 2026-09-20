@@ -1,18 +1,33 @@
 import type { Attachment } from "../api/types";
 import styles from "./QuoteLink.module.css";
 
-type QuoteAttachment = Extract<Attachment, { kind: "quote" }>;
+type ContextAttachment = Extract<Attachment, { kind: "quote" | "reply" }>;
 
-export function QuoteLink({ quote }: { quote: QuoteAttachment }) {
+const COPY = {
+  quote: {
+    bareLink: "Quotes a post ↗",
+    filtered: "Quoted post hidden (doesn't meet our content guidelines)",
+    unavailable: "Quoted post unavailable (deleted or no longer accessible)",
+  },
+  reply: {
+    bareLink: "Replying to a post ↗",
+    filtered: "Replied-to post hidden (doesn't meet our content guidelines)",
+    unavailable: "Replied-to post unavailable (deleted or no longer accessible)",
+  },
+} as const;
+
+export function QuoteLink({ quote }: { quote: ContextAttachment }) {
   const { content } = quote;
+  const copy = COPY[quote.kind];
 
-  // content is null for Mastodon posts (unreachable, no quotes there),
-  // and for any row scored before quote resolution shipped - falls back
-  // to the original plain-link behavior rather than a broken empty card.
+  // content is null for Mastodon posts (unreachable, no quotes/replies
+  // there yet -- see issue #293), and for any row scored before context
+  // resolution shipped - falls back to the original plain-link behavior
+  // rather than a broken empty card.
   if (content === null) {
     return (
       <a href={quote.url} target="_blank" rel="noreferrer noopener" className={styles.link}>
-        Quotes a post ↗
+        {copy.bareLink}
       </a>
     );
   }
@@ -22,10 +37,7 @@ export function QuoteLink({ quote }: { quote: QuoteAttachment }) {
     // has nothing useful to click through to, and a filtered one
     // shouldn't be surfaced as clickable at all, consistent with the
     // content filter's precision-over-recall stance.
-    const message =
-      content.reason === "filtered"
-        ? "Quoted post hidden (doesn't meet our content guidelines)"
-        : "Quoted post unavailable (deleted or no longer accessible)";
+    const message = content.reason === "filtered" ? copy.filtered : copy.unavailable;
     return <div className={styles.unavailable}>{message}</div>;
   }
 

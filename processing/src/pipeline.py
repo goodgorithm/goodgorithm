@@ -4,7 +4,9 @@ import json
 import logging
 import os
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 import config
 from infra import corpus_store, db, redis_guard
@@ -59,6 +61,10 @@ PIPELINE_VERSION = "v19"
 # Batch size for recheck_moderation()'s sweep -- see the wiki's
 # Configuration page.
 MODERATION_RECHECK_BATCH_SIZE = int(os.environ.get("MODERATION_RECHECK_BATCH_SIZE", "500"))
+
+# Batch size for resolve_context()'s sweep -- see the wiki's Configuration
+# page.
+CONTEXT_RESOLVE_BATCH_SIZE = int(os.environ.get("CONTEXT_RESOLVE_BATCH_SIZE", "500"))
 
 # Batch size for resolve_authors()'s sweep -- see the wiki's Configuration
 # page.
@@ -127,7 +133,7 @@ def run_cycle(batch_size: int) -> int:
             reason = "no tag" if post.lang is None else f"tagged {post.lang!r}"
             logger.info("language-filtered post %s (%s, detected non-English)", post.id, reason)
         else:
-            classification = context_dependency.classify(post.source, post.author_id, post.raw_json, post.text)
+            classification = context_dependency.classify(post.source, post.raw_json, post.text)
             if classification.action == "exclude":
                 db.delete_raw_post(post.id)
                 logger.info("context-dependency-excluded post %s (%s)", post.id, post.source)
@@ -203,16 +209,9 @@ def run_cycle(batch_size: int) -> int:
     # Sentiment page.
     sentiment_results = sentiment.score_sentiment_batch(kept_posts)
 
-    # Batched/deduped resolve, not one call per post -- see the wiki's
-    # Bluesky AppView Resolvers page.
-    quote_uris_by_post = {post.id: quote_resolver.extract_quote_uri(post.raw_json) for post in kept_posts}
-    quote_content_by_uri = quote_resolver.resolve_quotes(
-        [uri for uri in quote_uris_by_post.values() if uri is not None],
-        mod.suppressed_terms,
-        mod.suppressed_domains,
-    )
-
-    # Same batched/deduped shape as quote resolution above.
+    # Same batched/deduped shape as quote/reply-context resolution --
+    # resolve_context() runs on its own throttled sweep instead (see
+    # resolve_context() below), not inline here.
     thumbnail_urls_by_post = {
         post.id: thumbnail_resolver.extract_link_needing_thumbnail(post.source, post.raw_json, post.text)
         for post in kept_posts
@@ -232,17 +231,25 @@ def run_cycle(batch_size: int) -> int:
         topic = topicality_results[post.id]
         sentiment_score = sentiment_results[post.id]
 
-        quote_uri = quote_uris_by_post.get(post.id)
-        quote_content = quote_content_by_uri.get(quote_uri) if quote_uri else None
-
         political_score = political_results.get(post.id)
-        quality_score = quality_results.get(post.id)
+
+        # A "pending" post (Bluesky reply/quote awaiting resolve_context())
+        # never gets a quality_score/base_score on this pass, deliberately
+        # pessimistic: it doesn't rank on its own merit alone until we also
+        # know its referenced content isn't itself excluded. Already-computed
+        # quality_results[post.id] is discarded here for a pending post --
+        # resolve_context() recomputes it fresh once resolution completes,
+        # combined with the resolved target's own score. compute_base_score
+        # already returns 0.0 for quality_score=None (the model-outage
+        # fail-open path), so this needs no new ranking.py logic.
+        context_classification = context_classifications[post.id]
+        is_pending = context_classification.action == "pending"
+        quality_score = None if is_pending else quality_results.get(post.id)
 
         penalty = penalties.apply(
             penalties.PenaltyContext(
                 source=post.source,
                 author_id=post.author_id,
-                context_action=context_classifications[post.id],
                 aggregator_instances=mod.aggregator_instances,
             )
         )
@@ -282,7 +289,6 @@ def run_cycle(batch_size: int) -> int:
                 entities=topic.entities,
                 base_score=base_score,
                 rank_score=None,
-                quote_content=quote_content,
                 category=category,
                 category_method=category_model.CATEGORY_METHOD,
                 penalty_multiplier=penalty.multiplier,
@@ -291,7 +297,9 @@ def run_cycle(batch_size: int) -> int:
                 political_score=political_score,
                 political_method=political_model.POLITICAL_METHOD if political_score is not None else None,
                 quality_score=quality_score,
-                quality_method=quality_model.QUALITY_METHOD if quality_score is not None else None,
+                quality_method=None if is_pending else (quality_model.QUALITY_METHOD if quality_score is not None else None),
+                context_status="pending" if is_pending else None,
+                context_kind=context_classification.context_kind,
             )
         )
 
@@ -419,6 +427,144 @@ def recheck_moderation() -> int:
     db.mark_moderation_checked(checked_ids)
     if purged:
         logger.info("moderation-recheck purged %d posts", purged)
+    return purged
+
+
+@dataclass(frozen=True)
+class _ScorableText:
+    """A lightweight (id, text) pair -- reuses quality_model.score_batch()/
+    political_model.score_batch()'s batched-ONNX-call shape for
+    resolve_context()'s own ad-hoc scoring needs (a pending post's own
+    text, and its resolved target's text) without needing a full RawPost."""
+
+    id: UUID
+    text: str
+
+
+def resolve_context() -> int:
+    """Resolves a batch of Bluesky replies/quote-posts pending their
+    target's content (see context_dependency.py, quote_resolver.py). A
+    separate sweep, not inline in run_cycle -- reply volume is roughly
+    half of Bluesky's stream, far more than resolving synchronously
+    within run_cycle could absorb without hurting throughput. Throttled
+    by the caller (main.py), same reasoning as recheck_moderation -- calls
+    an external API in batches. See issue #292 and the wiki's Pipeline
+    Internals page.
+
+    A target that fails content-filtering/an adult label
+    (quote_resolver's own "filtered" status), fails language_filter,
+    fails political_exclude, or belongs to an author with a recent is_bot
+    verdict of their own excludes the whole post -- not just a devalue,
+    since this actually looks at what's being referenced. A target that
+    resolves cleanly gets its own quality_score computed and combined via
+    min() with the pending post's own quality_score -- a conservative
+    floor, not a boost: a thread never scores better than its weaker
+    half. A target that can't be resolved at all (not_found, or a failed
+    AppView batch) falls back to scoring the pending post standalone,
+    marked context_status = 'unavailable' so a future UI pass can
+    surface that it happened."""
+    pending = db.fetch_context_pending(CONTEXT_RESOLVE_BATCH_SIZE)
+    if not pending:
+        return 0
+
+    mod = db.fetch_moderation_lists()
+    targets_by_post = {post.raw_post_id: quote_resolver.extract_context_target(post.raw_json) for post in pending}
+    target_uris = [target[1] for target in targets_by_post.values() if target is not None]
+    content_by_uri, author_did_by_uri = quote_resolver.resolve_context(
+        target_uris, mod.suppressed_terms, mod.suppressed_domains
+    )
+
+    # Batched, not per-post -- only for targets that actually resolved,
+    # since there's nothing to political-check/quality-score otherwise.
+    available_by_post: dict[UUID, dict] = {}
+    for post in pending:
+        target = targets_by_post.get(post.raw_post_id)
+        content = content_by_uri.get(target[1]) if target is not None else None
+        if content is not None and content.get("status") == "available":
+            available_by_post[post.raw_post_id] = content
+
+    target_texts = [_ScorableText(id=pid, text=c["text"]) for pid, c in available_by_post.items()]
+    target_political = political_model.score_batch(target_texts)
+    target_political_centroid = political_centroid.score_batch(target_texts)
+    target_quality = quality_model.score_batch(target_texts)
+
+    own_texts = [_ScorableText(id=post.raw_post_id, text=post.text) for post in pending]
+    own_quality = quality_model.score_batch(own_texts)
+
+    purged = 0
+    resolutions: list[db.ContextResolution] = []
+    for post in pending:
+        content = available_by_post.get(post.raw_post_id)
+        own_score = own_quality.get(post.raw_post_id)
+
+        if content is None:
+            target = targets_by_post.get(post.raw_post_id)
+            resolved_but_unavailable = target is not None and content_by_uri.get(target[1]) is not None
+            reason = content_by_uri.get(target[1], {}).get("reason") if resolved_but_unavailable else "not_found"
+            if reason == "filtered":
+                db.delete_raw_post(post.raw_post_id)
+                purged += 1
+                logger.info("context-resolution-excluded post %s (target filtered)", post.raw_post_id)
+            else:
+                resolutions.append(
+                    db.ContextResolution(
+                        raw_post_id=post.raw_post_id,
+                        quality_score=own_score,
+                        quality_method=quality_model.QUALITY_METHOD if own_score is not None else None,
+                        context_content=None,
+                    )
+                )
+            continue
+
+        target_uri = targets_by_post[post.raw_post_id][1]
+
+        if language_filter.is_non_english(content["text"]):
+            db.delete_raw_post(post.raw_post_id)
+            purged += 1
+            logger.info("context-resolution-excluded post %s (target non-English)", post.raw_post_id)
+            continue
+
+        classifier_score = target_political.get(post.raw_post_id)
+        centroid_score = target_political_centroid.get(post.raw_post_id)
+        if political_exclude.is_political_excluded(classifier_score, centroid_score):
+            db.delete_raw_post(post.raw_post_id)
+            purged += 1
+            logger.info("context-resolution-excluded post %s (target political)", post.raw_post_id)
+            continue
+
+        target_author_did = author_did_by_uri.get(target_uri)
+        if target_author_did is not None and db.recent_bot_verdict("bluesky", target_author_did):
+            db.delete_raw_post(post.raw_post_id)
+            purged += 1
+            logger.info("context-resolution-excluded post %s (target author is_bot)", post.raw_post_id)
+            continue
+
+        target_score = target_quality.get(post.raw_post_id)
+        if own_score is not None and target_score is not None:
+            combined_score = min(own_score, target_score)
+        else:
+            combined_score = own_score if own_score is not None else target_score  # fail-open
+
+        if combined_score is not None and quality_exclude.is_quality_excluded(combined_score):
+            db.delete_raw_post(post.raw_post_id)
+            purged += 1
+            logger.info(
+                "context-resolution-excluded post %s (combined score=%.3f)", post.raw_post_id, combined_score
+            )
+            continue
+
+        resolutions.append(
+            db.ContextResolution(
+                raw_post_id=post.raw_post_id,
+                quality_score=combined_score,
+                quality_method=quality_model.QUALITY_METHOD if combined_score is not None else None,
+                context_content=content,
+            )
+        )
+
+    db.apply_context_resolution(resolutions)
+    if purged:
+        logger.info("context-resolution purged %d posts", purged)
     return purged
 
 

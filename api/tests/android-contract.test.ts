@@ -39,10 +39,12 @@ function makeRow(overrides: Partial<FeedRow>): FeedRow {
     mastodon_account_emojis: null,
     mastodon_status_emojis: null,
     bluesky_embed: null,
+    bluesky_reply: null,
     mastodon_media: null,
     mastodon_card: null,
     mastodon_sensitive: null,
     bluesky_labels: null,
+    context_content: null,
     quote_content: null,
     category: null,
     generated_thumbnail_url: null,
@@ -87,6 +89,31 @@ const FIXTURES: Record<string, FeedRow> = {
       record: { cid: "x", uri: "at://did:plc:abc/app.bsky.feed.post/xyz" },
     },
     quote_content: { status: "unavailable", reason: "not_found" },
+  }),
+
+  "bluesky quote — resolved via context_content (issue #292)": makeRow({
+    bluesky_embed: {
+      $type: "app.bsky.embed.record",
+      record: { cid: "bafyreie25lnxb35zt4ppydwcgrlw4vgkirbhe5hvtt5kbadrxnhxtmlgwe", uri: "at://did:plc:7gtqafwrxxrqfjeq5vgjauir/app.bsky.feed.post/3msljo7hyxc2o" },
+    },
+    context_content: {
+      status: "available",
+      author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: "https://example.com/a.jpg" },
+      text: "a genuinely lovely post",
+      createdAt: "2026-08-10T12:00:00Z",
+    },
+  }),
+
+  "bluesky reply — resolved context available (issue #292, unknown-to-the-frozen-app attachment kind)": makeRow({
+    bluesky_reply: {
+      parent: { cid: "x", uri: "at://did:plc:abc/app.bsky.feed.post/xyz" },
+    },
+    context_content: {
+      status: "available",
+      author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: null },
+      text: "the post being replied to",
+      createdAt: "2026-09-20T00:00:00Z",
+    },
   }),
 
   "mastodon — card + image media + account/status emojis + sensitive + category set": makeRow({

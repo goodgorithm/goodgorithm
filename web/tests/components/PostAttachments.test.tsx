@@ -69,6 +69,17 @@ const notFoundQuote: Attachment = {
   content: { status: "unavailable", reason: "not_found" },
 };
 
+const resolvedReply: Attachment = {
+  kind: "reply",
+  url: "https://bsky.app/profile/did:plc:other/post/parent",
+  content: {
+    status: "available",
+    author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: null },
+    text: "the post being replied to",
+    createdAt: "2026-09-20T00:00:00Z",
+  },
+};
+
 const gifVideo: Attachment = {
   kind: "video",
   playlistUrl: "https://cdn.fosstodon.org/cache/media_attachments/files/117/original/gifv.mp4",
@@ -180,6 +191,12 @@ describe("PostAttachments", () => {
     render(<PostAttachments post={makePost([notFoundQuote])} />);
     expect(screen.getByText(/quoted post unavailable \(deleted or no longer accessible\)/i)).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("renders a resolved reply with distinct copy from a quote", () => {
+    render(<PostAttachments post={makePost([resolvedReply])} />);
+    expect(screen.getByRole("link", { name: /someone nice/i })).toHaveAttribute("href", resolvedReply.url);
+    expect(screen.queryByText(/quotes a post/i)).not.toBeInTheDocument();
   });
 
   it("renders images and a quote together (recordWithMedia shape)", () => {

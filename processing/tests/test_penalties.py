@@ -1,18 +1,14 @@
-from uuid import uuid4
-
 from pipeline_stages import aggregator_demote, penalties
-from pipeline_stages.context_dependency import ContextClassification
 
 FLIPBOARD = frozenset({"flipboard.com", "flipboard.social"})
 
-_PENALTY_NAMES = ("context", "aggregator")
+_PENALTY_NAMES = ("aggregator",)
 
 
 def _ctx(**overrides):
     base = dict(
         source="bluesky",
-        author_id=f"did:plc:{uuid4().hex}",
-        context_action=ContextClassification(action="none"),
+        author_id="did:plc:someone",
         aggregator_instances=frozenset(),
     )
     base.update(overrides)
@@ -29,13 +25,6 @@ def test_apply_no_penalties_is_identity():
     assert result.detail == {name: 1.0 for name in _PENALTY_NAMES}
 
 
-def test_apply_applies_the_context_devalue():
-    result = penalties.apply(_ctx(context_action=ContextClassification(action="devalue", devalue_multiplier=0.4)))
-    assert result.detail["context"] == 0.4
-    assert result.detail["aggregator"] == 1.0
-    assert abs(result.multiplier - 0.4) < 1e-9
-
-
 def test_apply_reads_the_aggregator_instance_list():
     result = penalties.apply(
         _ctx(source="mastodon", author_id="hachyderm.io/x@flipboard.com", aggregator_instances=FLIPBOARD)
@@ -46,12 +35,7 @@ def test_apply_reads_the_aggregator_instance_list():
 
 def test_apply_multiplier_equals_product_of_numeric_detail():
     result = penalties.apply(
-        _ctx(
-            source="mastodon",
-            author_id="flipboard.com/mag",
-            aggregator_instances=FLIPBOARD,
-            context_action=ContextClassification(action="devalue", devalue_multiplier=0.4),
-        )
+        _ctx(source="mastodon", author_id="flipboard.com/mag", aggregator_instances=FLIPBOARD)
     )
     product = 1.0
     for name in _PENALTY_NAMES:

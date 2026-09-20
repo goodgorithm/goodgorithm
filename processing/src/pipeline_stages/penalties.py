@@ -1,9 +1,8 @@
 """A registry of content-derived, observational-only devalue signals:
-`context` and `aggregator`. The labelled evaluation set behind the rest of
+currently just `aggregator`. The labelled evaluation set behind the rest of
 the scoring pipeline's validation carries no `author_id`/raw platform JSON
-to compute either signal from, so neither has measured evidence either
-way -- both stay active pending real data rather than being assumed safe
-or unsafe.
+to compute it from, so it has no measured evidence either way -- it stays
+active pending real data rather than being assumed safe or unsafe.
 
 `ranking.py`'s `compute_base_score` is `quality_score x recency_decay` and
 does not read this registry's output -- `apply()`'s combined multiplier
@@ -20,24 +19,16 @@ from dataclasses import dataclass
 from typing import Callable
 
 from pipeline_stages import aggregator_demote
-from pipeline_stages.context_dependency import ContextClassification
 
 
 @dataclass(frozen=True)
 class PenaltyContext:
     """Everything the evaluators might read, assembled once per post in
-    `run_cycle`. `context_action` is the filter loop's already-computed
-    `context_dependency.classify` result (re-running it here would double the
-    work and the exclude has already happened)."""
+    `run_cycle`."""
 
     source: str
     author_id: str
-    context_action: ContextClassification
     aggregator_instances: frozenset[str]
-
-
-def _context(ctx: PenaltyContext) -> tuple[float, dict]:
-    return ctx.context_action.devalue_multiplier, {}
 
 
 def _aggregator(ctx: PenaltyContext) -> tuple[float, dict]:
@@ -54,10 +45,7 @@ class Penalty:
     evaluate: Callable[[PenaltyContext], tuple[float, dict]]
 
 
-PENALTIES: tuple[Penalty, ...] = (
-    Penalty("context", _context),
-    Penalty("aggregator", _aggregator),
-)
+PENALTIES: tuple[Penalty, ...] = (Penalty("aggregator", _aggregator),)
 
 
 @dataclass(frozen=True)

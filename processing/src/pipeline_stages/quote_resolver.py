@@ -1,4 +1,5 @@
 import logging
+from typing import Literal
 
 import requests
 
@@ -6,6 +7,8 @@ from pipeline_stages import content_filter
 from util.bluesky_appview import APPVIEW_BASE, APPVIEW_REQUEST_TIMEOUT_SECONDS, GET_POSTS_MAX_URIS
 
 logger = logging.getLogger("processing")
+
+ContextKind = Literal["quote", "reply"]
 
 
 def extract_quote_uri(raw_json: dict) -> str | None:
@@ -37,6 +40,31 @@ def extract_quote_uri(raw_json: dict) -> str | None:
     if not isinstance(uri, str) or "/app.bsky.feed.post/" not in uri:
         return None
     return uri
+
+
+def extract_reply_parent_uri(raw_json: dict) -> str | None:
+    """Pulls the immediate parent's AT-URI out of a Bluesky commit's
+    reply record, if any. Only the direct parent -- walking a full thread
+    is issue #291, not this pass."""
+    record = (raw_json or {}).get("commit", {}).get("record", {})
+    reply = record.get("reply") if isinstance(record, dict) else None
+    parent = reply.get("parent") if isinstance(reply, dict) else None
+    parent_uri = parent.get("uri") if isinstance(parent, dict) else None
+    return parent_uri if isinstance(parent_uri, str) else None
+
+
+def extract_context_target(raw_json: dict) -> tuple[ContextKind, str] | None:
+    """A post's single context-dependent target, if it has one -- a
+    quote-embed takes priority over a reply-parent on the rare post
+    that's both, since resolving a second context item per post is
+    future work (issue #291), not this pass."""
+    quote_uri = extract_quote_uri(raw_json)
+    if quote_uri is not None:
+        return "quote", quote_uri
+    reply_uri = extract_reply_parent_uri(raw_json)
+    if reply_uri is not None:
+        return "reply", reply_uri
+    return None
 
 
 def _chunk(items: list[str], size: int) -> list[list[str]]:
@@ -92,17 +120,26 @@ def _map_post_view(post_view: dict, suppressed_terms: frozenset[str], suppressed
     }
 
 
-def resolve_quotes(
+def resolve_context(
     uris: list[str], suppressed_terms: frozenset[str], suppressed_domains: frozenset[str]
-) -> dict[str, dict]:
+) -> tuple[dict[str, dict], dict[str, str]]:
     """Batches into groups of GET_POSTS_MAX_URIS, calls Bluesky's public
-    getPosts endpoint. Never crashes the calling cycle -- a failed batch
-    just omits those URIs from the returned dict entirely; a URI absent
-    from a *successful* response maps to an explicit not_found status
-    instead. See CLAUDE.md's Post attachments & embeds section for why
-    (no retry, not_found vs. null semantics) and the wiki's Pipeline
-    Internals page for the batching/failure-isolation mechanics."""
+    getPosts endpoint. Resolves a quote target and a reply-parent target
+    identically -- both are just a Bluesky post URI to Bluesky's AppView,
+    which doesn't care why the caller wanted it. Never crashes the
+    calling cycle -- a failed batch just omits those URIs from the
+    returned dicts entirely; a URI absent from a *successful* response
+    maps to an explicit not_found status instead. See CLAUDE.md's Post
+    attachments & embeds section for why (no retry, not_found vs. null
+    semantics) and the wiki's Pipeline Internals page for the batching/
+    failure-isolation mechanics.
+
+    Returns (content_by_uri, author_did_by_uri) -- the second dict is a
+    side channel for the caller's own author-identity lookups (e.g. an
+    is_bot verdict check), populated only for "available" results; it's
+    deliberately not part of the display shape in the first dict."""
     results: dict[str, dict] = {}
+    author_dids: dict[str, str] = {}
     unique_uris = list(dict.fromkeys(uris))  # de-dupe, preserve order
 
     for batch in _chunk(unique_uris, GET_POSTS_MAX_URIS):
@@ -115,7 +152,7 @@ def resolve_quotes(
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError) as err:
-            logger.warning("quote resolution failed for a batch of %d URIs: %s", len(batch), err)
+            logger.warning("context resolution failed for a batch of %d URIs: %s", len(batch), err)
             continue
 
         found_uris: set[str] = set()
@@ -127,9 +164,13 @@ def resolve_quotes(
                 continue
             found_uris.add(uri)
             results[uri] = _map_post_view(post_view, suppressed_terms, suppressed_domains)
+            author = post_view.get("author")
+            did = author.get("did") if isinstance(author, dict) else None
+            if isinstance(did, str):
+                author_dids[uri] = did
 
         for uri in batch:
             if uri not in found_uris:
                 results[uri] = {"status": "unavailable", "reason": "not_found"}
 
-    return results
+    return results, author_dids
