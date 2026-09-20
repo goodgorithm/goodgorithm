@@ -2,12 +2,34 @@ import pipeline
 from infra.db import ContextPendingPost
 
 
-def _reply_post(raw_post_id="reply-id", parent_uri="at://did:plc:parent/app.bsky.feed.post/p1", text="Yumm!"):
+def _reply_post(
+    raw_post_id="reply-id",
+    parent_uri="at://did:plc:parent/app.bsky.feed.post/p1",
+    text="Yumm!",
+    author_id="did:plc:author123",
+):
     return ContextPendingPost(
         raw_post_id=raw_post_id,
         source="bluesky",
+        author_id=author_id,
         text=text,
         raw_json={"commit": {"record": {"reply": {"parent": {"uri": parent_uri}}}}},
+        context_kind="reply",
+    )
+
+
+def _mastodon_reply_post(
+    raw_post_id="masto-reply-id",
+    in_reply_to_id="42",
+    text="Yumm!",
+    author_id="mastodon.example/someone",
+):
+    return ContextPendingPost(
+        raw_post_id=raw_post_id,
+        source="mastodon",
+        author_id=author_id,
+        text=text,
+        raw_json={"id": "99", "in_reply_to_id": in_reply_to_id, "content": "reply text"},
         context_kind="reply",
     )
 
@@ -199,6 +221,132 @@ def test_resolve_context_bot_author_target_excludes_post(monkeypatch):
 
     assert pipeline.resolve_context() == 1
     assert deleted == ["reply-id"]
+
+
+def test_resolve_context_resolves_mastodon_target(monkeypatch):
+    post = _mastodon_reply_post()
+    target = "mastodon.example/42"
+    monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [post])
+    _stub_moderation(monkeypatch)
+    _stub_permissive_filters(monkeypatch)
+
+    # Bluesky resolver must not be called with a Mastodon-shaped target.
+    monkeypatch.setattr(
+        pipeline.quote_resolver,
+        "resolve_context",
+        lambda targets, terms, domains: ({}, {}) if targets == [] else (_ for _ in ()).throw(AssertionError(targets)),
+    )
+    monkeypatch.setattr(
+        pipeline.mastodon_resolver,
+        "resolve_context",
+        lambda targets, terms, domains: (
+            {target: {
+                "status": "available",
+                "author": {"displayName": "Someone", "handle": "someone@mastodon.example", "avatarUrl": None},
+                "text": "the parent status text",
+                "createdAt": "2026-09-20T00:00:00Z",
+            }},
+            {target: "someone@mastodon.example"},
+        ),
+    )
+    monkeypatch.setattr(pipeline.quality_model, "score_batch", lambda texts: {t.id: 0.5 if t.text == "Yumm!" else 0.9 for t in texts})
+    monkeypatch.setattr(pipeline.political_model, "score_batch", lambda texts: {t.id: 0.1 for t in texts})
+    monkeypatch.setattr(pipeline.political_centroid, "score_batch", lambda texts: {t.id: 0.001 for t in texts})
+
+    deleted = []
+    monkeypatch.setattr(pipeline.db, "delete_raw_post", lambda post_id: deleted.append(post_id))
+    applied = []
+    monkeypatch.setattr(pipeline.db, "apply_context_resolution", lambda resolutions: applied.extend(resolutions))
+
+    assert pipeline.resolve_context() == 0
+    assert deleted == []
+    assert len(applied) == 1
+    result = applied[0]
+    assert result.raw_post_id == "masto-reply-id"
+    assert result.quality_score == 0.5  # min(0.5, 0.9)
+    assert result.context_content["text"] == "the parent status text"
+
+
+def test_resolve_context_mastodon_target_bot_author_uses_mastodon_source(monkeypatch):
+    post = _mastodon_reply_post()
+    target = "mastodon.example/42"
+    monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [post])
+    _stub_moderation(monkeypatch)
+    _stub_permissive_filters(monkeypatch)
+
+    seen_sources = []
+
+    def _recent_bot_verdict(source, author_id):
+        seen_sources.append(source)
+        return author_id == "spammer@mastodon.example"
+
+    monkeypatch.setattr(pipeline.db, "recent_bot_verdict", _recent_bot_verdict)
+    monkeypatch.setattr(pipeline.quote_resolver, "resolve_context", lambda targets, terms, domains: ({}, {}))
+    monkeypatch.setattr(
+        pipeline.mastodon_resolver,
+        "resolve_context",
+        lambda targets, terms, domains: (
+            {target: {"status": "available", "author": {}, "text": "spam spam spam", "createdAt": None}},
+            {target: "spammer@mastodon.example"},
+        ),
+    )
+    monkeypatch.setattr(pipeline.quality_model, "score_batch", lambda texts: {t.id: 0.9 for t in texts})
+    monkeypatch.setattr(pipeline.political_model, "score_batch", lambda texts: {t.id: 0.1 for t in texts})
+    monkeypatch.setattr(pipeline.political_centroid, "score_batch", lambda texts: {t.id: 0.001 for t in texts})
+
+    deleted = []
+    monkeypatch.setattr(pipeline.db, "delete_raw_post", lambda post_id: deleted.append(post_id))
+    monkeypatch.setattr(pipeline.db, "apply_context_resolution", lambda resolutions: None)
+
+    assert pipeline.resolve_context() == 1
+    assert deleted == ["masto-reply-id"]
+    # The target's own platform (mastodon), not post.source, which happens
+    # to be mastodon here too -- the real discriminator is exercised by the
+    # mixed-batch test below.
+    assert seen_sources == ["mastodon"]
+
+
+def test_resolve_context_mixed_batch_dispatches_by_target_shape(monkeypatch):
+    bsky_post = _reply_post(raw_post_id="bsky-reply-id", parent_uri="at://did:plc:parent/app.bsky.feed.post/p1")
+    masto_post = _mastodon_reply_post(raw_post_id="masto-reply-id")
+    masto_target = "mastodon.example/42"
+    bsky_target = "at://did:plc:parent/app.bsky.feed.post/p1"
+
+    monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [bsky_post, masto_post])
+    _stub_moderation(monkeypatch)
+    _stub_permissive_filters(monkeypatch)
+
+    bsky_calls = []
+    masto_calls = []
+
+    def _bsky_resolve(targets, terms, domains):
+        bsky_calls.append(list(targets))
+        return (
+            {bsky_target: {"status": "available", "author": {}, "text": "bsky parent text", "createdAt": None}},
+            {},
+        )
+
+    def _masto_resolve(targets, terms, domains):
+        masto_calls.append(list(targets))
+        return (
+            {masto_target: {"status": "available", "author": {}, "text": "masto parent text", "createdAt": None}},
+            {},
+        )
+
+    monkeypatch.setattr(pipeline.quote_resolver, "resolve_context", _bsky_resolve)
+    monkeypatch.setattr(pipeline.mastodon_resolver, "resolve_context", _masto_resolve)
+    monkeypatch.setattr(pipeline.quality_model, "score_batch", lambda texts: {t.id: 0.9 for t in texts})
+    monkeypatch.setattr(pipeline.political_model, "score_batch", lambda texts: {t.id: 0.1 for t in texts})
+    monkeypatch.setattr(pipeline.political_centroid, "score_batch", lambda texts: {t.id: 0.001 for t in texts})
+
+    applied = []
+    monkeypatch.setattr(pipeline.db, "delete_raw_post", lambda post_id: None)
+    monkeypatch.setattr(pipeline.db, "apply_context_resolution", lambda resolutions: applied.extend(resolutions))
+
+    assert pipeline.resolve_context() == 0
+    assert bsky_calls == [[bsky_target]]
+    assert masto_calls == [[masto_target]]
+    assert {r.raw_post_id for r in applied} == {"bsky-reply-id", "masto-reply-id"}
 
 
 def test_resolve_context_combined_score_below_threshold_excludes_post(monkeypatch):

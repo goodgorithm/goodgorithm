@@ -442,6 +442,7 @@ def fetch_bluesky_posts_needing_author_resolution(batch_size: int) -> list[Unres
 class ContextPendingPost:
     raw_post_id: UUID
     source: str
+    author_id: str
     text: str
     raw_json: dict
     context_kind: str
@@ -449,8 +450,9 @@ class ContextPendingPost:
 
 def fetch_context_pending(batch_size: int) -> list[ContextPendingPost]:
     """Bounded batch of posts whose reply/quote target hasn't been
-    resolved yet. resolve_context() re-derives the target URI from
-    raw_json each sweep rather than persisting it, same as
+    resolved yet. resolve_context() re-derives the target each sweep
+    (via context_dependency.classify(), which needs author_id for a
+    Mastodon in_reply_to_id target) rather than persisting it, same as
     moderation_recheck.py re-deriving its AT-URI from source_id every
     sweep instead of storing one. Filters/orders on processed_posts alone
     via processed_posts_context_pending_idx; raw_posts is joined only for
@@ -458,7 +460,7 @@ def fetch_context_pending(batch_size: int) -> list[ContextPendingPost]:
     with pool.connection() as conn:
         rows = conn.execute(
             """
-            SELECT p.raw_post_id, r.source, r.text, r.raw_json, p.context_kind
+            SELECT p.raw_post_id, r.source, r.author_id, r.text, r.raw_json, p.context_kind
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id
             WHERE p.context_status = 'pending'

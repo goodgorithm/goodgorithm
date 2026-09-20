@@ -59,6 +59,11 @@ interface MastodonStatus {
   language: string | null;
   created_at: string;
   visibility: string;
+  // processing/'s mastodon_resolver.py resolves a structured reply's parent
+  // off this field (via raw_json, stored unchanged below) -- declared here
+  // for documentation accuracy, confirming the field is intentionally
+  // relied on rather than incidentally present on the fetched payload.
+  in_reply_to_id: string | null;
 }
 
 // Respects Mastodon's discoverable/indexable account opt-outs -- public
