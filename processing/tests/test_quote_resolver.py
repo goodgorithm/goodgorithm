@@ -78,22 +78,27 @@ def test_extract_quote_uri_is_defensive_about_malformed_shapes():
     )
 
 
-# --- extract_reply_parent_uri ---
+# --- extract_reply_root_uri ---
 
 
-def test_extract_reply_parent_uri_present():
+def test_extract_reply_root_uri_present():
     raw_json = {
         "commit": {
-            "record": {"reply": {"parent": {"uri": "at://did:plc:abc/app.bsky.feed.post/xyz", "cid": "x"}}}
+            "record": {
+                "reply": {
+                    "root": {"uri": "at://did:plc:root/app.bsky.feed.post/root1", "cid": "r"},
+                    "parent": {"uri": "at://did:plc:abc/app.bsky.feed.post/xyz", "cid": "x"},
+                }
+            }
         }
     }
-    assert quote_resolver.extract_reply_parent_uri(raw_json) == "at://did:plc:abc/app.bsky.feed.post/xyz"
+    assert quote_resolver.extract_reply_root_uri(raw_json) == "at://did:plc:root/app.bsky.feed.post/root1"
 
 
-def test_extract_reply_parent_uri_absent():
-    assert quote_resolver.extract_reply_parent_uri({"commit": {"record": {}}}) is None
-    assert quote_resolver.extract_reply_parent_uri({}) is None
-    assert quote_resolver.extract_reply_parent_uri(None) is None
+def test_extract_reply_root_uri_absent():
+    assert quote_resolver.extract_reply_root_uri({"commit": {"record": {}}}) is None
+    assert quote_resolver.extract_reply_root_uri({}) is None
+    assert quote_resolver.extract_reply_root_uri(None) is None
 
 
 # --- extract_context_target ---
@@ -107,7 +112,10 @@ def test_extract_context_target_prefers_quote_over_reply():
                     "$type": "app.bsky.embed.record",
                     "record": {"cid": "x", "uri": "at://did:plc:quote/app.bsky.feed.post/q"},
                 },
-                "reply": {"parent": {"uri": "at://did:plc:reply/app.bsky.feed.post/r"}},
+                "reply": {
+                    "root": {"uri": "at://did:plc:root/app.bsky.feed.post/root1"},
+                    "parent": {"uri": "at://did:plc:reply/app.bsky.feed.post/r"},
+                },
             }
         }
     }
@@ -115,8 +123,17 @@ def test_extract_context_target_prefers_quote_over_reply():
 
 
 def test_extract_context_target_reply_when_no_quote():
-    raw_json = {"commit": {"record": {"reply": {"parent": {"uri": "at://did:plc:reply/app.bsky.feed.post/r"}}}}}
-    assert quote_resolver.extract_context_target(raw_json) == ("reply", "at://did:plc:reply/app.bsky.feed.post/r")
+    raw_json = {
+        "commit": {
+            "record": {
+                "reply": {
+                    "root": {"uri": "at://did:plc:root/app.bsky.feed.post/root1"},
+                    "parent": {"uri": "at://did:plc:reply/app.bsky.feed.post/r"},
+                }
+            }
+        }
+    }
+    assert quote_resolver.extract_context_target(raw_json) == ("reply", "at://did:plc:root/app.bsky.feed.post/root1")
 
 
 def test_extract_context_target_none_when_neither():

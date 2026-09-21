@@ -10,27 +10,35 @@ DOMAINS = frozenset({"amazon.com"})
 
 
 def test_extract_reply_target_present():
-    raw_json = {"in_reply_to_id": "42"}
-    assert mastodon_resolver.extract_reply_target(raw_json, "mastodon.example/someone") == "mastodon.example/42"
+    # Target is the referencing post's own id ("99"), not in_reply_to_id's
+    # value ("42") -- resolve_context() walks this post's own ancestor
+    # chain via .../context to reach the thread root.
+    raw_json = {"in_reply_to_id": "42", "id": "99"}
+    assert mastodon_resolver.extract_reply_target(raw_json, "mastodon.example/someone") == "mastodon.example/99"
 
 
 def test_extract_reply_target_absent():
-    assert mastodon_resolver.extract_reply_target({"in_reply_to_id": None}, "mastodon.example/someone") is None
+    assert mastodon_resolver.extract_reply_target({"in_reply_to_id": None, "id": "99"}, "mastodon.example/someone") is None
     assert mastodon_resolver.extract_reply_target({}, "mastodon.example/someone") is None
     assert mastodon_resolver.extract_reply_target(None, "mastodon.example/someone") is None
 
 
+def test_extract_reply_target_own_id_missing():
+    assert mastodon_resolver.extract_reply_target({"in_reply_to_id": "42"}, "mastodon.example/someone") is None
+    assert mastodon_resolver.extract_reply_target({"in_reply_to_id": "42", "id": None}, "mastodon.example/someone") is None
+
+
 def test_extract_reply_target_no_polled_instance_in_author_id():
-    assert mastodon_resolver.extract_reply_target({"in_reply_to_id": "42"}, "") is None
-    assert mastodon_resolver.extract_reply_target({"in_reply_to_id": "42"}, "/bare-local") is None
+    assert mastodon_resolver.extract_reply_target({"in_reply_to_id": "42", "id": "99"}, "") is None
+    assert mastodon_resolver.extract_reply_target({"in_reply_to_id": "42", "id": "99"}, "/bare-local") is None
 
 
 def test_extract_reply_target_uses_polled_instance_not_a_field_in_raw_json():
     # The polled instance only ever comes from author_id -- a status API
     # response never names which instance served it.
-    raw_json = {"in_reply_to_id": "42", "instance": "not-the-right-instance.example"}
+    raw_json = {"in_reply_to_id": "42", "id": "99", "instance": "not-the-right-instance.example"}
     assert (
-        mastodon_resolver.extract_reply_target(raw_json, "mastodon.example/someone") == "mastodon.example/42"
+        mastodon_resolver.extract_reply_target(raw_json, "mastodon.example/someone") == "mastodon.example/99"
     )
 
 
@@ -86,9 +94,18 @@ def status_payload(
     }
 
 
+def context_payload(root_status=None):
+    """The .../context endpoint's shape -- resolve_context() reads
+    ancestors[0] as the thread root. descendants is never read, so it's
+    left out here."""
+    return {"ancestors": [root_status] if root_status is not None else []}
+
+
 def test_resolve_context_maps_a_resolvable_status(monkeypatch):
     target = "mastodon.example/42"
-    monkeypatch.setattr(requests, "get", lambda url, timeout, headers: FakeResponse(status_payload()))
+    monkeypatch.setattr(
+        requests, "get", lambda url, timeout, headers: FakeResponse(context_payload(status_payload()))
+    )
 
     result, author_ids = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
 
@@ -109,9 +126,9 @@ def test_resolve_context_maps_a_resolvable_status(monkeypatch):
 
 def test_resolve_context_missing_url_maps_to_none(monkeypatch):
     target = "mastodon.example/42"
-    payload = status_payload()
-    del payload["url"]
-    monkeypatch.setattr(requests, "get", lambda url, timeout, headers: FakeResponse(payload))
+    root_status = status_payload()
+    del root_status["url"]
+    monkeypatch.setattr(requests, "get", lambda url, timeout, headers: FakeResponse(context_payload(root_status)))
 
     result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
 
@@ -124,7 +141,7 @@ def test_resolve_context_strips_html_and_collapses_whitespace(monkeypatch):
         requests,
         "get",
         lambda url, timeout, headers: FakeResponse(
-            status_payload(content="<p>Hello   <a href=\"x\">world</a></p><p>Second para</p>")
+            context_payload(status_payload(content="<p>Hello   <a href=\"x\">world</a></p><p>Second para</p>"))
         ),
     )
 
@@ -140,7 +157,7 @@ def test_resolve_context_already_qualified_acct_passes_through(monkeypatch):
     monkeypatch.setattr(
         requests,
         "get",
-        lambda url, timeout, headers: FakeResponse(status_payload(acct="someone@another.example")),
+        lambda url, timeout, headers: FakeResponse(context_payload(status_payload(acct="someone@another.example"))),
     )
 
     _, author_ids = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
@@ -158,13 +175,50 @@ def test_resolve_context_404_is_not_found(monkeypatch):
     assert target not in author_ids
 
 
+def test_resolve_context_empty_ancestors_is_not_found(monkeypatch):
+    # A post with in_reply_to_id set always has at least one ancestor
+    # (its own parent) when resolved via extract_reply_target's own-id
+    # target -- an empty list here would mean the instance's own context
+    # computation disagrees, treated defensively as not_found.
+    target = "mastodon.example/42"
+    monkeypatch.setattr(requests, "get", lambda url, timeout, headers: FakeResponse(context_payload(None)))
+
+    result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
+
+    assert result[target] == {"status": "unavailable", "reason": "not_found"}
+
+
+def test_resolve_context_malformed_ancestors_is_not_found(monkeypatch):
+    target = "mastodon.example/42"
+    monkeypatch.setattr(
+        requests, "get", lambda url, timeout, headers: FakeResponse({"ancestors": "not-a-list"})
+    )
+
+    result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
+
+    assert result[target] == {"status": "unavailable", "reason": "not_found"}
+
+
+def test_resolve_context_non_dict_ancestor_is_not_found(monkeypatch):
+    target = "mastodon.example/42"
+    monkeypatch.setattr(
+        requests, "get", lambda url, timeout, headers: FakeResponse({"ancestors": ["not-a-dict"]})
+    )
+
+    result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
+
+    assert result[target] == {"status": "unavailable", "reason": "not_found"}
+
+
 def test_resolve_context_sensitive_media_match_is_filtered(monkeypatch):
     target = "mastodon.example/42"
     monkeypatch.setattr(
         requests,
         "get",
         lambda url, timeout, headers: FakeResponse(
-            {**status_payload(sensitive=True, spoiler_text=""), "media_attachments": [{"type": "image"}]}
+            context_payload(
+                {**status_payload(sensitive=True, spoiler_text=""), "media_attachments": [{"type": "image"}]}
+            )
         ),
     )
 
@@ -176,7 +230,7 @@ def test_resolve_context_sensitive_media_match_is_filtered(monkeypatch):
 def test_resolve_context_non_discoverable_target_is_filtered(monkeypatch):
     target = "mastodon.example/42"
     monkeypatch.setattr(
-        requests, "get", lambda url, timeout, headers: FakeResponse(status_payload(discoverable=False))
+        requests, "get", lambda url, timeout, headers: FakeResponse(context_payload(status_payload(discoverable=False)))
     )
 
     result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
@@ -187,7 +241,7 @@ def test_resolve_context_non_discoverable_target_is_filtered(monkeypatch):
 def test_resolve_context_non_indexable_target_is_filtered(monkeypatch):
     target = "mastodon.example/42"
     monkeypatch.setattr(
-        requests, "get", lambda url, timeout, headers: FakeResponse(status_payload(indexable=False))
+        requests, "get", lambda url, timeout, headers: FakeResponse(context_payload(status_payload(indexable=False)))
     )
 
     result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
@@ -197,7 +251,9 @@ def test_resolve_context_non_indexable_target_is_filtered(monkeypatch):
 
 def test_resolve_context_noindex_target_is_filtered(monkeypatch):
     target = "mastodon.example/42"
-    monkeypatch.setattr(requests, "get", lambda url, timeout, headers: FakeResponse(status_payload(noindex=True)))
+    monkeypatch.setattr(
+        requests, "get", lambda url, timeout, headers: FakeResponse(context_payload(status_payload(noindex=True)))
+    )
 
     result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
 
@@ -206,7 +262,9 @@ def test_resolve_context_noindex_target_is_filtered(monkeypatch):
 
 def test_resolve_context_bot_target_is_filtered(monkeypatch):
     target = "mastodon.example/42"
-    monkeypatch.setattr(requests, "get", lambda url, timeout, headers: FakeResponse(status_payload(bot=True)))
+    monkeypatch.setattr(
+        requests, "get", lambda url, timeout, headers: FakeResponse(context_payload(status_payload(bot=True)))
+    )
 
     result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
 
@@ -219,7 +277,7 @@ def test_resolve_context_null_discoverability_fields_default_to_opted_in(monkeyp
         requests,
         "get",
         lambda url, timeout, headers: FakeResponse(
-            status_payload(discoverable=None, indexable=None, noindex=None)
+            context_payload(status_payload(discoverable=None, indexable=None, noindex=None))
         ),
     )
 
@@ -234,7 +292,7 @@ def test_resolve_context_suppressed_domain_link_is_filtered(monkeypatch):
         requests,
         "get",
         lambda url, timeout, headers: FakeResponse(
-            status_payload(content="<p>check this out https://amazon.com/dp/B00123</p>")
+            context_payload(status_payload(content="<p>check this out https://amazon.com/dp/B00123</p>"))
         ),
     )
 
@@ -276,15 +334,15 @@ def test_resolve_context_dispatches_one_request_per_instance(monkeypatch):
 
     def fake_get(url, timeout, headers):
         calls.append(url)
-        return FakeResponse(status_payload())
+        return FakeResponse(context_payload(status_payload()))
 
     monkeypatch.setattr(requests, "get", fake_get)
 
     result, _ = mastodon_resolver.resolve_context(targets, TERMS, DOMAINS)
 
     assert calls == [
-        "https://instance-a.example/api/v1/statuses/1",
-        "https://instance-b.example/api/v1/statuses/2",
+        "https://instance-a.example/api/v1/statuses/1/context",
+        "https://instance-b.example/api/v1/statuses/2/context",
     ]
     assert all(result[t]["status"] == "available" for t in targets)
 
@@ -295,7 +353,7 @@ def test_resolve_context_dedupes_repeated_targets(monkeypatch):
 
     def fake_get(url, timeout, headers):
         calls.append(url)
-        return FakeResponse(status_payload())
+        return FakeResponse(context_payload(status_payload()))
 
     monkeypatch.setattr(requests, "get", fake_get)
 

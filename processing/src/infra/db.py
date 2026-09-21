@@ -88,7 +88,7 @@ class ProcessedPostUpsert:
     # None/"pending"/"resolved"/"unavailable" -- see quote_resolver.py and
     # pipeline.resolve_context(). context_content mirrors the older
     # quote_content column's shape, generalized to a quote target or a
-    # reply-parent target; this dataclass never sets quote_content itself.
+    # reply-thread-root target; this dataclass never sets quote_content itself.
     context_status: str | None = None
     context_kind: str | None = None
     context_content: dict | None = None

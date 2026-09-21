@@ -1,10 +1,10 @@
-"""Resolves a Mastodon structured reply's parent -- the one context.py
-target that genuinely needs a Mastodon-side lookup (quote-inline/RE:
-targets are Bluesky posts, resolved by quote_resolver.py instead). Mirrors
-quote_resolver.py's shape (extract a target, resolve a batch into the same
-QuoteContent-family dict), so pipeline.resolve_context() can treat either
-resolver uniformly. See CLAUDE.md's Post attachments & embeds section and
-the wiki's Mastodon page.
+"""Resolves a Mastodon structured reply's thread root -- the one
+context.py target that genuinely needs a Mastodon-side lookup
+(quote-inline/RE: targets are Bluesky posts, resolved by quote_resolver.py
+instead). Mirrors quote_resolver.py's shape (extract a target, resolve a
+batch into the same QuoteContent-family dict), so pipeline.resolve_context()
+can treat either resolver uniformly. See CLAUDE.md's Post attachments &
+embeds section and the wiki's Mastodon page.
 """
 
 import html as html_module
@@ -44,19 +44,27 @@ def _strip_html(raw_html: str) -> str:
 
 
 def extract_reply_target(raw_json: dict, author_id: str) -> str | None:
-    """{polled_instance}/{status_id} -- self-contained, mirrors an AT-URI
-    embedding its own DID. polled_instance comes from author_id
+    """{polled_instance}/{own_status_id} -- self-contained, mirrors an
+    AT-URI embedding its own DID. polled_instance comes from author_id
     ({polled_instance}/{acct}, ingestion/'s own convention for a Mastodon
     row), never from raw_json -- a status API response never names the
-    instance that served it. Only the direct parent -- issue #291, not
-    this pass."""
+    instance that served it. Still gated on in_reply_to_id being present
+    (that's the "is this a reply" signal), but the target itself is the
+    post's own id, not in_reply_to_id's value -- resolve_context() below
+    calls GET .../context on this id and reads its ancestors, which
+    always includes at least the immediate parent whenever
+    in_reply_to_id is set, so ancestors[0] (the thread root) is always
+    present, no separate direct-fetch fallback needed."""
     reply_id = (raw_json or {}).get("in_reply_to_id")
     if not isinstance(reply_id, str) or not reply_id:
+        return None
+    own_id = (raw_json or {}).get("id")
+    if not isinstance(own_id, str) or not own_id:
         return None
     instance = (author_id or "").split("/", 1)[0]
     if not instance:
         return None
-    return f"{instance}/{reply_id}"
+    return f"{instance}/{own_id}"
 
 
 def _is_discoverable(account: dict) -> bool:
@@ -123,14 +131,19 @@ def _map_status(status: dict, suppressed_terms: frozenset[str], suppressed_domai
 def resolve_context(
     targets: list[str], suppressed_terms: frozenset[str], suppressed_domains: frozenset[str]
 ) -> tuple[dict[str, dict], dict[str, str]]:
-    """targets are {instance}/{status_id} strings (extract_reply_target).
-    One request per target -- Mastodon's GET /api/v1/statuses/:id has no
-    batch-lookup endpoint like Bluesky's getPosts, and each target can be
-    on a different instance anyway. Never crashes the calling cycle -- a
-    failed request just omits that target from the returned dicts
-    entirely, naturally retried on the next sweep since
-    fetch_context_pending() re-selects anything still 'pending'. A 404
-    maps to an explicit not_found status instead.
+    """targets are {instance}/{own_status_id} strings (extract_reply_target
+    -- the referencing post's own id, not its immediate parent's). One
+    request per target -- Mastodon's GET .../context has no batch-lookup
+    endpoint like Bluesky's getPosts, and each target can be on a
+    different instance anyway. Fetches .../statuses/{id}/context and maps
+    ancestors[0] -- the thread root, computed server-side regardless of
+    chain depth, so this is still exactly one request per target
+    regardless of how deep the thread actually is. Never crashes the
+    calling cycle -- a failed request just omits that target from the
+    returned dicts entirely, naturally retried on the next sweep since
+    fetch_context_pending() re-selects anything still 'pending'. A 404 or
+    an empty/malformed ancestors list both map to an explicit not_found
+    status instead.
 
     Returns (content_by_target, author_id_by_target) -- the second dict
     is a side channel for the caller's own is_bot verdict lookup,
@@ -149,7 +162,7 @@ def resolve_context(
             continue
         try:
             response = requests.get(
-                f"https://{instance}/api/v1/statuses/{status_id}",
+                f"https://{instance}/api/v1/statuses/{status_id}/context",
                 timeout=MASTODON_STATUS_REQUEST_TIMEOUT_SECONDS,
                 headers={"User-Agent": _USER_AGENT},
             )
@@ -162,13 +175,18 @@ def resolve_context(
             logger.warning("mastodon status resolution failed for %s: %s", target, err)
             continue
 
-        if not isinstance(payload, dict):
+        ancestors = payload.get("ancestors") if isinstance(payload, dict) else None
+        if not isinstance(ancestors, list) or not ancestors:
+            results[target] = {"status": "unavailable", "reason": "not_found"}
+            continue
+        root_status = ancestors[0]
+        if not isinstance(root_status, dict):
             results[target] = {"status": "unavailable", "reason": "not_found"}
             continue
 
-        results[target] = _map_status(payload, suppressed_terms, suppressed_domains)
+        results[target] = _map_status(root_status, suppressed_terms, suppressed_domains)
 
-        account = payload.get("account")
+        account = root_status.get("account")
         acct = account.get("acct") or account.get("username") if isinstance(account, dict) else None
         if isinstance(acct, str) and acct:
             author_ids[target] = acct if "@" in acct else f"{acct}@{instance}"
