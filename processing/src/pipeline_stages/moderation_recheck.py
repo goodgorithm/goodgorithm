@@ -20,13 +20,6 @@ def _post_uri(source_id: str) -> str:
     return f"at://{did}/app.bsky.feed.post/{rkey}"
 
 
-def _is_labeled_adult(labels) -> bool:
-    if not isinstance(labels, list):
-        return False
-    values = [v.get("val") for v in labels if isinstance(v, dict) and isinstance(v.get("val"), str)]
-    return any(v in content_filter.ADULT_LABEL_VALUES for v in values)
-
-
 def check_posts(posts: list[UncheckedBlueskyPost]) -> dict:
     """Independent backstop against ingestion/'s blueskyLabels.ts real-time
     label-stream listener racing Jetstream's own insert for the same post
@@ -34,12 +27,23 @@ def check_posts(posts: list[UncheckedBlueskyPost]) -> dict:
     quote_resolver.resolve_quotes' exact batching/failure-isolation shape,
     and checks a post's own current moderation labels (postView.labels --
     redundant with, but independent of, the real-time listener) plus its
-    author's profile-level self-label (postView.author.labels -- a
-    separate gap nothing else checks). Never reads likeCount/repostCount/
-    etc. from postView, same discipline as quote_resolver.py.
+    author's profile-level self-label (postView.author.labels). The
+    author-label check is the only place a directly-ingested Bluesky
+    post's own author's profile self-label gets checked at all --
+    Jetstream never carries it at ingestion time. Never reads
+    likeCount/repostCount/etc. from postView, same discipline as
+    quote_resolver.py.
 
-    Returns {raw_post_id: "excluded" | "clean"} for every post whose batch
-    succeeded. A post absent from a successful response (deleted/blocked/
+    Returns {raw_post_id: "excluded" | "bot" | "clean"} for every post
+    whose batch succeeded. "excluded" covers an adult-content match
+    (ADULT_LABEL_VALUES), a labeler-applied !hide/!warn
+    (EXCLUDE_LABEL_VALUES), or the author's own !no-unauthenticated
+    self-label -- takes priority over "bot" if a post somehow matches
+    both. "bot" (the author's own self-declared bot label, otherwise
+    unchecked anywhere for a directly-ingested post) doesn't exclude --
+    the caller flips is_bot instead of deleting, since that's a ranking-
+    eligibility judgment bot_filter.py already owns, not a content
+    exclude. A post absent from a successful response (deleted/blocked/
     never existed) maps to "clean" -- nothing to purge, but still checked
     so it's not re-swept forever. A post whose batch's HTTP call failed is
     omitted entirely -- unlike quote_resolver (raw_posts rows are picked
@@ -72,8 +76,15 @@ def check_posts(posts: list[UncheckedBlueskyPost]) -> dict:
             found.add(uri)
             author = post_view.get("author")
             author_labels = author.get("labels") if isinstance(author, dict) else None
-            excluded = _is_labeled_adult(post_view.get("labels")) or _is_labeled_adult(author_labels)
-            results[uri_to_id[uri]] = "excluded" if excluded else "clean"
+            post_labels = post_view.get("labels")
+            if content_filter.has_excluded_bluesky_labels(
+                post_labels, author_labels
+            ) or content_filter.has_no_unauthenticated_label(author_labels):
+                results[uri_to_id[uri]] = "excluded"
+            elif content_filter.has_bot_self_label(author_labels):
+                results[uri_to_id[uri]] = "bot"
+            else:
+                results[uri_to_id[uri]] = "clean"
 
         for uri in batch:
             if uri not in found:

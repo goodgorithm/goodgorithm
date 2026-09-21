@@ -139,13 +139,28 @@ class FakeResponse:
         return self._payload
 
 
-def post_view(uri, text, display_name="Someone", handle="someone.bsky.social", labels=None, self_labels=None, did="did:plc:author"):
+def post_view(
+    uri,
+    text,
+    display_name="Someone",
+    handle="someone.bsky.social",
+    labels=None,
+    self_labels=None,
+    did="did:plc:author",
+    author_labels=None,
+):
     record = {"text": text, "createdAt": "2026-08-10T12:00:00Z"}
     if self_labels is not None:
         record["labels"] = {"values": [{"val": v} for v in self_labels]}
     return {
         "uri": uri,
-        "author": {"did": did, "displayName": display_name, "handle": handle, "avatar": "https://example.com/a.jpg"},
+        "author": {
+            "did": did,
+            "displayName": display_name,
+            "handle": handle,
+            "avatar": "https://example.com/a.jpg",
+            "labels": [{"val": v} for v in (author_labels or [])],
+        },
         "record": record,
         "labels": [{"val": v} for v in (labels or [])],
         "likeCount": 9999,  # must never surface in the mapped output
@@ -234,6 +249,47 @@ def test_resolve_context_moderation_label_match_is_filtered(monkeypatch):
         requests,
         "get",
         lambda *a, **k: FakeResponse({"posts": [post_view(uri, "a normal caption", labels=["porn"])]}),
+    )
+
+    result, _ = quote_resolver.resolve_context([uri], TERMS, DOMAINS)
+
+    assert result[uri] == {"status": "unavailable", "reason": "filtered"}
+
+
+def test_resolve_context_author_hide_label_is_filtered(monkeypatch):
+    uri = "at://did:plc:abc/app.bsky.feed.post/xyz"
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **k: FakeResponse({"posts": [post_view(uri, "a normal caption", author_labels=["!hide"])]}),
+    )
+
+    result, _ = quote_resolver.resolve_context([uri], TERMS, DOMAINS)
+
+    assert result[uri] == {"status": "unavailable", "reason": "filtered"}
+
+
+def test_resolve_context_author_no_unauthenticated_label_is_filtered(monkeypatch):
+    uri = "at://did:plc:abc/app.bsky.feed.post/xyz"
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **k: FakeResponse(
+            {"posts": [post_view(uri, "a normal caption", author_labels=["!no-unauthenticated"])]}
+        ),
+    )
+
+    result, _ = quote_resolver.resolve_context([uri], TERMS, DOMAINS)
+
+    assert result[uri] == {"status": "unavailable", "reason": "filtered"}
+
+
+def test_resolve_context_author_bot_self_label_is_filtered(monkeypatch):
+    uri = "at://did:plc:abc/app.bsky.feed.post/xyz"
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **k: FakeResponse({"posts": [post_view(uri, "a normal caption", author_labels=["bot"])]}),
     )
 
     result, _ = quote_resolver.resolve_context([uri], TERMS, DOMAINS)

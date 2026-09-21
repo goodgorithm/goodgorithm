@@ -111,6 +111,17 @@ test("isDiscoverable treats null (unset) fields as opted-in by default", () => {
   assert.equal(isDiscoverable({ discoverable: true, indexable: null }), true);
 });
 
+test("isDiscoverable is false when noindex is explicitly true (issue #301)", () => {
+  // Inverted polarity from discoverable/indexable -- true is the opt-out.
+  assert.equal(isDiscoverable({ discoverable: true, indexable: true, noindex: true }), false);
+});
+
+test("isDiscoverable treats noindex: false/null/undefined as opted-in", () => {
+  assert.equal(isDiscoverable({ discoverable: true, indexable: true, noindex: false }), true);
+  assert.equal(isDiscoverable({ discoverable: true, indexable: true, noindex: null }), true);
+  assert.equal(isDiscoverable({ discoverable: true, indexable: true }), true);
+});
+
 test("isBridgedAccount matches *.brid.gy hosts, case-insensitively (issue #140)", () => {
   assert.equal(isBridgedAccount("alice.bsky.social@bsky.brid.gy"), true);
   assert.equal(isBridgedAccount("some-site.com@web.brid.gy"), true);

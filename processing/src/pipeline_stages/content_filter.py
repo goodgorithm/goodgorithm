@@ -14,6 +14,60 @@ from util.url_extract import extract_all_urls
 # Internals pages.
 ADULT_LABEL_VALUES = config.BLUESKY_ADULT_LABEL_VALUES
 
+# Labeler-applied "system" label values (config.BLUESKY_EXCLUDE_LABEL_VALUES,
+# default !hide/!warn) -- distinct from ADULT_LABEL_VALUES's specific
+# content-category vocabulary, but checked the same way (either a post's
+# own labels or its author's profile self-label). See CLAUDE.md's Content
+# moderation section.
+EXCLUDE_LABEL_VALUES = config.BLUESKY_EXCLUDE_LABEL_VALUES
+
+# Self-appliable, never labeler-applied, and always account-scoped -- a
+# labeler can't apply this to a specific post, only the account holder can
+# set it on their own profile. Checked separately from EXCLUDE_LABEL_VALUES
+# for that reason: only ever against an author's own labels, never a
+# post's.
+NO_UNAUTHENTICATED_LABEL_VALUE = "!no-unauthenticated"
+
+# Self-appliable, account-scoped, like NO_UNAUTHENTICATED_LABEL_VALUE --
+# but this isn't a content exclude at all, it's a content-quality signal
+# bot_filter.py owns (is_bot), so it's a plain predicate below rather than
+# folded into has_excluded_bluesky_labels.
+BOT_SELF_LABEL_VALUE = "bot"
+
+
+def _label_values(labels: object) -> list[str]:
+    """Extracts .val strings from a Bluesky labels array (postView.labels
+    or postView.author.labels shape), defensively -- an AppView response
+    is trusted-shape in practice, but every other field in this file gets
+    the same defensive treatment."""
+    if not isinstance(labels, list):
+        return []
+    return [v.get("val") for v in labels if isinstance(v, dict) and isinstance(v.get("val"), str)]
+
+
+def has_excluded_bluesky_labels(post_labels: object, author_labels: object) -> bool:
+    """True if either a post's own current moderation labels or its
+    author's profile-level self-label contain an adult-content match
+    (ADULT_LABEL_VALUES) or a labeler-applied !hide/!warn
+    (EXCLUDE_LABEL_VALUES) -- either can land on a post or an account, so
+    both subjects are checked against the same combined set."""
+    values = set(_label_values(post_labels)) | set(_label_values(author_labels))
+    return bool(values & (ADULT_LABEL_VALUES | EXCLUDE_LABEL_VALUES))
+
+
+def has_no_unauthenticated_label(author_labels: object) -> bool:
+    """True if the author's own profile self-label opts out of being shown
+    to unauthenticated viewers -- every AppView call this project makes is
+    itself unauthenticated, so this is a direct, in-band "don't show me
+    this" signal. Account-scoped only, unlike has_excluded_bluesky_labels
+    above."""
+    return NO_UNAUTHENTICATED_LABEL_VALUE in _label_values(author_labels)
+
+
+def has_bot_self_label(author_labels: object) -> bool:
+    """True if the author self-declared as an automated account."""
+    return BOT_SELF_LABEL_VALUE in _label_values(author_labels)
+
 # How many adult/funnel hashtags (util/bluesky_funnel.py's vocabulary, or
 # the live suppressed_terms table) a Bluesky post must carry ALONGSIDE a
 # funnel call-to-action phrase for has_bluesky_funnel_shape to hard-exclude

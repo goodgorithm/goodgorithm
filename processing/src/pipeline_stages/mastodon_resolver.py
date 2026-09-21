@@ -59,6 +59,21 @@ def extract_reply_target(raw_json: dict, author_id: str) -> str | None:
     return f"{instance}/{reply_id}"
 
 
+def _is_discoverable(account: dict) -> bool:
+    """Simplified Python port of ingestion/src/mastodon.ts's isDiscoverable
+    -- same null/undefined-counts-as-opted-in discipline, same inverted
+    polarity on noindex. Needed here (unlike a directly-ingested post,
+    which isDiscoverable already gated before it ever reached raw_posts)
+    because a resolved reply target's account never went through
+    ingestion/'s own filtering -- it's a different account than the one
+    that was actually polled."""
+    return (
+        account.get("discoverable") is not False
+        and account.get("indexable") is not False
+        and account.get("noindex") is not True
+    )
+
+
 def _map_status(status: dict, suppressed_terms: frozenset[str], suppressed_domains: frozenset[str]) -> dict:
     content = status.get("content")
     account = status.get("account")
@@ -69,8 +84,15 @@ def _map_status(status: dict, suppressed_terms: frozenset[str], suppressed_domai
 
     # Same checks a regular Mastodon post gets before it's ever stored --
     # status is already shaped like a stored row's raw_json (same API),
-    # so it's passed straight through, no reconstruction needed.
+    # so it's passed straight through, no reconstruction needed. The
+    # discoverable/indexable/noindex/bot checks below are the resolved
+    # target's own account, not the referencing post's -- see
+    # _is_discoverable's docstring for why this needs checking here at
+    # all.
     if content_filter.is_content_excluded("mastodon", text, status, suppressed_terms, suppressed_domains):
+        return {"status": "unavailable", "reason": "filtered"}
+
+    if not _is_discoverable(account) or account.get("bot") is True:
         return {"status": "unavailable", "reason": "filtered"}
 
     display_name = account.get("display_name")

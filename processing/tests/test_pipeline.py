@@ -5,6 +5,26 @@ from infra.db import ExistenceCheckPost, RawPost, UncheckedBlueskyPost, Unresolv
 from pipeline_stages.context_dependency import ContextClassification
 
 
+def test_mastodon_self_declared_bot_true():
+    raw_json = {"account": {"bot": True}}
+    assert pipeline._mastodon_self_declared_bot("mastodon", raw_json) is True
+
+
+def test_mastodon_self_declared_bot_false_or_absent():
+    assert pipeline._mastodon_self_declared_bot("mastodon", {"account": {"bot": False}}) is False
+    assert pipeline._mastodon_self_declared_bot("mastodon", {"account": {}}) is False
+    assert pipeline._mastodon_self_declared_bot("mastodon", {}) is False
+    assert pipeline._mastodon_self_declared_bot("mastodon", None) is False
+
+
+def test_mastodon_self_declared_bot_ignored_for_bluesky():
+    # Bluesky's equivalent self-label isn't in raw_json at all (Jetstream
+    # never carries author-profile data) -- moderation_recheck.py checks
+    # it independently, this helper is Mastodon-only.
+    raw_json = {"commit": {"record": {}}}
+    assert pipeline._mastodon_self_declared_bot("bluesky", raw_json) is False
+
+
 def test_refresh_rankings_runs_without_error(monkeypatch):
     # Regression test: pipeline.py referenced ranking.MMR_WINDOW_HOURS after
     # ranking.py's tunables were renamed to a RANKING_-prefixed scheme,
@@ -35,6 +55,7 @@ def test_refresh_rankings_pushes_pool_size_into_the_query(monkeypatch):
 def test_recheck_moderation_noop_when_nothing_unchecked(monkeypatch):
     monkeypatch.setattr(pipeline.db, "fetch_unchecked_bluesky_posts", lambda batch_size: [])
     monkeypatch.setattr(pipeline.db, "mark_moderation_checked", lambda ids: None)
+    monkeypatch.setattr(pipeline.db, "mark_as_bot", lambda ids: None)
 
     assert pipeline.recheck_moderation() == 0
 
@@ -56,9 +77,33 @@ def test_recheck_moderation_purges_excluded_and_marks_clean_checked(monkeypatch)
     monkeypatch.setattr(pipeline.db, "delete_raw_post", lambda post_id: deleted.append(post_id))
     checked = []
     monkeypatch.setattr(pipeline.db, "mark_moderation_checked", lambda ids: checked.extend(ids))
+    monkeypatch.setattr(pipeline.db, "mark_as_bot", lambda ids: None)
 
     assert pipeline.recheck_moderation() == 1
     assert deleted == ["excluded-id"]
+    assert checked == ["clean-id"]
+
+
+def test_recheck_moderation_bot_outcome_flips_is_bot_not_excluded(monkeypatch):
+    posts = [
+        UncheckedBlueskyPost(raw_post_id="bot-id", source_id="did:plc:a/1", author_id="did:plc:a"),
+        UncheckedBlueskyPost(raw_post_id="clean-id", source_id="did:plc:b/2", author_id="did:plc:b"),
+    ]
+    monkeypatch.setattr(pipeline.db, "fetch_unchecked_bluesky_posts", lambda batch_size: posts)
+    monkeypatch.setattr(
+        pipeline.moderation_recheck, "check_posts", lambda posts: {"bot-id": "bot", "clean-id": "clean"}
+    )
+
+    deleted = []
+    monkeypatch.setattr(pipeline.db, "delete_raw_post", lambda post_id: deleted.append(post_id))
+    checked = []
+    monkeypatch.setattr(pipeline.db, "mark_moderation_checked", lambda ids: checked.extend(ids))
+    bot_marked = []
+    monkeypatch.setattr(pipeline.db, "mark_as_bot", lambda ids: bot_marked.extend(ids))
+
+    assert pipeline.recheck_moderation() == 0  # a "bot" verdict doesn't purge
+    assert deleted == []
+    assert bot_marked == ["bot-id"]
     assert checked == ["clean-id"]
 
 

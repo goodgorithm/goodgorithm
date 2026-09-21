@@ -253,12 +253,21 @@ def score_bot(
     cluster_id: UUID,
     index: BotFilterIndex,
     shape_config: dict[str, post_shape.ShapeConfig] | None = None,
+    is_self_declared_bot: bool = False,
 ) -> BotScore:
     """Content-derived bot heuristics only — posting velocity, self-repost
     rate (via dedup cluster membership), lexical spam patterns, and
     template repetition. Never reads likes/reposts/replies/follower
     counts. Defensive-only: this produces a filter flag, never a ranking
     boost. See the wiki's Bot Filter page.
+
+    is_self_declared_bot is a direct authoritative override (like
+    post_shape's repeat-threshold override below), not a weighted term --
+    an account self-declaring as a bot (Mastodon's account.bot field,
+    already present in a directly-ingested post's own raw_json; Bluesky's
+    equivalent profile self-label needs a live AppView call, so
+    moderation_recheck.py checks it independently instead of being passed
+    in here) doesn't need corroborating from the behavioral signals below.
 
     The three Redis-keyed signals below are keyed by canonical_account_id,
     not the raw author_id -- see that function's docstring."""
@@ -301,7 +310,7 @@ def score_bot(
 
     return BotScore(
         bot_score=bot_score,
-        is_bot=bot_score >= BOT_FILTER_BOT_SCORE_THRESHOLD or shape_component >= 1.0,
+        is_bot=bot_score >= BOT_FILTER_BOT_SCORE_THRESHOLD or shape_component >= 1.0 or is_self_declared_bot,
         velocity_component=velocity_component,
         self_dup_component=self_dup_component,
         lexical_component=lex_component,

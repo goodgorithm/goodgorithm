@@ -138,6 +138,34 @@ def test_score_bot_normal_post_is_not_flagged():
     assert result.bot_score < bot_filter.BOT_FILTER_BOT_SCORE_THRESHOLD
 
 
+def test_score_bot_is_self_declared_bot_overrides_regardless_of_other_signals():
+    index = InMemoryBotFilterIndex()
+    result = bot_filter.score_bot(
+        source="mastodon",
+        author_id="fosstodon.org/alice",
+        text="had a lovely walk in the park this morning",
+        cluster_id=uuid4(),
+        index=index,
+        is_self_declared_bot=True,
+    )
+    assert result.is_bot is True
+    # A direct override, not a weighted term -- the underlying behavioral
+    # score itself stays low for genuinely clean content.
+    assert result.bot_score < bot_filter.BOT_FILTER_BOT_SCORE_THRESHOLD
+
+
+def test_score_bot_is_self_declared_bot_defaults_to_false():
+    index = InMemoryBotFilterIndex()
+    result = bot_filter.score_bot(
+        source="bluesky",
+        author_id="alice",
+        text="had a lovely walk in the park this morning",
+        cluster_id=uuid4(),
+        index=index,
+    )
+    assert result.is_bot is False
+
+
 def test_score_bot_rapid_fire_posting_raises_velocity_component():
     # velocity alone, even maxed out, is deliberately not enough to flag
     # is_bot on its own (weight 0.3 < threshold 0.5) — a genuinely active
