@@ -7,7 +7,7 @@ import { FEED_CONTRACT } from "./contracts/android-feed-contract";
 import { assertConformsToContract } from "./contracts/assert-contract";
 
 // Guards the /v1/feed response shape the SHIPPED Android app (git tag
-// android-v0.1.0) depends on. client.ts does no runtime validation, so a
+// android-v0.2.0) depends on. client.ts does no runtime validation, so a
 // dropped or type-changed field breaks every tester with no hotfix. This
 // fails if a future change to the row -> FeedPost mapping (or api/src/types.ts)
 // stops satisfying FEED_CONTRACT. On an INTENTIONAL contract change the fix
@@ -104,7 +104,7 @@ const FIXTURES: Record<string, FeedRow> = {
     },
   }),
 
-  "bluesky reply — resolved context available (issue #292, unknown-to-the-frozen-app attachment kind)": makeRow({
+  "bluesky reply — resolved context available": makeRow({
     bluesky_reply: {
       parent: { cid: "x", uri: "at://did:plc:abc/app.bsky.feed.post/xyz" },
     },
@@ -148,14 +148,14 @@ const FIXTURES: Record<string, FeedRow> = {
 };
 
 for (const [name, row] of Object.entries(FIXTURES)) {
-  test(`android-v0.1.0 /v1/feed contract: FeedPost conforms — ${name}`, () => {
+  test(`android-v0.2.0 /v1/feed contract: FeedPost conforms — ${name}`, () => {
     // JSON round-trip = the exact shape a client's response.json() yields.
     const post = JSON.parse(JSON.stringify(rowToFeedPost(row)));
     assertConformsToContract(post, "FeedPost", FEED_CONTRACT);
   });
 }
 
-test("android-v0.1.0 /v1/feed contract: FeedResponse envelope (next_cursor null and string)", () => {
+test("android-v0.2.0 /v1/feed contract: FeedResponse envelope (next_cursor null and string)", () => {
   const post = JSON.parse(JSON.stringify(rowToFeedPost(makeRow({}))));
 
   assertConformsToContract({ posts: [post], next_cursor: null }, "FeedResponse", FEED_CONTRACT);
@@ -166,7 +166,7 @@ test("android-v0.1.0 /v1/feed contract: FeedResponse envelope (next_cursor null 
   );
 });
 
-test("android-v0.1.0 /v1/feed contract: the asserter itself rejects a missing required field", () => {
+test("android-v0.2.0 /v1/feed contract: the asserter itself rejects a missing required field", () => {
   const post = JSON.parse(JSON.stringify(rowToFeedPost(makeRow({}))));
   delete post.permalink;
   try {

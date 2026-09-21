@@ -1,13 +1,19 @@
 // The /v1/feed response shape the SHIPPED Android app depends on, frozen at
-// git tag android-v0.1.0 (Play Closed Testing, versionCode 1). The app's
+// git tag android-v0.2.0 (Play Closed Testing, versionCode 2). The app's
 // web/src/api/client.ts does zero runtime validation, so any field the
 // current API drops or type-changes breaks every tester with no hotfix
 // path. tests/android-contract.test.ts asserts a freshly-built FeedPost
 // still conforms to this.
 //
-// Derived by hand from `web/src/api/types.generated.ts @ android-v0.1.0`
-// (which is `banner + api/src/types.ts`). Re-freeze on every store release:
-// see web/android/RELEASE.md "Cutting a new store build".
+// Lists the fields the shipped web/ bundle (same codebase for the PWA and
+// this Capacitor build) actually reads, plus a couple (author_id,
+// pipeline_version) kept for their standalone audit/debugging value even
+// though no UI renders them - not every field api/'s FeedPost carries.
+// A field with neither a reader nor that kind of standing value has no
+// place in this contract, since api/ dropping it can't break the app; see
+// web/'s components (PostCard.tsx, ScoreDetails.tsx, QuoteLink.tsx, etc.)
+// for what's read. Re-freeze on every store release: see
+// web/android/RELEASE.md "Cutting a new store build".
 //
 // Field-string grammar for the asserter (tests/contracts/assert-contract.ts):
 //   "string" | "number" | "boolean"   primitive, non-null
@@ -21,9 +27,9 @@
 
 export const FEED_CONTRACT = {
   _meta: {
-    tag: "android-v0.1.0",
-    versionCode: 1,
-    derivedFrom: "web/src/api/types.generated.ts @ android-v0.1.0",
+    tag: "android-v0.2.0",
+    versionCode: 2,
+    derivedFrom: "web/src/api/types.generated.ts @ android-v0.2.0",
   },
 
   FeedResponse: {
@@ -45,7 +51,6 @@ export const FEED_CONTRACT = {
     pipeline_version: "string",
     attachments: "Attachment[]",
     sensitive: "boolean",
-    category: "string|null",
   },
 
   FeedPostAuthor: {
@@ -55,10 +60,9 @@ export const FEED_CONTRACT = {
   },
 
   FeedPostScores: {
-    sentiment: "number",
-    topicality: "number",
     base: "number",
     rank: "number",
+    quality: "number|null",
   },
 
   CustomEmoji: {
@@ -93,6 +97,10 @@ export const FEED_CONTRACT = {
       url: "string",
       content: "QuoteContent|null",
     },
+    reply: {
+      url: "string",
+      content: "QuoteContent|null",
+    },
   },
 
   QuoteContent: {
@@ -100,7 +108,6 @@ export const FEED_CONTRACT = {
     available: {
       author: "QuoteAuthor",
       text: "string",
-      createdAt: "string|null",
     },
     unavailable: {
       reason: "string",
