@@ -96,6 +96,18 @@ def enforce_redis_capacity() -> None:
     redis_guard.enforce(config.REDIS_MAX_BYTES, config.REDIS_SOFT_LIMIT_RATIO)
 
 
+def _mastodon_self_declared_bot(source: str, raw_json: dict) -> bool:
+    """Mastodon's poll response already embeds the full account object in
+    raw_json, so this needs no live lookup -- unlike Bluesky's equivalent
+    profile self-label, which moderation_recheck.py checks independently
+    via a live AppView call since Jetstream never carries author-profile
+    data at ingestion time."""
+    if source != "mastodon":
+        return False
+    account = (raw_json or {}).get("account")
+    return isinstance(account, dict) and account.get("bot") is True
+
+
 def run_cycle(batch_size: int) -> int:
     """Fetches a batch of unprocessed posts and scores them through political/
     quality screening, dedup, bot filter, topicality, category, and sentiment,
@@ -227,7 +239,13 @@ def run_cycle(batch_size: int) -> int:
     for post in kept_posts:
         cluster = dedup_results[post.id]
         bot_score = bot_filter.score_bot(
-            post.source, post.author_id, post.text, cluster.cluster_id, bot_index, mod.post_shape_config
+            post.source,
+            post.author_id,
+            post.text,
+            cluster.cluster_id,
+            bot_index,
+            mod.post_shape_config,
+            is_self_declared_bot=_mastodon_self_declared_bot(post.source, post.raw_json),
         )
         topic = topicality_results[post.id]
         sentiment_score = sentiment_results[post.id]
@@ -396,17 +414,26 @@ def purge_blocked_authors() -> int:
 def recheck_moderation() -> int:
     """Backstop against ingestion/'s blueskyLabels.ts real-time label-
     stream listener racing Jetstream's own insert for the same post --
-    independently re-verifies each already-scored Bluesky post's
-    own moderation labels *and* its author's profile self-label against
-    Bluesky's public AppView, mirroring quote_resolver.py's exact getPosts
-    pattern. Purges (db.delete_raw_post, cascades to processed_posts) any
-    match; marks every successfully-checked post either way via
-    moderation_checked_at so a genuinely clean post is never re-swept.
-    Throttled by the caller (main.py), same as purge_blocked_authors, but
-    for a different reason -- this one calls an external API, so it must
-    not compound into a burst of calls under a large backlog, unlike a
-    DB-only sweep. See the wiki's Content Policy and Pipeline Internals
-    pages."""
+    independently re-verifies each already-scored Bluesky post's own
+    moderation labels *and* its author's profile self-label (adult-content
+    match, a labeler-applied !hide/!warn, the author's own
+    !no-unauthenticated opt-out, or a self-declared bot label -- see
+    moderation_recheck.check_posts's docstring) against Bluesky's public
+    AppView, mirroring quote_resolver.py's exact getPosts pattern. This is
+    the only place a directly-ingested Bluesky post's own author's profile
+    self-label gets checked at all -- Jetstream never carries it at
+    ingestion time.
+
+    Purges (db.delete_raw_post, cascades to processed_posts) an "excluded"
+    match; flips is_bot (db.mark_as_bot) on a "bot" match instead, since
+    that's a ranking-eligibility judgment, not a content exclude. Marks
+    every successfully-checked post via moderation_checked_at so a
+    genuinely clean post is never re-swept -- mark_as_bot does this in the
+    same write for a "bot" verdict. Throttled by the caller (main.py),
+    same as purge_blocked_authors, but for a different reason -- this one
+    calls an external API, so it must not compound into a burst of calls
+    under a large backlog, unlike a DB-only sweep. See the wiki's Content
+    Policy and Pipeline Internals pages."""
     posts = db.fetch_unchecked_bluesky_posts(MODERATION_RECHECK_BATCH_SIZE)
     if not posts:
         return 0
@@ -414,6 +441,7 @@ def recheck_moderation() -> int:
     results = moderation_recheck.check_posts(posts)
     purged = 0
     checked_ids = []
+    bot_ids = []
     for post in posts:
         result = results.get(post.raw_post_id)
         if result is None:
@@ -422,10 +450,15 @@ def recheck_moderation() -> int:
             db.delete_raw_post(post.raw_post_id)
             purged += 1
             logger.info("moderation-recheck purged post %s (label backstop)", post.raw_post_id)
+        elif result == "bot":
+            bot_ids.append(post.raw_post_id)
         else:
             checked_ids.append(post.raw_post_id)
 
     db.mark_moderation_checked(checked_ids)
+    db.mark_as_bot(bot_ids)
+    if bot_ids:
+        logger.info("moderation-recheck flagged %d posts as bot (self-declared)", len(bot_ids))
     if purged:
         logger.info("moderation-recheck purged %d posts", purged)
     return purged

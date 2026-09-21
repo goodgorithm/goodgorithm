@@ -54,7 +54,23 @@ export function recordError(instance: string, message: string): void {
 
 interface MastodonStatus {
   id: string;
-  account: { acct: string; discoverable: boolean | null; indexable: boolean | null; created_at: string | null };
+  account: {
+    acct: string;
+    discoverable: boolean | null;
+    indexable: boolean | null;
+    // Opts a *local* user out of search-engine indexing -- distinct field
+    // from indexable (in-app/network search), inverted polarity (true is
+    // the opt-out). See isDiscoverable().
+    noindex: boolean | null;
+    // Self-declared automated account -- feeds bot_filter's is_bot
+    // override in processing/'s run_cycle, not an ingestion-time skip
+    // (unlike discoverable/indexable/noindex, this is a content-quality
+    // signal, not a visibility opt-out). raw_json carries it regardless;
+    // declared here for the same documentation-accuracy reason as
+    // in_reply_to_id below.
+    bot: boolean | null;
+    created_at: string | null;
+  };
   content: string;
   language: string | null;
   created_at: string;
@@ -66,11 +82,18 @@ interface MastodonStatus {
   in_reply_to_id: string | null;
 }
 
-// Respects Mastodon's discoverable/indexable account opt-outs -- public
-// visibility isn't consent for reuse. Null/undefined counts as opted-in;
-// only an explicit false excludes. See the wiki's Mastodon page.
-export function isDiscoverable(account: { discoverable: boolean | null; indexable: boolean | null }): boolean {
-  return account.discoverable !== false && account.indexable !== false;
+// Respects Mastodon's discoverable/indexable/noindex account opt-outs --
+// public visibility isn't consent for reuse. Null/undefined counts as
+// opted-in; only an explicit opt-out excludes. noindex is inverted from
+// the other two (true is the opt-out, not false) -- it's a distinct
+// "don't index me" toggle a local user sets, separate from indexable's
+// broader in-app/network search opt-in. See the wiki's Mastodon page.
+export function isDiscoverable(account: {
+  discoverable: boolean | null;
+  indexable: boolean | null;
+  noindex?: boolean | null;
+}): boolean {
+  return account.discoverable !== false && account.indexable !== false && account.noindex !== true;
 }
 
 // Bridgy Fed federates Bluesky (and web/RSS) content into the fediverse as

@@ -110,12 +110,19 @@ def _map_post_view(post_view: dict, suppressed_terms: frozenset[str], suppressed
     # mod.bsky.app) as of resolution time -- the equivalent of the
     # labeler-stream backstop (blueskyLabels.ts), but for free here since
     # getPosts already returns current label state, no separate
-    # subscription needed for quoted content.
-    labels = post_view.get("labels")
-    if isinstance(labels, list):
-        label_values = [v.get("val") for v in labels if isinstance(v, dict) and isinstance(v.get("val"), str)]
-        if any(v in content_filter.ADULT_LABEL_VALUES for v in label_values):
-            return {"status": "unavailable", "reason": "filtered"}
+    # subscription needed for quoted content. postView.author.labels
+    # (also free in this same response) covers the target author's own
+    # profile self-label -- a target author opted out of unauthenticated
+    # viewing, self-declared as a bot, or carrying a labeler-applied
+    # !hide/!warn all mean this content shouldn't be shown as resolved
+    # context, same as a filtered post itself.
+    author_labels = author.get("labels")
+    if (
+        content_filter.has_excluded_bluesky_labels(post_view.get("labels"), author_labels)
+        or content_filter.has_no_unauthenticated_label(author_labels)
+        or content_filter.has_bot_self_label(author_labels)
+    ):
+        return {"status": "unavailable", "reason": "filtered"}
 
     display_name = author.get("displayName")
     handle = author.get("handle")

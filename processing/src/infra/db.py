@@ -402,6 +402,34 @@ def mark_moderation_checked(raw_post_ids: list[UUID]) -> None:
             )
 
 
+def mark_as_bot(raw_post_ids: list[UUID]) -> None:
+    """Bulk-writes is_bot = true and moderation_checked_at = NOW() together
+    -- moderation_recheck.py's sweep discovered a post's own author
+    self-declared as a bot (a signal Jetstream never carries at ingestion
+    time), so this both flips eligibility and marks the post checked in
+    one UPDATE rather than two. Doesn't touch base_score/rank_score:
+    is_bot only ever gates eligibility via fetch_rankable_posts's own
+    WHERE clause on every future fetch, so an already-ranked post simply
+    stops being selected into future candidate pools -- it keeps its
+    existing rank_score until it ages out via retention, not corrected
+    retroactively here."""
+    if not raw_post_ids:
+        return
+    with pool.connection() as conn:
+        for i in range(0, len(raw_post_ids), DB_RANK_SCORE_UPDATE_CHUNK_SIZE):
+            chunk = raw_post_ids[i : i + DB_RANK_SCORE_UPDATE_CHUNK_SIZE]
+            values_sql = ", ".join(["(%s::uuid)"] * len(chunk))
+            conn.execute(
+                f"""
+                UPDATE processed_posts AS p
+                SET is_bot = true, moderation_checked_at = NOW()
+                FROM (VALUES {values_sql}) AS v(raw_post_id)
+                WHERE p.raw_post_id = v.raw_post_id
+                """,
+                chunk,
+            )
+
+
 @dataclass
 class UnresolvedAuthorPost:
     raw_post_id: UUID

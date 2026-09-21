@@ -88,6 +88,78 @@ def test_check_posts_failing_batch_omits_its_posts(monkeypatch):
     assert result == {}
 
 
+def test_check_posts_post_level_hide_label_is_excluded(monkeypatch):
+    uri = "at://did:plc:abc/app.bsky.feed.post/xyz"
+    monkeypatch.setattr(requests, "get", lambda *a, **k: FakeResponse({"posts": [post_view(uri, post_labels=["!hide"])]}))
+
+    result = moderation_recheck.check_posts([unchecked("id1", "did:plc:abc/xyz")])
+
+    assert result == {"id1": "excluded"}
+
+
+def test_check_posts_author_level_warn_label_is_excluded(monkeypatch):
+    uri = "at://did:plc:abc/app.bsky.feed.post/xyz"
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **k: FakeResponse({"posts": [post_view(uri, author_labels=["!warn"])]})
+    )
+
+    result = moderation_recheck.check_posts([unchecked("id1", "did:plc:abc/xyz")])
+
+    assert result == {"id1": "excluded"}
+
+
+def test_check_posts_author_no_unauthenticated_label_is_excluded(monkeypatch):
+    uri = "at://did:plc:abc/app.bsky.feed.post/xyz"
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **k: FakeResponse({"posts": [post_view(uri, author_labels=["!no-unauthenticated"])]}),
+    )
+
+    result = moderation_recheck.check_posts([unchecked("id1", "did:plc:abc/xyz")])
+
+    assert result == {"id1": "excluded"}
+
+
+def test_check_posts_post_level_no_unauthenticated_label_does_not_exclude(monkeypatch):
+    # !no-unauthenticated is account-scoped only -- a labeler/post can't
+    # carry it, so a post-level match (malformed/unexpected data) is
+    # deliberately not checked the way !hide/!warn are checked on either
+    # subject.
+    uri = "at://did:plc:abc/app.bsky.feed.post/xyz"
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **k: FakeResponse({"posts": [post_view(uri, post_labels=["!no-unauthenticated"])]})
+    )
+
+    result = moderation_recheck.check_posts([unchecked("id1", "did:plc:abc/xyz")])
+
+    assert result == {"id1": "clean"}
+
+
+def test_check_posts_author_bot_self_label_is_bot_not_excluded(monkeypatch):
+    uri = "at://did:plc:abc/app.bsky.feed.post/xyz"
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **k: FakeResponse({"posts": [post_view(uri, author_labels=["bot"])]})
+    )
+
+    result = moderation_recheck.check_posts([unchecked("id1", "did:plc:abc/xyz")])
+
+    assert result == {"id1": "bot"}
+
+
+def test_check_posts_exclude_takes_priority_over_bot(monkeypatch):
+    uri = "at://did:plc:abc/app.bsky.feed.post/xyz"
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *a, **k: FakeResponse({"posts": [post_view(uri, author_labels=["bot", "!hide"])]}),
+    )
+
+    result = moderation_recheck.check_posts([unchecked("id1", "did:plc:abc/xyz")])
+
+    assert result == {"id1": "excluded"}
+
+
 def test_check_posts_batches_at_25_uri_boundary(monkeypatch):
     posts = [unchecked(f"id{i}", f"did:plc:abc/{i}") for i in range(30)]
     calls = []

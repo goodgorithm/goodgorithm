@@ -63,6 +63,16 @@ BLUESKY_ADULT_LABEL_VALUES = frozenset(
     if v.strip()
 )
 
+# AT Protocol's other "system" self-label values (com.atproto.label.defs'
+# knownValues) -- labeler-applied, not self-appliable, so they can land on
+# either a post or its author. !no-unauthenticated is handled separately
+# (content_filter.py) since it's account-preference-only, never a per-post
+# label, and self-appliable rather than labeler-applied. See CLAUDE.md's
+# Content moderation section.
+BLUESKY_EXCLUDE_LABEL_VALUES = frozenset(
+    v.strip() for v in os.environ.get("BLUESKY_EXCLUDE_LABEL_VALUES", "!hide,!warn").split(",") if v.strip()
+)
+
 _REQUIRED = {
     "DATABASE_URL": DATABASE_URL,
     "REDIS_URL": REDIS_URL,

@@ -59,6 +59,10 @@ def status_payload(
     sensitive=False,
     spoiler_text="",
     url="https://mastodon.example/@someone/42",
+    discoverable=True,
+    indexable=True,
+    noindex=False,
+    bot=False,
 ):
     return {
         "content": content,
@@ -66,7 +70,16 @@ def status_payload(
         "sensitive": sensitive,
         "spoiler_text": spoiler_text,
         "media_attachments": [],
-        "account": {"display_name": display_name, "acct": acct, "username": acct, "avatar": avatar},
+        "account": {
+            "display_name": display_name,
+            "acct": acct,
+            "username": acct,
+            "avatar": avatar,
+            "discoverable": discoverable,
+            "indexable": indexable,
+            "noindex": noindex,
+            "bot": bot,
+        },
         "favourites_count": 9999,  # must never surface in the mapped output
         "reblogs_count": 9999,
         "url": url,
@@ -158,6 +171,61 @@ def test_resolve_context_sensitive_media_match_is_filtered(monkeypatch):
     result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
 
     assert result[target] == {"status": "unavailable", "reason": "filtered"}
+
+
+def test_resolve_context_non_discoverable_target_is_filtered(monkeypatch):
+    target = "mastodon.example/42"
+    monkeypatch.setattr(
+        requests, "get", lambda url, timeout, headers: FakeResponse(status_payload(discoverable=False))
+    )
+
+    result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
+
+    assert result[target] == {"status": "unavailable", "reason": "filtered"}
+
+
+def test_resolve_context_non_indexable_target_is_filtered(monkeypatch):
+    target = "mastodon.example/42"
+    monkeypatch.setattr(
+        requests, "get", lambda url, timeout, headers: FakeResponse(status_payload(indexable=False))
+    )
+
+    result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
+
+    assert result[target] == {"status": "unavailable", "reason": "filtered"}
+
+
+def test_resolve_context_noindex_target_is_filtered(monkeypatch):
+    target = "mastodon.example/42"
+    monkeypatch.setattr(requests, "get", lambda url, timeout, headers: FakeResponse(status_payload(noindex=True)))
+
+    result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
+
+    assert result[target] == {"status": "unavailable", "reason": "filtered"}
+
+
+def test_resolve_context_bot_target_is_filtered(monkeypatch):
+    target = "mastodon.example/42"
+    monkeypatch.setattr(requests, "get", lambda url, timeout, headers: FakeResponse(status_payload(bot=True)))
+
+    result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
+
+    assert result[target] == {"status": "unavailable", "reason": "filtered"}
+
+
+def test_resolve_context_null_discoverability_fields_default_to_opted_in(monkeypatch):
+    target = "mastodon.example/42"
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda url, timeout, headers: FakeResponse(
+            status_payload(discoverable=None, indexable=None, noindex=None)
+        ),
+    )
+
+    result, _ = mastodon_resolver.resolve_context([target], TERMS, DOMAINS)
+
+    assert result[target]["status"] == "available"
 
 
 def test_resolve_context_suppressed_domain_link_is_filtered(monkeypatch):

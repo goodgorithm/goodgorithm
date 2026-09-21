@@ -303,3 +303,42 @@ def test_is_content_excluded_combines_all_seven_checks():
     assert content_filter.is_content_excluded(*sensitive_media_only, TERMS, combined_domains) is True
     assert content_filter.is_content_excluded(*home_instance_only, TERMS, combined_domains) is True
     assert content_filter.is_content_excluded(*neither, TERMS, combined_domains) is False
+
+
+def test_has_excluded_bluesky_labels_matches_adult_content_on_post_labels():
+    assert content_filter.has_excluded_bluesky_labels([{"val": "porn"}], None) is True
+
+
+def test_has_excluded_bluesky_labels_matches_adult_content_on_author_labels():
+    assert content_filter.has_excluded_bluesky_labels(None, [{"val": "sexual"}]) is True
+
+
+def test_has_excluded_bluesky_labels_matches_hide_on_either_subject():
+    assert content_filter.has_excluded_bluesky_labels([{"val": "!hide"}], None) is True
+    assert content_filter.has_excluded_bluesky_labels(None, [{"val": "!hide"}]) is True
+
+
+def test_has_excluded_bluesky_labels_matches_warn_on_either_subject():
+    assert content_filter.has_excluded_bluesky_labels([{"val": "!warn"}], None) is True
+    assert content_filter.has_excluded_bluesky_labels(None, [{"val": "!warn"}]) is True
+
+
+def test_has_excluded_bluesky_labels_is_false_for_unrelated_labels():
+    assert content_filter.has_excluded_bluesky_labels([{"val": "some-other-value"}], [{"val": "bot"}]) is False
+
+
+def test_has_excluded_bluesky_labels_is_defensive_about_malformed_shapes():
+    assert content_filter.has_excluded_bluesky_labels(None, None) is False
+    assert content_filter.has_excluded_bluesky_labels("not-a-list", "also-not-a-list") is False
+
+
+def test_has_no_unauthenticated_label_matches_author_labels_only():
+    assert content_filter.has_no_unauthenticated_label([{"val": "!no-unauthenticated"}]) is True
+    assert content_filter.has_no_unauthenticated_label([{"val": "some-other-value"}]) is False
+    assert content_filter.has_no_unauthenticated_label(None) is False
+
+
+def test_has_bot_self_label():
+    assert content_filter.has_bot_self_label([{"val": "bot"}]) is True
+    assert content_filter.has_bot_self_label([{"val": "some-other-value"}]) is False
+    assert content_filter.has_bot_self_label(None) is False
