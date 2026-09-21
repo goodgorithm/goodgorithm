@@ -42,26 +42,31 @@ def extract_quote_uri(raw_json: dict) -> str | None:
     return uri
 
 
-def extract_reply_parent_uri(raw_json: dict) -> str | None:
-    """Pulls the immediate parent's AT-URI out of a Bluesky commit's
-    reply record, if any. Only the direct parent -- walking a full thread
-    is issue #291, not this pass."""
+def extract_reply_root_uri(raw_json: dict) -> str | None:
+    """Pulls the thread root's AT-URI out of a Bluesky commit's reply
+    record, if any -- record.reply.root, not .parent. root is required
+    alongside parent on every reply record per the lexicon, client-
+    declared same as parent -- we already trust a client's own embed/
+    reply references everywhere else in context resolution (the quote
+    embed's own URI, for instance), so trusting root costs nothing extra:
+    still one AppView call, just a different URI. No chain-walking
+    needed -- Bluesky already tells us the root directly."""
     record = (raw_json or {}).get("commit", {}).get("record", {})
     reply = record.get("reply") if isinstance(record, dict) else None
-    parent = reply.get("parent") if isinstance(reply, dict) else None
-    parent_uri = parent.get("uri") if isinstance(parent, dict) else None
-    return parent_uri if isinstance(parent_uri, str) else None
+    root = reply.get("root") if isinstance(reply, dict) else None
+    root_uri = root.get("uri") if isinstance(root, dict) else None
+    return root_uri if isinstance(root_uri, str) else None
 
 
 def extract_context_target(raw_json: dict) -> tuple[ContextKind, str] | None:
     """A post's single context-dependent target, if it has one -- a
-    quote-embed takes priority over a reply-parent on the rare post
-    that's both, since resolving a second context item per post is
-    future work (issue #291), not this pass."""
+    quote-embed takes priority over a reply-thread-root on the rare post
+    that's both, since resolving a second context item per post is out
+    of scope."""
     quote_uri = extract_quote_uri(raw_json)
     if quote_uri is not None:
         return "quote", quote_uri
-    reply_uri = extract_reply_parent_uri(raw_json)
+    reply_uri = extract_reply_root_uri(raw_json)
     if reply_uri is not None:
         return "reply", reply_uri
     return None
@@ -147,9 +152,9 @@ def resolve_context(
     uris: list[str], suppressed_terms: frozenset[str], suppressed_domains: frozenset[str]
 ) -> tuple[dict[str, dict], dict[str, str]]:
     """Batches into groups of GET_POSTS_MAX_URIS, calls Bluesky's public
-    getPosts endpoint. Resolves a quote target and a reply-parent target
-    identically -- both are just a Bluesky post URI to Bluesky's AppView,
-    which doesn't care why the caller wanted it. Never crashes the
+    getPosts endpoint. Resolves a quote target and a reply-thread-root
+    target identically -- both are just a Bluesky post URI to Bluesky's
+    AppView, which doesn't care why the caller wanted it. Never crashes the
     calling cycle -- a failed batch just omits those URIs from the
     returned dicts entirely; a URI absent from a *successful* response
     maps to an explicit not_found status instead. See CLAUDE.md's Post

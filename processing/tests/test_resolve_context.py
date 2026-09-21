@@ -8,17 +8,20 @@ from infra.db import ContextPendingPost
 
 def _reply_post(
     raw_post_id="reply-id",
+    root_uri="at://did:plc:root/app.bsky.feed.post/root1",
     parent_uri="at://did:plc:parent/app.bsky.feed.post/p1",
     text="Yumm!",
     author_id="did:plc:author123",
     created_at=None,
 ):
+    # root and parent both present, like a real Bluesky reply record --
+    # resolve_context() now targets root, not parent.
     return ContextPendingPost(
         raw_post_id=raw_post_id,
         source="bluesky",
         author_id=author_id,
         text=text,
-        raw_json={"commit": {"record": {"reply": {"parent": {"uri": parent_uri}}}}},
+        raw_json={"commit": {"record": {"reply": {"root": {"uri": root_uri}, "parent": {"uri": parent_uri}}}}},
         context_kind="reply",
         # Effectively "now" -- age ~0 makes recency_decay ~1.0, so a
         # resolution's base_score assertion can compare directly against
@@ -29,17 +32,21 @@ def _reply_post(
 
 def _mastodon_reply_post(
     raw_post_id="masto-reply-id",
+    own_id="99",
     in_reply_to_id="42",
     text="Yumm!",
     author_id="mastodon.example/someone",
     created_at=None,
 ):
+    # The resolution target is built from the post's own id (own_id), not
+    # in_reply_to_id's value -- resolve_context() walks this post's own
+    # ancestor chain to the thread root.
     return ContextPendingPost(
         raw_post_id=raw_post_id,
         source="mastodon",
         author_id=author_id,
         text=text,
-        raw_json={"id": "99", "in_reply_to_id": in_reply_to_id, "content": "reply text"},
+        raw_json={"id": own_id, "in_reply_to_id": in_reply_to_id, "content": "reply text"},
         context_kind="reply",
         created_at=created_at if created_at is not None else datetime.now(timezone.utc),
     )
@@ -77,13 +84,13 @@ def test_resolve_context_resolves_and_takes_min_of_own_and_target_quality(monkey
         pipeline.quote_resolver,
         "resolve_context",
         lambda uris, terms, domains: (
-            {post.raw_json["commit"]["record"]["reply"]["parent"]["uri"]: {
+            {post.raw_json["commit"]["record"]["reply"]["root"]["uri"]: {
                 "status": "available",
                 "author": {"displayName": "Someone", "handle": "someone.bsky.social", "avatarUrl": None},
                 "text": "the context text",
                 "createdAt": "2026-09-20T00:00:00Z",
             }},
-            {post.raw_json["commit"]["record"]["reply"]["parent"]["uri"]: "did:plc:parent-author"},
+            {post.raw_json["commit"]["record"]["reply"]["root"]["uri"]: "did:plc:parent-author"},
         ),
     )
     # own text scores lower than the target -- min() should pick the own score
@@ -109,14 +116,14 @@ def test_resolve_context_resolves_and_takes_min_of_own_and_target_quality(monkey
 
 def test_resolve_context_filtered_target_excludes_post(monkeypatch):
     post = _reply_post()
-    parent_uri = post.raw_json["commit"]["record"]["reply"]["parent"]["uri"]
+    root_uri = post.raw_json["commit"]["record"]["reply"]["root"]["uri"]
     monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [post])
     _stub_moderation(monkeypatch)
     _stub_permissive_filters(monkeypatch)
     monkeypatch.setattr(
         pipeline.quote_resolver,
         "resolve_context",
-        lambda uris, terms, domains: ({parent_uri: {"status": "unavailable", "reason": "filtered"}}, {}),
+        lambda uris, terms, domains: ({root_uri: {"status": "unavailable", "reason": "filtered"}}, {}),
     )
     monkeypatch.setattr(pipeline.quality_model, "score_batch", lambda texts: {t.id: 0.9 for t in texts})
 
@@ -132,14 +139,14 @@ def test_resolve_context_filtered_target_excludes_post(monkeypatch):
 
 def test_resolve_context_not_found_falls_back_to_standalone_own_score(monkeypatch):
     post = _reply_post()
-    parent_uri = post.raw_json["commit"]["record"]["reply"]["parent"]["uri"]
+    root_uri = post.raw_json["commit"]["record"]["reply"]["root"]["uri"]
     monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [post])
     _stub_moderation(monkeypatch)
     _stub_permissive_filters(monkeypatch)
     monkeypatch.setattr(
         pipeline.quote_resolver,
         "resolve_context",
-        lambda uris, terms, domains: ({parent_uri: {"status": "unavailable", "reason": "not_found"}}, {}),
+        lambda uris, terms, domains: ({root_uri: {"status": "unavailable", "reason": "not_found"}}, {}),
     )
     monkeypatch.setattr(pipeline.quality_model, "score_batch", lambda texts: {t.id: 0.6 for t in texts})
 
@@ -160,7 +167,7 @@ def test_resolve_context_not_found_falls_back_to_standalone_own_score(monkeypatc
 
 def test_resolve_context_non_english_target_excludes_post(monkeypatch):
     post = _reply_post()
-    parent_uri = post.raw_json["commit"]["record"]["reply"]["parent"]["uri"]
+    root_uri = post.raw_json["commit"]["record"]["reply"]["root"]["uri"]
     monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [post])
     _stub_moderation(monkeypatch)
     _stub_permissive_filters(monkeypatch)
@@ -169,7 +176,7 @@ def test_resolve_context_non_english_target_excludes_post(monkeypatch):
         pipeline.quote_resolver,
         "resolve_context",
         lambda uris, terms, domains: (
-            {parent_uri: {"status": "available", "author": {}, "text": "texte non anglais", "createdAt": None}},
+            {root_uri: {"status": "available", "author": {}, "text": "texte non anglais", "createdAt": None}},
             {},
         ),
     )
@@ -187,7 +194,7 @@ def test_resolve_context_non_english_target_excludes_post(monkeypatch):
 
 def test_resolve_context_political_target_excludes_post(monkeypatch):
     post = _reply_post()
-    parent_uri = post.raw_json["commit"]["record"]["reply"]["parent"]["uri"]
+    root_uri = post.raw_json["commit"]["record"]["reply"]["root"]["uri"]
     monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [post])
     _stub_moderation(monkeypatch)
     _stub_permissive_filters(monkeypatch)
@@ -196,7 +203,7 @@ def test_resolve_context_political_target_excludes_post(monkeypatch):
         pipeline.quote_resolver,
         "resolve_context",
         lambda uris, terms, domains: (
-            {parent_uri: {"status": "available", "author": {}, "text": "political text", "createdAt": None}},
+            {root_uri: {"status": "available", "author": {}, "text": "political text", "createdAt": None}},
             {},
         ),
     )
@@ -214,7 +221,7 @@ def test_resolve_context_political_target_excludes_post(monkeypatch):
 
 def test_resolve_context_bot_author_target_excludes_post(monkeypatch):
     post = _reply_post()
-    parent_uri = post.raw_json["commit"]["record"]["reply"]["parent"]["uri"]
+    root_uri = post.raw_json["commit"]["record"]["reply"]["root"]["uri"]
     monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [post])
     _stub_moderation(monkeypatch)
     _stub_permissive_filters(monkeypatch)
@@ -223,8 +230,8 @@ def test_resolve_context_bot_author_target_excludes_post(monkeypatch):
         pipeline.quote_resolver,
         "resolve_context",
         lambda uris, terms, domains: (
-            {parent_uri: {"status": "available", "author": {}, "text": "spam spam spam", "createdAt": None}},
-            {parent_uri: "did:plc:bot-author"},
+            {root_uri: {"status": "available", "author": {}, "text": "spam spam spam", "createdAt": None}},
+            {root_uri: "did:plc:bot-author"},
         ),
     )
     monkeypatch.setattr(pipeline.quality_model, "score_batch", lambda texts: {t.id: 0.9 for t in texts})
@@ -241,7 +248,7 @@ def test_resolve_context_bot_author_target_excludes_post(monkeypatch):
 
 def test_resolve_context_resolves_mastodon_target(monkeypatch):
     post = _mastodon_reply_post()
-    target = "mastodon.example/42"
+    target = "mastodon.example/99"
     monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [post])
     _stub_moderation(monkeypatch)
     _stub_permissive_filters(monkeypatch)
@@ -286,7 +293,7 @@ def test_resolve_context_resolves_mastodon_target(monkeypatch):
 
 def test_resolve_context_mastodon_target_bot_author_uses_mastodon_source(monkeypatch):
     post = _mastodon_reply_post()
-    target = "mastodon.example/42"
+    target = "mastodon.example/99"
     monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [post])
     _stub_moderation(monkeypatch)
     _stub_permissive_filters(monkeypatch)
@@ -324,10 +331,10 @@ def test_resolve_context_mastodon_target_bot_author_uses_mastodon_source(monkeyp
 
 
 def test_resolve_context_mixed_batch_dispatches_by_target_shape(monkeypatch):
-    bsky_post = _reply_post(raw_post_id="bsky-reply-id", parent_uri="at://did:plc:parent/app.bsky.feed.post/p1")
+    bsky_post = _reply_post(raw_post_id="bsky-reply-id", root_uri="at://did:plc:root/app.bsky.feed.post/root1")
     masto_post = _mastodon_reply_post(raw_post_id="masto-reply-id")
-    masto_target = "mastodon.example/42"
-    bsky_target = "at://did:plc:parent/app.bsky.feed.post/p1"
+    masto_target = "mastodon.example/99"
+    bsky_target = "at://did:plc:root/app.bsky.feed.post/root1"
 
     monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [bsky_post, masto_post])
     _stub_moderation(monkeypatch)
@@ -370,7 +377,7 @@ def test_resolve_context_mixed_batch_dispatches_by_target_shape(monkeypatch):
 
 def test_resolve_context_combined_score_below_threshold_excludes_post(monkeypatch):
     post = _reply_post()
-    parent_uri = post.raw_json["commit"]["record"]["reply"]["parent"]["uri"]
+    root_uri = post.raw_json["commit"]["record"]["reply"]["root"]["uri"]
     monkeypatch.setattr(pipeline.db, "fetch_context_pending", lambda batch_size: [post])
     _stub_moderation(monkeypatch)
     _stub_permissive_filters(monkeypatch)
@@ -380,7 +387,7 @@ def test_resolve_context_combined_score_below_threshold_excludes_post(monkeypatc
         pipeline.quote_resolver,
         "resolve_context",
         lambda uris, terms, domains: (
-            {parent_uri: {"status": "available", "author": {}, "text": "fine on its own", "createdAt": None}},
+            {root_uri: {"status": "available", "author": {}, "text": "fine on its own", "createdAt": None}},
             {},
         ),
     )

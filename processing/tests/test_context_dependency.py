@@ -35,7 +35,7 @@ def test_bluesky_reply_to_other_author_is_pending():
     result = context_dependency.classify("bluesky", AUTHOR, bluesky_raw(reply_parent_did=OTHER), TEXT)
     assert result.action == "pending"
     assert result.context_kind == "reply"
-    assert result.context_target == f"at://{OTHER}/app.bsky.feed.post/parent123"
+    assert result.context_target == f"at://{OTHER}/app.bsky.feed.post/root123"
 
 
 def test_bluesky_self_reply_thread_continuation_is_also_pending():
@@ -74,10 +74,13 @@ def test_bluesky_malformed_raw_json_does_not_raise():
 
 
 def test_mastodon_structured_reply_is_pending():
+    # Target is the referencing post's own id ("1", mastodon_raw's
+    # default), not in_reply_to_id's value -- resolve_context() walks
+    # this post's own ancestor chain to the thread root.
     result = context_dependency.classify("mastodon", MASTODON_AUTHOR_ID, mastodon_raw(in_reply_to_id="42"), TEXT)
     assert result.action == "pending"
     assert result.context_kind == "reply"
-    assert result.context_target == f"{MASTODON_INSTANCE}/42"
+    assert result.context_target == f"{MASTODON_INSTANCE}/1"
 
 
 def test_mastodon_quote_inline_is_pending():
@@ -146,7 +149,7 @@ def test_mastodon_reply_takes_priority_over_quote_inline():
     )
     result = context_dependency.classify("mastodon", MASTODON_AUTHOR_ID, raw, TEXT)
     assert result.context_kind == "reply"
-    assert result.context_target == f"{MASTODON_INSTANCE}/42"
+    assert result.context_target == f"{MASTODON_INSTANCE}/1"
 
 
 def test_mastodon_reply_with_no_polled_instance_in_author_id_is_none():
