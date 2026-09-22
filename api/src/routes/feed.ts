@@ -3,7 +3,6 @@ import type { FastifyInstance } from "fastify";
 import { fetchFeed } from "../db";
 import { rowToFeedPost } from "../feed-post";
 import { decodeCursor, encodeCursor, type Cursor } from "../pagination";
-import { CATEGORIES } from "../types";
 
 // See the wiki's Configuration page. minimum stays hardcoded at 1 - not a
 // tunable, just the structural floor for "a page of posts" to mean anything.
@@ -18,7 +17,6 @@ const feedQuerySchema = {
     properties: {
       limit: { type: "integer", minimum: 1, maximum: FEED_LIMIT_MAX, default: FEED_LIMIT_DEFAULT },
       cursor: { type: "string" },
-      category: { type: "string", enum: CATEGORIES },
     },
   },
 } as const;
@@ -26,7 +24,6 @@ const feedQuerySchema = {
 interface FeedQuery {
   limit?: number;
   cursor?: string;
-  category?: string;
 }
 
 export async function feedRoute(app: FastifyInstance): Promise<void> {
@@ -45,12 +42,10 @@ export async function feedRoute(app: FastifyInstance): Promise<void> {
         }
       }
 
-      const category = request.query.category ?? null;
-
       // fetch one extra row to know if a next page exists, without a second query
       let rows;
       try {
-        rows = await fetchFeed(limit + 1, cursor, category);
+        rows = await fetchFeed(limit + 1, cursor);
       } catch (err) {
         // A timed-out query (see db.ts's FEED_QUERY_TIMEOUT_MS) gets a
         // specific, recognizable response instead of falling through to

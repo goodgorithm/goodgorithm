@@ -22,21 +22,7 @@
 
 export type Source = "bluesky" | "mastodon";
 
-// The fixed 4-category taxonomy assigned by processing/'s category_model.py
-// (a trained classifier, with taxonomy.py's keyword matcher as a fallback).
-// See CLAUDE.md's Category filtering section for why these 4. Deliberately
-// no DB CHECK constraint enforcing this set (see processed_posts.category
-// in the add_category migration) - a stricter constraint
-// would make the taxonomy harder to extend, not easier. See the wiki's API
-// Internals page for what happens end to end when this list and the DB
-// disagree.
-export const CATEGORIES = ["science_technology", "arts_culture", "food_dining", "diaries_daily_life"] as const;
-
-export type Category = (typeof CATEGORIES)[number];
-
 export interface FeedPostScores {
-  sentiment: number;
-  topicality: number;
   base: number;
   rank: number;
   // null only when the quality model isn't loaded (quality_exclude.py
@@ -82,7 +68,6 @@ export type QuoteContent =
       status: "available";
       author: { displayName: string | null; handle: string | null; avatarUrl: string | null };
       text: string;
-      createdAt: string | null;
     }
   | { status: "unavailable"; reason: "not_found" | "filtered" };
 
@@ -132,7 +117,6 @@ export interface FeedPost {
   pipeline_version: string;
   attachments: Attachment[];
   sensitive: boolean;
-  category: Category | null;
 }
 
 export interface FeedResponse {

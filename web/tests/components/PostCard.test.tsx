@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { FeedPost } from "../../src/api/types";
 import { PostCard } from "../../src/components/PostCard";
 
-const noRelative = { topicality: 0, base: 0, rank: 0 };
+const noRelative = { rank: 0 };
 
 const bskyPost: FeedPost = {
   id: "1",
@@ -16,11 +16,10 @@ const bskyPost: FeedPost = {
   permalink: "https://bsky.app/profile/did:plc:abc123/post/xyz",
   author: { display_name: null, avatar_url: null, emojis: [] },
   emojis: [],
-  scores: { sentiment: 0.9, topicality: 1.2, base: 1.1, rank: 0.8, quality: 0.7 },
+  scores: { base: 1.1, rank: 0.8, quality: 0.7 },
   pipeline_version: "v1",
   attachments: [],
   sensitive: false,
-  category: null,
 };
 
 const mastodonPost: FeedPost = {

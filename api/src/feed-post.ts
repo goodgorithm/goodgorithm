@@ -26,8 +26,6 @@ export function rowToFeedPost(row: FeedRow): FeedPost {
     author: buildAuthor(row),
     emojis: buildEmojis(row.mastodon_status_emojis),
     scores: {
-      sentiment: row.sentiment_score,
-      topicality: row.topicality_score,
       base: row.base_score,
       rank: row.rank_score,
       quality: row.quality_score,
@@ -35,9 +33,5 @@ export function rowToFeedPost(row: FeedRow): FeedPost {
     pipeline_version: row.pipeline_version,
     attachments,
     sensitive,
-    // FeedRow.category is `string | null` on purpose: processing/ can write a
-    // category value api/ doesn't know yet, and it passes straight through
-    // (see CLAUDE.md's Category taxonomy note). The cast keeps that.
-    category: row.category as FeedPost["category"],
   };
 }

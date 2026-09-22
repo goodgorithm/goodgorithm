@@ -211,7 +211,7 @@ const AT_URI_PATTERN = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/;
 // either way.
 function parseContextContent(raw: unknown): QuoteContent | null {
   if (typeof raw !== "object" || raw === null) return null;
-  const typed = raw as { status?: unknown; text?: unknown; author?: unknown; createdAt?: unknown; reason?: unknown };
+  const typed = raw as { status?: unknown; text?: unknown; author?: unknown; reason?: unknown };
 
   if (typed.status === "unavailable") {
     return typed.reason === "not_found" || typed.reason === "filtered"
@@ -229,7 +229,6 @@ function parseContextContent(raw: unknown): QuoteContent | null {
         avatarUrl: typeof author.avatarUrl === "string" ? author.avatarUrl : null,
       },
       text: typed.text,
-      createdAt: typeof typed.createdAt === "string" ? typed.createdAt : null,
     };
   }
 
@@ -239,7 +238,7 @@ function parseContextContent(raw: unknown): QuoteContent | null {
 // The raw context_content blob carries a url field (added by
 // processing/'s quote_resolver.py/mastodon_resolver.py) that never makes
 // it into the publicly-typed QuoteContent above -- QuoteContent is purely
-// the display shape (author/text/createdAt), while url is this file's own
+// the display shape (author/text), while url is this file's own
 // internal signal for whether there's anything to link a Mastodon
 // quote/reply attachment to yet at all. Bluesky's own quote/reply display
 // never needs this -- it builds its permalink separately, straight from

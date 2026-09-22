@@ -25,8 +25,6 @@ function makeRow(overrides: Partial<FeedRow>): FeedRow {
     text: "a genuinely lovely post about a sunrise",
     created_at: new Date("2026-08-28T09:30:00.000Z"),
     entities: null,
-    sentiment_score: 0.82,
-    topicality_score: 4.1,
     base_score: 3.36,
     rank_score: 3.36,
     quality_score: 0.72,
@@ -46,7 +44,6 @@ function makeRow(overrides: Partial<FeedRow>): FeedRow {
     bluesky_labels: null,
     context_content: null,
     quote_content: null,
-    category: null,
     generated_thumbnail_url: null,
     ...overrides,
   };
@@ -116,7 +113,7 @@ const FIXTURES: Record<string, FeedRow> = {
     },
   }),
 
-  "mastodon — card + image media + account/status emojis + sensitive + category set": makeRow({
+  "mastodon — card + image media + account/status emojis + sensitive": makeRow({
     id: "row-m1",
     source: "mastodon",
     source_id: "fosstodon.org/117071434916343238",
@@ -143,7 +140,6 @@ const FIXTURES: Record<string, FeedRow> = {
       image: "https://media.hachyderm.io/cache/preview_cards/images/052/c48f581a405f9c82.jpg",
       provider_name: "Applied Cartography",
     },
-    category: "arts_culture",
   }),
 };
 

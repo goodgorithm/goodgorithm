@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { ScoreDetails } from "../../src/components/ScoreDetails";
 
-const scores = { sentiment: 0.65, topicality: 1.2, base: 0.72, rank: 0.42, quality: 0.8 };
+const scores = { base: 0.72, rank: 0.42, quality: 0.8 };
 const relative = { rank: 0.1 };
 
 describe("ScoreDetails", () => {

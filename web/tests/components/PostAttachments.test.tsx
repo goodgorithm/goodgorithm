@@ -14,11 +14,10 @@ function makePost(attachments: Attachment[], sensitive = false): FeedPost {
     entities: [],
     permalink: "https://bsky.app/profile/did:plc:abc123/post/xyz",
     author: { display_name: null, avatar_url: null },
-    scores: { sentiment: 0.9, topicality: 1.2, base: 1.1, rank: 0.8, quality: 0.7 },
+    scores: { base: 1.1, rank: 0.8, quality: 0.7 },
     pipeline_version: "v1",
     attachments,
     sensitive,
-    category: null,
   };
 }
 
@@ -53,7 +52,6 @@ const resolvedQuote: Attachment = {
     status: "available",
     author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: "https://example.com/a.jpg" },
     text: "a genuinely lovely post",
-    createdAt: "2026-08-10T12:00:00Z",
   },
 };
 
@@ -76,7 +74,6 @@ const resolvedReply: Attachment = {
     status: "available",
     author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: null },
     text: "the post being replied to",
-    createdAt: "2026-09-20T00:00:00Z",
   },
 };
 
