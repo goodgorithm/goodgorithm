@@ -39,19 +39,19 @@ describe("qualityFraction", () => {
 
 describe("deriveRecency", () => {
   it("recovers the decay factor from base / quality", () => {
-    expect(deriveRecency({ sentiment: 0, topicality: 0, base: 0.45, rank: 0, quality: 0.9 })).toBeCloseTo(0.5);
+    expect(deriveRecency({ base: 0.45, rank: 0, quality: 0.9 })).toBeCloseTo(0.5);
   });
 
   it("clamps to 1 for a fresh post (base == quality)", () => {
-    expect(deriveRecency({ sentiment: 0, topicality: 0, base: 0.7, rank: 0, quality: 0.7 })).toBeCloseTo(1);
+    expect(deriveRecency({ base: 0.7, rank: 0, quality: 0.7 })).toBeCloseTo(1);
   });
 
   it("returns 0 when quality is null (quality-model outage)", () => {
-    expect(deriveRecency({ sentiment: 0, topicality: 0, base: 0, rank: 0, quality: null })).toBe(0);
+    expect(deriveRecency({ base: 0, rank: 0, quality: null })).toBe(0);
   });
 
   it("returns 0 when quality is 0 (avoids a divide-by-zero)", () => {
-    expect(deriveRecency({ sentiment: 0, topicality: 0, base: 0, rank: 0, quality: 0 })).toBe(0);
+    expect(deriveRecency({ base: 0, rank: 0, quality: 0 })).toBe(0);
   });
 });
 
@@ -80,7 +80,7 @@ describe("percentileRank", () => {
 
 describe("relativeFractions", () => {
   function post(id: string, rank: number) {
-    return { id, scores: { sentiment: 0.5, topicality: 1, base: 0.5, rank, quality: 0.5 } } as never;
+    return { id, scores: { base: 0.5, rank, quality: 0.5 } } as never;
   }
 
   it("computes independent percentile ranks for rank", () => {

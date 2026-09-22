@@ -255,7 +255,6 @@ test("bluesky quote with resolved content (available)", () => {
         status: "available",
         author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: "https://example.com/a.jpg" },
         text: "a genuinely lovely post",
-        createdAt: "2026-08-10T12:00:00Z",
       },
     ),
   );
@@ -266,7 +265,6 @@ test("bluesky quote with resolved content (available)", () => {
       status: "available",
       author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: "https://example.com/a.jpg" },
       text: "a genuinely lovely post",
-      createdAt: "2026-08-10T12:00:00Z",
     });
   }
 });
@@ -376,7 +374,6 @@ test("bluesky reply with resolved context (available)", () => {
         status: "available",
         author: { displayName: "Someone Nice", handle: "someone.bsky.social", avatarUrl: null },
         text: "the post being replied to",
-        createdAt: "2026-09-20T00:00:00Z",
       },
       null,
       "",
@@ -803,7 +800,6 @@ const MASTODON_CONTEXT_CONTENT = {
   status: "available",
   author: { displayName: "Someone", handle: "someone@fosstodon.org", avatarUrl: null },
   text: "the parent status text",
-  createdAt: "2026-08-10T12:00:00Z",
   url: "https://fosstodon.org/@someone/12345",
 };
 
@@ -817,7 +813,6 @@ test("mastodon reply with resolved context builds the reply attachment", () => {
       status: "available",
       author: { displayName: "Someone", handle: "someone@fosstodon.org", avatarUrl: null },
       text: "the parent status text",
-      createdAt: "2026-08-10T12:00:00Z",
     });
   }
 });
@@ -834,10 +829,8 @@ test("mastodon context still pending (context_content null) produces no attachme
 });
 
 test("mastodon context resolved but urlless (no url field) produces no attachment", () => {
-  const { status, author, text, createdAt } = MASTODON_CONTEXT_CONTENT;
-  const { attachments } = buildAttachments(
-    mastodonRow(null, null, null, null, "reply", { status, author, text, createdAt }),
-  );
+  const { status, author, text } = MASTODON_CONTEXT_CONTENT;
+  const { attachments } = buildAttachments(mastodonRow(null, null, null, null, "reply", { status, author, text }));
   assert.deepEqual(attachments, []);
 });
 

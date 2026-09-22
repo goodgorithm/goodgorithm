@@ -33,8 +33,6 @@ export interface FeedRow {
   text: string;
   created_at: Date;
   entities: string[] | null;
-  sentiment_score: number;
-  topicality_score: number;
   base_score: number;
   rank_score: number;
   quality_score: number | null;
@@ -68,34 +66,28 @@ export interface FeedRow {
   // display path ignores this, re-deriving quote-vs-reply from its own
   // embed/reply shape instead.
   context_kind: string | null;
-  category: string | null;
   generated_thumbnail_url: string | null;
 }
 
 // Distinct from HEALTH_CHECK_TIMEOUT_MS below -- the real feed query does
-// real work (a rank_score-ordered scan with a category filter/cursor),
-// unlike SELECT 1, so this needs real headroom above normal latency, not
-// a tight bound. Generous default: this guards against a truly stuck
-// query, not normal variance.
+// real work (a rank_score-ordered cursor scan), unlike SELECT 1, so this
+// needs real headroom above normal latency, not a tight bound. Generous
+// default: this guards against a truly stuck query, not normal variance.
 const FEED_QUERY_TIMEOUT_MS = Number(process.env.FEED_QUERY_TIMEOUT_MS ?? 10000);
 
-export async function fetchFeed(
-  limit: number,
-  cursor: Cursor | null,
-  category: string | null,
-): Promise<FeedRow[]> {
+export async function fetchFeed(limit: number, cursor: Cursor | null): Promise<FeedRow[]> {
   const rows = await withTimeout(
-    fetchFeedQuery(limit, cursor, category),
+    fetchFeedQuery(limit, cursor),
     FEED_QUERY_TIMEOUT_MS,
     "feed query timed out",
   );
   return rows;
 }
 
-function fetchFeedQuery(limit: number, cursor: Cursor | null, category: string | null): Promise<FeedRow[]> {
+function fetchFeedQuery(limit: number, cursor: Cursor | null): Promise<FeedRow[]> {
   return sql<FeedRow[]>`
     SELECT r.id, r.source, r.source_id, r.author_id, r.text, r.created_at, p.entities,
-           p.sentiment_score, p.topicality_score, p.base_score, p.rank_score, p.quality_score,
+           p.base_score, p.rank_score, p.quality_score,
            p.pipeline_version,
            r.raw_json->>'url' AS mastodon_permalink,
            r.raw_json->'account'->>'display_name' AS mastodon_display_name,
@@ -113,13 +105,11 @@ function fetchFeedQuery(limit: number, cursor: Cursor | null, category: string |
            p.context_content,
            p.quote_content,
            p.context_kind,
-           p.category,
            p.generated_thumbnail_url
     FROM processed_posts p
     JOIN raw_posts r ON r.id = p.raw_post_id
     WHERE p.rank_score IS NOT NULL
       ${cursor ? sql`AND (p.rank_score, r.id) < (${cursor.rank_score}, ${cursor.id})` : sql``}
-      ${category ? sql`AND p.category = ${category}` : sql``}
     ORDER BY p.rank_score DESC, r.id DESC
     LIMIT ${limit}
   `;

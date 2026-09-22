@@ -139,7 +139,7 @@ const AT_URI_PATTERN = /^at:\/\/([^/]+)\/([^/]+)\/([^/]+)$/;
 
 function parseQuoteContent(raw: unknown): QuoteContent | null {
   if (typeof raw !== "object" || raw === null) return null;
-  const typed = raw as { status?: unknown; text?: unknown; author?: unknown; createdAt?: unknown; reason?: unknown };
+  const typed = raw as { status?: unknown; text?: unknown; author?: unknown; reason?: unknown };
 
   if (typed.status === "unavailable") {
     return typed.reason === "not_found" || typed.reason === "filtered"
@@ -157,7 +157,6 @@ function parseQuoteContent(raw: unknown): QuoteContent | null {
         avatarUrl: typeof author.avatarUrl === "string" ? author.avatarUrl : null,
       },
       text: typed.text,
-      createdAt: typeof typed.createdAt === "string" ? typed.createdAt : null,
     };
   }
   return null;

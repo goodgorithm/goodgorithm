@@ -12,7 +12,6 @@ export type QuoteContent =
       status: "available";
       author: { displayName: string | null; handle: string | null; avatarUrl: string | null };
       text: string;
-      createdAt: string | null;
     }
   | { status: "unavailable"; reason: "not_found" | "filtered" };
 
