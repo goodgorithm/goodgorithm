@@ -5,7 +5,7 @@ class FakePipeline:
     """Test double for the upstash_redis Pipeline: .execute() queues a raw
     command and returns self (for chaining), .exec() runs them all and
     returns results in order -- mirrors the real pipe.execute(...).exec()
-    usage in dedup.py/bot_filter.py/topicality.py."""
+    usage in dedup.py/bot_filter.py."""
 
     def __init__(self, sizes_by_key):
         self._sizes_by_key = sizes_by_key
@@ -103,7 +103,7 @@ class PagedScanClient:
 def test_scan_delete_paginates_until_cursor_zero():
     client = PagedScanClient({0: (5, ["k1", "k2"]), 5: (0, ["k3"])})
 
-    deleted = redis_guard._scan_delete(client, "burst:entity:*")
+    deleted = redis_guard._scan_delete(client, "cluster:*:authors")
 
     assert deleted == 3
     assert client.deleted == ["k1", "k2", "k3"]
@@ -112,7 +112,7 @@ def test_scan_delete_paginates_until_cursor_zero():
 def test_scan_delete_skips_delete_call_on_empty_page():
     client = PagedScanClient({0: (0, [])})
 
-    deleted = redis_guard._scan_delete(client, "burst:entity:*")
+    deleted = redis_guard._scan_delete(client, "cluster:*:authors")
 
     assert deleted == 0
     assert client.deleted == []
@@ -120,8 +120,7 @@ def test_scan_delete_skips_delete_call_on_empty_page():
 
 def test_clear_expendable_data_covers_every_expendable_pattern(monkeypatch):
     keys_by_pattern = {
-        "burst:entity:*": ["burst:entity:a", "burst:entity:b"],
-        "cluster:*:authors": ["cluster:c1:authors"],
+        "cluster:*:authors": ["cluster:c1:authors", "cluster:c2:authors"],
     }
 
     class FakeClient:
@@ -140,8 +139,8 @@ def test_clear_expendable_data_covers_every_expendable_pattern(monkeypatch):
 
     deleted = redis_guard.clear_expendable_data()
 
-    assert deleted == 3
-    assert set(fake.deleted) == {"burst:entity:a", "burst:entity:b", "cluster:c1:authors"}
+    assert deleted == 2
+    assert set(fake.deleted) == {"cluster:c1:authors", "cluster:c2:authors"}
 
 
 def test_clear_expendable_data_never_touches_dedup_state(monkeypatch):

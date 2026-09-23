@@ -34,9 +34,8 @@ def _strip_html(raw_html: str) -> str:
     for entities instead of porting that file's hand-rolled entity table.
     Deliberately not full-fidelity (skips truncated-link recovery): this
     text feeds scoring/display of a resolved parent, not primary
-    ingestion, so exact parity isn't required. Kept in sync by hand, same
-    cross-language-boundary precedent as util/sentiment_model.py's
-    tokenizer -- see CLAUDE.md's Sentiment model loading section."""
+    ingestion, so exact parity isn't required. Kept in sync by hand across
+    the language boundary."""
     with_breaks = _BLOCK_TAGS_RE.sub(" ", raw_html)
     without_tags = _TAG_RE.sub("", with_breaks)
     decoded = html_module.unescape(without_tags)

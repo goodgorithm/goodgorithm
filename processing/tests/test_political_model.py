@@ -19,8 +19,7 @@ def reset_political_module_state(monkeypatch):
     don't bleed into each other regardless of run order. Also forces
     r2_configured() False by default so tests are hermetic regardless of
     what's in a developer's local .env -- tests that want the classifier
-    path override this themselves. Mirrors test_category_model.py's
-    equivalent fixture."""
+    path override this themselves."""
     political_model._session = None
     political_model._political_label_index = None
     political_model._load_attempted = False

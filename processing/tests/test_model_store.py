@@ -30,49 +30,29 @@ def store(monkeypatch):
     monkeypatch.setattr(config, "R2_MODELS_ACCESS_KEY_ID", "test-key")
     monkeypatch.setattr(config, "R2_MODELS_SECRET_ACCESS_KEY", "test-secret")
     monkeypatch.setattr(config, "R2_MODELS_BUCKET_NAME", "test-bucket")
-    return model_store.R2ModelStore(prefix="sentiment-cnn")
+    return model_store.R2ModelStore(prefix="political-classifier")
 
 
 def test_resolve_version_reads_latest_json(store):
-    fake = FakeS3Client({"sentiment-cnn/latest.json": json.dumps({"version": "v3"}).encode()})
+    fake = FakeS3Client({"political-classifier/latest.json": json.dumps({"version": "v3"}).encode()})
     store.client = fake
     assert store.resolve_version() == "v3"
-    assert fake.requested_keys == ["sentiment-cnn/latest.json"]
-
-
-def test_fetch_reads_model_vocab_and_config(store):
-    fake = FakeS3Client(
-        {
-            "sentiment-cnn/v2/model.onnx": b"fake-onnx-bytes",
-            "sentiment-cnn/v2/vocab.json": json.dumps({"<pad>": 0, "hello": 1}).encode(),
-            "sentiment-cnn/v2/config.json": json.dumps({"embedding_dim": 100}).encode(),
-        }
-    )
-    store.client = fake
-
-    model_bytes, vocab, model_config = store.fetch("v2")
-
-    assert model_bytes == b"fake-onnx-bytes"
-    assert vocab == {"<pad>": 0, "hello": 1}
-    assert model_config == {"embedding_dim": 100}
+    assert fake.requested_keys == ["political-classifier/latest.json"]
 
 
 def test_get_bytes_and_get_json_work_with_any_prefix(monkeypatch):
-    # category_model.py uses these two directly (no vocab file, so fetch()
-    # doesn't fit) - confirm they're usable standalone with a different
-    # prefix, not just through fetch()'s sentiment-shaped bundling.
     monkeypatch.setattr(config, "R2_MODELS_ACCOUNT_ID", "test-account")
     monkeypatch.setattr(config, "R2_MODELS_ACCESS_KEY_ID", "test-key")
     monkeypatch.setattr(config, "R2_MODELS_SECRET_ACCESS_KEY", "test-secret")
     monkeypatch.setattr(config, "R2_MODELS_BUCKET_NAME", "test-bucket")
-    category_store = model_store.R2ModelStore(prefix="category-classifier")
+    quality_store = model_store.R2ModelStore(prefix="quality-classifier")
     fake = FakeS3Client(
         {
-            "category-classifier/v1/model.onnx": b"fake-onnx-bytes",
-            "category-classifier/v1/config.json": json.dumps({"labels": ["sports"]}).encode(),
+            "quality-classifier/v1/model.onnx": b"fake-onnx-bytes",
+            "quality-classifier/v1/config.json": json.dumps({"labels": ["genuinely_uplifting_and_substantive"]}).encode(),
         }
     )
-    category_store.client = fake
+    quality_store.client = fake
 
-    assert category_store.get_bytes("category-classifier/v1/model.onnx") == b"fake-onnx-bytes"
-    assert category_store.get_json("category-classifier/v1/config.json") == {"labels": ["sports"]}
+    assert quality_store.get_bytes("quality-classifier/v1/model.onnx") == b"fake-onnx-bytes"
+    assert quality_store.get_json("quality-classifier/v1/config.json") == {"labels": ["genuinely_uplifting_and_substantive"]}

@@ -3,8 +3,7 @@ import re
 # Shared by dedup.py's near-duplicate URL extraction and
 # content_filter.py's/penalties.py's domain-blocklist checks, so none of
 # them has to reach into another's internals -- same "shared helper, not
-# hand-duplicated" pattern as sentiment_model.py/text_normalize.py living
-# in util/. extract_raw_url returns dedup's single canonical URL;
+# hand-duplicated" pattern as text_normalize.py living in util/. extract_raw_url returns dedup's single canonical URL;
 # extract_all_urls returns every URL a post carries, for the domain checks
 # that need to know if ANY of them is on a moderator's list, not just the
 # platform-preferred one.

@@ -10,7 +10,7 @@ That's the point. Mainstream feed algorithms aren't neutral — they're tuned to
 
 ## Does an LLM decide what shows up in my feed?
 
-No. Content selection — quality/topic classification, ranking — runs on classical, auditable machine learning (TF-IDF + trained classifiers, named-entity recognition), not a large language model. That's a deliberate, non-negotiable constraint: an LLM can drift or hallucinate in ways that would undermine the whole "trust why a post got selected" premise. (LLM tools, including Claude, are used openly to help *build* the project — that's a separate question from what powers the algorithm itself.) Full mechanics: [Algorithm](https://github.com/goodgorithm/goodgorithm/wiki/Algorithm).
+No. Content selection — quality/political classification, ranking — runs on classical, auditable machine learning (TF-IDF + trained classifiers, named-entity recognition), not a large language model. That's a deliberate, non-negotiable constraint: an LLM can drift or hallucinate in ways that would undermine the whole "trust why a post got selected" premise. (LLM tools, including Claude, are used openly to help *build* the project — that's a separate question from what powers the algorithm itself.) Full mechanics: [Algorithm](https://github.com/goodgorithm/goodgorithm/wiki/Algorithm).
 
 ## Why only Mastodon and Bluesky, and why only four categories?
 

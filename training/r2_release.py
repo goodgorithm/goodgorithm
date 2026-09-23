@@ -11,7 +11,7 @@ actually reads) without needing to re-run the training notebook. Useful for:
     to be worse in production than eval numbers suggested
   - checking what's currently live, and what versions exist at all
 
-Generalized across model types (sentiment, category) rather than forked per
+Generalized across model types rather than forked per
 model -- see MODEL_REGISTRY below. The coupling to any one model's naming
 was always shallow: `current`/`list`/`publish`/`create_github_release`
 never had model-specific logic in their bodies, just a prefix and an
@@ -27,19 +27,14 @@ not a separate/optional step, so the two can't drift out of sync.
 Requires the `gh` CLI, authenticated, with access to goodgorithm/goodgorithm.
 
 Usage:
-    uv run python r2_release.py --model sentiment current
-    uv run python r2_release.py --model sentiment list
-    uv run python r2_release.py --model sentiment publish <version>
-    uv run python r2_release.py --model category current
-    uv run python r2_release.py --model category list
-    uv run python r2_release.py --model category publish <version>
-    uv run python r2_release.py --model category upload <version> --path <local-dir>
     uv run python r2_release.py --model political current
+    uv run python r2_release.py --model political list
     uv run python r2_release.py --model political publish <version>
     uv run python r2_release.py --model political-centroid current
     uv run python r2_release.py --model political-centroid publish <version>
     uv run python r2_release.py --model quality current
     uv run python r2_release.py --model quality publish <version>
+    uv run python r2_release.py --model quality upload <version> --path <local-dir>
 
 `upload` is the manual alternative to the training notebook's own R2 cell
 -- for when artifacts were produced somewhere other than an interactive
@@ -71,14 +66,6 @@ GITHUB_REPO = "goodgorithm/goodgorithm"
 
 # Add a new model type here, not a new script -- see module docstring.
 MODEL_REGISTRY = {
-    "sentiment": {
-        "prefix": "sentiment-cnn",
-        "artifacts": ["model.onnx", "vocab.json", "config.json"],
-    },
-    "category": {
-        "prefix": "category-classifier",
-        "artifacts": ["model.onnx", "config.json"],
-    },
     "political": {
         "prefix": "political-classifier",
         "artifacts": ["model.onnx", "config.json"],

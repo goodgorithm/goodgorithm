@@ -19,9 +19,6 @@ WITH params AS (
   SELECT
     i,
     (i % 3 = 0)                                                          AS is_mastodon,
-    (ARRAY['arts_culture','science_technology','food_dining','diaries_daily_life',
-           'arts_culture','science_technology','food_dining','diaries_daily_life',
-           'arts_culture','science_technology','food_dining', NULL])[1 + (i % 12)] AS category,
     now() - (i * interval '17 minutes')                                  AS created_at,
     round((0.95 - i * 0.014)::numeric, 4)::real                          AS rank_score,
     (ARRAY[
@@ -85,8 +82,7 @@ raw_ins AS (
 )
 INSERT INTO processed_posts (
   raw_post_id, dedup_cluster_id, is_dedup_canonical, is_bot,
-  sentiment_score, sentiment_method, topicality_score, entities,
-  base_score, rank_score, pipeline_version, category, category_method,
+  entities, base_score, rank_score, pipeline_version, quality_score, quality_method,
   bluesky_author, generated_thumbnail_url
 )
 SELECT
@@ -94,15 +90,12 @@ SELECT
   gen_random_uuid(),
   true,
   false,
-  round((0.55 + 0.4 * (p.i % 5) / 4.0)::numeric, 4)::real,
-  'seed',
-  round((0.15 + 0.75 * (p.i % 7) / 6.0)::numeric, 4)::real,
   to_jsonb((ARRAY['Community','Science','Neighbours','Volunteers','Libraries','Repair'])[1 + (p.i % 6):2 + (p.i % 6)]),
   p.rank_score + 0.02,
   p.rank_score,
   'seed-v1',
-  p.category,
-  CASE WHEN p.category IS NULL THEN NULL ELSE 'seed' END,
+  round((0.55 + 0.4 * (p.i % 5) / 4.0)::numeric, 4)::real,
+  'seed',
   CASE WHEN r.source = 'bluesky'
        THEN jsonb_build_object('displayName', format('Seed User %s', p.i), 'avatarUrl', null)
        ELSE NULL END,
@@ -114,6 +107,5 @@ JOIN params p ON p.slug = r.slug;
 
 COMMIT;
 
-SELECT category, count(*), round(min(rank_score)::numeric, 3) AS min_rank, round(max(rank_score)::numeric, 3) AS max_rank
-FROM processed_posts WHERE pipeline_version = 'seed-v1'
-GROUP BY category ORDER BY category NULLS LAST;
+SELECT count(*), round(min(rank_score)::numeric, 3) AS min_rank, round(max(rank_score)::numeric, 3) AS max_rank
+FROM processed_posts WHERE pipeline_version = 'seed-v1';

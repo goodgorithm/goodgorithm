@@ -1,9 +1,8 @@
 import re
 
-# Pure stdlib, zero project imports — same discipline as sentiment_model.py,
-# and for the same reason: this file is imported both by the category
-# classifier's training notebook (via a commit-pinned raw GitHub URL) and by
-# processing/'s inference path, so text normalization can never drift
+# Pure stdlib, zero project imports: this file is imported both by the
+# political/quality classifiers' training notebooks (via a commit-pinned raw
+# GitHub URL) and by processing/'s inference path, so text normalization can never drift
 # between train and inference even though the two run in different
 # environments.
 
@@ -18,7 +17,7 @@ _CAMEL_BOUNDARY_RE = re.compile(
 
 def split_camel_hashtags(text: str) -> str:
     """#OfCourseItsGenocide -> ". Of Course Its Genocide". Every word-level
-    stage (TF-IDF, NER, category classification) would otherwise see a
+    stage (TF-IDF, NER) would otherwise see a
     hashtag as one opaque glued token.
 
     The leading ". " (not just a space) is load-bearing: without it,
@@ -35,7 +34,7 @@ def split_camel_hashtags(text: str) -> str:
 
     Must run before lowercasing -- callers needing NER-quality output
     (case-sensitive) should call this directly; normalize_text() calls it
-    first, before its own lowercasing, for TF-IDF/category/taxonomy use."""
+    first, before its own lowercasing, for TF-IDF use."""
     return _HASHTAG_RE.sub(lambda m: ". " + _CAMEL_BOUNDARY_RE.sub(" ", m.group(1)), text)
 
 

@@ -14,7 +14,7 @@ a no-op, so:
   * nothing is written -- safe to run against any database you can read, prod
     included;
   * every iteration re-scores the *identical* batch, so timings are comparable.
-Redis writes (dedup / bot-filter / topicality state) are NOT stubbed -- that
+Redis writes (dedup / bot-filter state) are NOT stubbed -- that
 state is ephemeral and its cost is part of what we are measuring; run against a
 local Redis.
 
@@ -25,7 +25,7 @@ not CPU, and their latency just adds variance to the profile. Pass
 
 Output per stage:
   * a warmup pass (not measured) to prime lazy model loads (spaCy, the ONNX
-    sentiment / category sessions, fastText);
+    political / quality sessions, fastText);
   * an unprofiled timing pass -> wall-clock min / mean / median per call;
   * a cProfile pass -> top functions by the chosen sort key, and a .prof dump
     under profiling/.profiles/ for snakeviz / `python -m pstats`.

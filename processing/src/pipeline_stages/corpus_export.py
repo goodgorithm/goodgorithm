@@ -17,7 +17,7 @@ class CorpusObject:
 
 
 # Raw text plus the minimum metadata to filter the corpus later without
-# re-deriving it. Deliberately no sentiment_score/quality_score (circular
+# re-deriving it. Deliberately no quality_score (circular
 # for training the project's own embeddings), no author id, no engagement
 # counts. Near-duplicate rows are kept, not dropped -- is_dedup_canonical +
 # dedup_cluster_id let a training pipeline collapse them (or not) as it needs.
@@ -26,8 +26,6 @@ def _record(post: ExportablePost) -> dict:
         "text": post.text,
         "source": post.source,
         "created_at": post.created_at.isoformat(),
-        "category": post.category,
-        "category_method": post.category_method,
         "pipeline_version": post.pipeline_version,
         "dedup_cluster_id": str(post.dedup_cluster_id),
         "is_dedup_canonical": post.is_dedup_canonical,

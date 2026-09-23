@@ -4,7 +4,5 @@
 # the notebook itself, and the artifacts are the ones that get versioned in
 # R2, not here.
 text_normalize.py
-sentiment_model.py
 model.onnx
-vocab.json
 config.json
