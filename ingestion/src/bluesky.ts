@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { capCreatedAt } from "./createdAt";
 import { deleteByAuthor, deleteBySourceId, getBlockedAuthors, insertPost, isBlockedAuthor } from "./db";
 import { parseNumberEnv } from "./env";
 import { consumePendingExclusion, markPendingExclusion } from "./pendingExclusions";
@@ -242,7 +243,9 @@ export function startBlueskyIngestion(): void {
           author_id: event.did,
           text,
           lang: langs[0] ?? null,
-          created_at: record.createdAt ? new Date(record.createdAt) : new Date(),
+          // time_us is when the event passed through the firehose -- the
+          // observed time capCreatedAt caps a future createdAt at.
+          created_at: capCreatedAt(record.createdAt, new Date(event.time_us / 1000)),
           mastodon_account_created_at: null, // no equivalent concept on Bluesky
           raw_json: event,
         });

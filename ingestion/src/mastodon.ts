@@ -1,3 +1,4 @@
+import { capCreatedAt } from "./createdAt";
 import { getBlockedAuthors, insertPost, isBlockedAuthor } from "./db";
 import { parseNumberEnv } from "./env";
 
@@ -191,6 +192,7 @@ async function pollInstance(
   }
 
   recordSuccess(instance);
+  const polledAt = new Date();
   const statuses = (await response.json()) as MastodonStatus[];
   if (!statuses.length) return;
 
@@ -218,7 +220,7 @@ async function pollInstance(
         author_id: `${instance}/${status.account.acct}`,
         text,
         lang: status.language,
-        created_at: new Date(status.created_at),
+        created_at: capCreatedAt(status.created_at, polledAt),
         // Own column, not read from raw_json -- a deliberate performance
         // trade-off required for bot detection's clustering query.
         mastodon_account_created_at: status.account.created_at ? new Date(status.account.created_at) : null,
