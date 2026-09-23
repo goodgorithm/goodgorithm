@@ -108,8 +108,9 @@ def _mastodon_self_declared_bot(source: str, raw_json: dict) -> bool:
 
 def run_cycle(batch_size: int) -> int:
     """Fetches a batch of unprocessed posts and scores them through political/
-    quality screening, dedup, bot filter, and entity extraction, computing
-    base_score (quality_score x recency) per post directly.
+    quality screening, dedup, entity extraction, thumbnail resolution, and
+    bot filter, computing base_score (quality_score x recency) per post
+    directly.
     rank_score is left for refresh_rankings — MMR needs the full eligible
     pool, not just this batch. See the wiki's Pipeline Internals page for
     the full per-stage walkthrough."""
