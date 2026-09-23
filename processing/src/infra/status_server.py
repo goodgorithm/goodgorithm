@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from infra import degradation
-from pipeline_stages import category_model, political_centroid, political_model, quality_model, sentiment
+from pipeline_stages import political_centroid, political_model, quality_model
 
 logger = logging.getLogger("processing")
 
@@ -42,14 +42,6 @@ def _build_status() -> dict:
         "last_cycle_success_at": degradation.last_cycle_success_at(),
         "degraded": degraded,
         "models": {
-            "sentiment": {
-                "method": sentiment.SENTIMENT_METHOD,
-                "version": sentiment.SENTIMENT_MODEL_LOADED_VERSION,
-            },
-            "category": {
-                "method": category_model.CATEGORY_METHOD,
-                "version": category_model.CATEGORY_MODEL_LOADED_VERSION,
-            },
             "political": {
                 "method": political_model.POLITICAL_METHOD,
                 "version": political_model.POLITICAL_MODEL_LOADED_VERSION,

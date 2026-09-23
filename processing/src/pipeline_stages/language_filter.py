@@ -45,9 +45,8 @@ _load_failed = False
 
 def _get_model() -> fasttext.FastText._FastText | None:
     """None if the model couldn't be loaded -- tried once per process,
-    same "best-effort, degrade gracefully rather than crash" shape as
-    sentiment.py's CNN-load-falls-back-to-VADER pattern (this hard-exclude
-    gate just becomes a no-op instead, per is_non_english's None handling
+    same "best-effort, degrade gracefully rather than crash" shape as the
+    R2-loaded classifiers (this hard-exclude gate just becomes a no-op, per is_non_english's None handling
     below, rather than taking the whole cycle down)."""
     global _model, _load_failed
     if _model is not None or _load_failed:

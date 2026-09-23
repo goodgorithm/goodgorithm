@@ -44,7 +44,7 @@ Check-and-report only — never auto-install anything:
 
 Bluesky Jetstream and Mastodon's public timelines are always-live, unauthenticated endpoints — there's no local mock or offline mode for either, and this skill doesn't attempt to fake one (`web/`'s `run-web` skill mocks a whole `api/` instance for frontend-only work, which is a different, narrower use case — not reusable here since `ingestion`/`processing`/`api` all need to run for real). This means real data only shows up on the real internet's own timing.
 
-`training/` (model training/release) is explicitly out of scope for this skill — see `.claude/skills/release-sentiment-model/` and `.claude/skills/release-category-classifier/` for that separate, occasional workflow.
+`training/` (model training/release) is explicitly out of scope for this skill — see `.claude/skills/release-quality-classifier/` for that separate, occasional workflow.
 
 ## Troubleshooting
 

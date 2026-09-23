@@ -309,9 +309,7 @@ export function extractQuoteContent(raw: unknown): QuoteContent | null {
   return parseQuoteContent(raw);
 }
 
-// hashtag_bag.py's own extraction is a simple word-boundary regex over raw
-// text -- mirrored here rather than imported (Python<->TypeScript boundary,
-// same as util/sentiment_model.py's tokenizer note in CLAUDE.md).
+// A simple word-boundary hashtag regex over raw text.
 const HASHTAG_RE = /#(\w+)/g;
 
 export function extractHashtags(text: string): string[] {

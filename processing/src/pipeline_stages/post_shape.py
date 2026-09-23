@@ -82,8 +82,8 @@ def _nowplaying_match(text: str) -> str | None:
 # --- "promo" shape --------------------------------------------------------
 
 # Marketing / promo posts that carry a sentence or two of real prose, so
-# surface-valence sentiment rates them positive and they clear the ranker's
-# demotion of blatant promo. Grouped by the shape they take;
+# they read as genuine enthusiasm to the quality classifier and clear the
+# ranker's demotion of blatant promo. Grouped by the shape they take;
 # _promo_match returns the group name, which becomes the per-entity key so
 # the bot-filter repeat counter is namespaced per group ("shape:promo:vote"
 # vs "shape:promo:readmore"). Each pattern is anchored / bounded the same

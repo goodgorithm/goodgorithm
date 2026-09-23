@@ -7,7 +7,7 @@ class _CompatPipeline:
     """Preserves the upstash_redis Pipeline shape (.execute([...]) queues a
     raw command and returns self; .exec() runs the queue and returns
     ordered results) on top of redis-py's real Pipeline, so dedup.py/
-    bot_filter.py/topicality.py/redis_guard.py need no changes for the
+    bot_filter.py/redis_guard.py need no changes for the
     underlying client swap. redis-py's own Pipeline.execute_command(...)
     already queues rather than sends immediately, which is what makes
     .execute() -> .exec() a faithful translation rather than a re-implementation."""

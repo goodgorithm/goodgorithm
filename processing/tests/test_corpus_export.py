@@ -8,17 +8,13 @@ from infra.db import ExportablePost
 from pipeline_stages import corpus_export
 
 
-def _post(
-    raw_post_id, text, source="bluesky", day="2026-09-05", category="arts_culture", is_dedup_canonical=True
-):
+def _post(raw_post_id, text, source="bluesky", day="2026-09-05", is_dedup_canonical=True):
     ts = datetime.fromisoformat(f"{day}T12:00:00+00:00")
     return ExportablePost(
         raw_post_id=raw_post_id,
         source=source,
         text=text,
         created_at=ts,
-        category=category,
-        category_method="tfidf_lr_v1",
         pipeline_version="v8",
         dedup_cluster_id="11111111-1111-1111-1111-111111111111",
         processed_at=ts,
@@ -74,10 +70,9 @@ def test_build_objects_groups_by_source_and_date_and_gzips_valid_ndjson():
     records = [json.loads(line) for line in gzip.decompress(obj.data).decode().splitlines()]
     assert [r["text"] for r in records] == ["hello world", "second post"]
     assert records[0]["source"] == "bluesky"
-    assert records[0]["category"] == "arts_culture"
     assert records[0]["pipeline_version"] == "v8"
     assert records[0]["is_dedup_canonical"] is True
-    assert "sentiment_score" not in records[0]
+    assert "quality_score" not in records[0]
     assert "raw_post_id" not in records[0]
     assert "author_id" not in records[0]
 

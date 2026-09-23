@@ -17,22 +17,20 @@ DEFAULT_SOFT_LIMIT_RATIO = 0.85
 # dedup's own state (lsh:band:*, mh:*, dedup:cluster:*) -- silently losing
 # that would let duplicate content back into the feed without anyone
 # noticing, which is a worse failure mode than the loud crash this guard
-# exists to prevent. burst:entity:* is explicitly a short-lived "spiking
-# right now" signal (topicality.py) with no correctness cost if cleared
-# early. cluster:*:authors is bot_filter's secondary self-dup signal --
+# exists to prevent. cluster:*:authors is bot_filter's secondary self-dup signal --
 # clearing it early just resets self-dup detection for clusters currently in
 # flight; botvel:* (fixed-window velocity) is untouched, so bot filtering
 # doesn't fully blind itself. A curated safety decision, not a simple
 # tunable -- deliberately not an env var. See the wiki's Processing
 # Infrastructure page.
-EXPENDABLE_KEY_PATTERNS = ("burst:entity:*", "cluster:*:authors")
+EXPENDABLE_KEY_PATTERNS = ("cluster:*:authors",)
 
 REDIS_GUARD_SCAN_COUNT = int(os.environ.get("REDIS_GUARD_SCAN_COUNT", "500"))
 
 # How many real keys to sample for estimate_used_memory_bytes()'s bytes-per-key
 # average. Not a hardcoded bytes/key constant -- deliberately re-sampled fresh
 # every check, since the key-size mix (mh:*'s ~700-byte MinHash signatures vs.
-# much smaller counters like botvel:*/burst:entity:*) can drift as traffic
+# much smaller counters like botvel:*/tmpl:*) can drift as traffic
 # composition or dedup config changes, and a stale manual constant would
 # silently degrade the same way INFO memory did.
 #
@@ -72,8 +70,8 @@ def estimate_used_memory_bytes() -> int | None:
         if not sample_keys:
             return None
         # One pipelined round trip for the whole sample, not one MEMORY USAGE
-        # call per key -- same discipline as dedup.py/bot_filter.py/
-        # topicality.py, and what makes a sample this large cheap enough to
+        # call per key -- same discipline as dedup.py/bot_filter.py, and
+        # what makes a sample this large cheap enough to
         # run every cycle.
         pipe = client.pipeline()
         for key in sample_keys:
@@ -111,8 +109,8 @@ def clear_expendable_data() -> int:
 
 
 def enforce(max_bytes: int = DEFAULT_MAX_BYTES, soft_limit_ratio: float = DEFAULT_SOFT_LIMIT_RATIO) -> None:
-    """Called once per processing cycle, before that cycle's dedup/bot-filter/
-    topicality writes. Logs current usage for visibility and proactively
+    """Called once per processing cycle, before that cycle's dedup/bot-filter
+    writes. Logs current usage for visibility and proactively
     clears expendable data once usage nears max_bytes, rather than finding
     out via a crashed write."""
     used = estimate_used_memory_bytes()

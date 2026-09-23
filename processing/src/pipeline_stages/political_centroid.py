@@ -9,8 +9,7 @@ from infra import model_store
 
 logger = logging.getLogger("processing")
 
-# None until loaded -- unlike category_model.py/sentiment.py, there is no
-# fallback here, so political_centroid_score simply isn't available on any
+# None until loaded -- there is no fallback, so political_centroid_score simply isn't available on any
 # post while this is unset. Set to "nearest_centroid_v1" on a successful
 # load. Mirrors political_model.py's POLITICAL_METHOD convention.
 POLITICAL_CENTROID_METHOD: str | None = None

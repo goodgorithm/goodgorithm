@@ -206,8 +206,7 @@ class RedisBotFilterIndex:
 
     def bump_template_repeat(self, author_id: str, skeleton: str) -> int:
         # Hashed, not raw skeleton text, in the key -- bounded key length,
-        # same reasoning as dedup.py's band_hashes and topicality.py's
-        # TOPICALITY_ENTITY_KEY_MAX_LEN.
+        # same reasoning as dedup.py's band_hashes.
         digest = hashlib.sha1(skeleton.encode("utf8")).hexdigest()
         key = f"tmpl:{author_id}:{digest}"
         try:

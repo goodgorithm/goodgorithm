@@ -46,7 +46,8 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
         quality_label_index = labels.index("genuinely_uplifting_and_substantive")
 
         # Catches a silent-wrong-answer failure a static shape check
-        # wouldn't -- same reasoning as category_model.py's smoke test.
+        # wouldn't: an ONNX graph whose output width disagrees with
+        # config.json's label list would otherwise index the wrong column.
         probe = session.run(["probabilities"], {"input": np.array([["smoke test"]], dtype=object)})
         probe_width = probe[0].shape[-1]
         if probe_width != len(labels):

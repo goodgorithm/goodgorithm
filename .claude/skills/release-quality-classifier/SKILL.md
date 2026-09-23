@@ -5,22 +5,18 @@ description: Train, evaluate, and publish a new version of Goodgorithm's quality
 
 # Releasing a new quality classifier version
 
-`processing/src/pipeline_stages` will load this classifier from Cloudflare R2 once #277
-(pipeline wiring) lands — see that issue for the exact loading contract. This skill covers
+`processing/src/pipeline_stages/quality_model.py` loads this classifier from Cloudflare R2
+(`quality-classifier/latest.json`, once per process). This skill covers
 training a new version, deciding whether it's good enough, and making it live — without ever
 silently pushing an unreviewed model to production.
 
 Read `CLAUDE.md` in the repo root first if you haven't — this skill assumes the "no LLM in
-the algorithm" constraint and the R2 versioning scheme it describes. Also read
-`.claude/skills/release-category-classifier/SKILL.md` — this skill mirrors its structure
-closely (same TF-IDF + logistic regression + skl2onnx shape); only the differences are called
-out in detail here.
+the algorithm" constraint and the R2 versioning scheme it describes.
 
 ## The release model
 
 Every training run publishes its artifacts to `quality-classifier/<version>/` in the
-`goodgorithm-models` R2 bucket (`model.onnx`, `config.json` — only two, same as category, no
-separate vocab file since the TF-IDF vocabulary is baked into the exported ONNX graph) — that
+`goodgorithm-models` R2 bucket (`model.onnx`, `config.json` — no separate vocab file, since the TF-IDF vocabulary is baked into the exported ONNX graph) — that
 always happens, and it's cheap and reversible. Separately, `quality-classifier/latest.json`
 points at whichever version `processing/` actually loads at startup. **Publishing a version
 and promoting it to latest are two different, deliberately separate actions**, same as every
@@ -34,9 +30,8 @@ model type.
 ## Steps
 
 1. **Produce a fresh training export.** Follow `doc/LABEL_EXPORT.md` to export reviewed posts
-   from the `labeling` schema as a JSON file. Unlike the sentiment/category models (trained on
-   public datasets), this classifier trains directly on Goodgorithm's own labelled set — a
-   fresh export is a real, required input every run, not a one-time fixed dataset.
+   from the `labeling` schema as a JSON file. This classifier trains directly on Goodgorithm's
+   own labelled set, not a public dataset — a fresh export is a real, required input every run, not a one-time fixed dataset.
 
 2. **Decide the text-normalization state you're training against.**
    `processing/src/util/text_normalize.py` defines the normalization the classifier's TF-IDF
@@ -45,8 +40,7 @@ model type.
    haven't changed `text_normalize.py`, the existing pin is fine. If you have, get the new
    commit's SHA (`git rev-parse HEAD` on `main` after merging) before continuing.
 
-3. **Open `training/quality_classifier.ipynb`.** Like the category classifier, **this
-   doesn't need a GPU or Colab/Kaggle** — TF-IDF + logistic regression trains on CPU in a
+3. **Open `training/quality_classifier.ipynb`.** **This doesn't need a GPU or Colab/Kaggle** — TF-IDF + logistic regression trains on CPU in a
    couple of minutes, so it can run anywhere Python + the notebook's `pip install` cell can
    run. Update:
    - The upload cell with your fresh export from step 1.
@@ -62,11 +56,8 @@ model type.
    deviation on a later run means something about the export or normalization has changed in
    a way worth understanding before continuing, not just an expected drift from more data.
 
-5. **The threshold re-assessment section is mandatory and blocking — this is the biggest
-   difference from every other release skill in this repo.** Unlike category's
-   `CONFIDENCE_THRESHOLD` (hand-picked once per run from a sweep, but with no formal stability
-   check) or the sentiment model (no per-run threshold at all), this classifier's deployment
-   threshold is re-derived from scratch **every single training run**, using the same
+5. **The threshold re-assessment section is mandatory and blocking.** This classifier's
+   deployment threshold is re-derived from scratch **every single training run**, using the same
    methodology originally established for #238 (see that issue's closing comments for the
    full derivation): a fine-grained sweep, a good-retention-floor-constrained candidate table,
    and a bootstrap stability check. The notebook hard-blocks every cell after this section (config
@@ -94,11 +85,10 @@ model type.
      combination not validated by any prior model in this repo, so a first-time parity failure
      here is plausible and needs to actually be resolved, not tolerance-widened away.
 
-   Same "no hard pass/fail bar, judge relatively" stance as every other release skill — judge
-   this run's numbers against the previous live version's, not an absolute target. If no
-   version has ever been published yet, there's no fallback model for this signal (unlike
-   category's keyword-matcher floor) — see #277 for how the pipeline behaves before a first
-   version is ever promoted.
+   There's no hard pass/fail bar — judge this run's numbers against the previous live
+   version's, not an absolute target. There's no fallback model for this signal: with no
+   version loaded, `quality_score` is `NULL` on every post (fail-open — the quality exclude
+   never fires and `compute_base_score` treats the score as `0.0`).
 
 7. **The notebook always uploads the versioned artifacts** (`quality-classifier/<version>/
    model.onnx`, `config.json`) regardless of the promotion decision — safe and reversible on
@@ -120,11 +110,16 @@ model type.
    starts (resolved once per process, on first use) — a running deployment needs a restart to
    pick up a newly-promoted version.
 
-   **The real verification** is checking the new score/method columns on `processed_posts`
-   populate correctly post-promotion, and that the method isn't stuck on whatever fail-open
-   fallback #277 defines — the exact column names and query aren't documented here yet since
-   #277 (pipeline wiring) hasn't landed; update this step once it has, mirroring category's own
-   production-verification query.
+   **The real verification** is `processing/`'s `GET /health` (`models.quality.version` should
+   show the new version) plus the `processed_posts` columns themselves — run against staging
+   after a soak period, then again against production after promoting there:
+   ```sql
+   SELECT quality_method, COUNT(*), AVG(quality_score)
+   FROM processed_posts WHERE processed_at > NOW() - INTERVAL '1 hour'
+   GROUP BY quality_method;
+   ```
+   Non-pending rows should be overwhelmingly `tfidf_lr_v1`. A high `NULL` share outside
+   `context_status = 'pending'` rows usually means the model failed to load (check logs).
 
 10. **The GitHub Release created in step 8 is the durable record of this promotion** — it
     captures the version, dataset composition, the full threshold-selection table, and the
@@ -147,7 +142,7 @@ retraining needed.
   If the tables suggest a materially different number than what's live, that's worth a
   deliberate discussion, not a quiet change.
 - Don't skip past an ONNX export assertion failure — this classifier's specific vectorizer
-  config hasn't been battle-tested by a prior model in this repo the way category's has.
+  config hasn't been battle-tested by a prior model in this repo.
 - Don't reach for ad hoc scripts as a substitute for this notebook — #238's research
   prototyped this signal in throwaway scripts that found and validated it, not a training
   pipeline; this notebook is the real thing.

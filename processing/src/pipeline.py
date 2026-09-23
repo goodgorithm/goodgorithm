@@ -13,11 +13,11 @@ from infra import corpus_store, db, redis_guard
 from pipeline_stages import (
     author_resolver,
     bot_filter,
-    category_model,
     content_filter,
     context_dependency,
     corpus_export,
     dedup,
+    entities,
     existence_recheck,
     language_filter,
     mastodon_resolver,
@@ -30,9 +30,7 @@ from pipeline_stages import (
     quality_model,
     quote_resolver,
     ranking,
-    sentiment,
     thumbnail_resolver,
-    topicality,
 )
 
 logger = logging.getLogger("processing")
@@ -52,8 +50,8 @@ if dedup.DEDUP_BAND_TTL_SECONDS < RETENTION_HOURS * 3600:
         f"RETENTION_HOURS in seconds ({RETENTION_HOURS * 3600})"
     )
 
-# Bump when a change to any scoring stage (dedup/bot/topicality/sentiment/
-# ranking) would make two posts' base_score/rank_score not directly
+# Bump when a change to any scoring stage (dedup/bot/quality/ranking)
+# would make two posts' base_score/rank_score not directly
 # comparable. See CLAUDE.md's Versioning & migration section. Deliberately
 # not an env var -- it has to match what the deployed code actually does,
 # not be independently set per environment.
@@ -90,7 +88,7 @@ CORPUS_R2_PREFIX = os.environ.get("CORPUS_R2_PREFIX", "corpus")
 
 def enforce_redis_capacity() -> None:
     """Proactive Redis size guard -- call before run_cycle so this cycle's
-    dedup/bot-filter/topicality writes happen with headroom already
+    dedup/bot-filter writes happen with headroom already
     reclaimed, rather than discovering the cap mid-write. See the wiki's
     Configuration page."""
     redis_guard.enforce(config.REDIS_MAX_BYTES, config.REDIS_SOFT_LIMIT_RATIO)
@@ -110,8 +108,8 @@ def _mastodon_self_declared_bot(source: str, raw_json: dict) -> bool:
 
 def run_cycle(batch_size: int) -> int:
     """Fetches a batch of unprocessed posts and scores them through political/
-    quality screening, dedup, bot filter, topicality, category, and sentiment,
-    computing base_score (quality_score x recency) per post directly.
+    quality screening, dedup, bot filter, and entity extraction, computing
+    base_score (quality_score x recency) per post directly.
     rank_score is left for refresh_rankings — MMR needs the full eligible
     pool, not just this batch. See the wiki's Pipeline Internals page for
     the full per-stage walkthrough."""
@@ -159,7 +157,7 @@ def run_cycle(batch_size: int) -> int:
         return len(posts)
 
     # Political scoring + the AND-gate hard-exclude, right after the cheap
-    # filter loop and before dedup/bot/topicality/sentiment/category all
+    # filter loop and before dedup/bot/entity extraction all
     # run -- an excluded post shouldn't waste any of that compute. Computed
     # once here; political_results is reused below for the devalue penalty
     # (the centroid score only matters for this exclude decision).
@@ -187,7 +185,7 @@ def run_cycle(batch_size: int) -> int:
         return len(posts)
 
     # Quality scoring + hard-exclude at the decided threshold (0.39), same
-    # "before dedup/bot/topicality/sentiment/category" placement and
+    # "before dedup/bot/entity extraction" placement and
     # compute-saving reasoning as the political block above. Single-signal,
     # unlike political's AND-gate -- see quality_exclude.py's own docstring
     # for why.
@@ -211,16 +209,9 @@ def run_cycle(batch_size: int) -> int:
     dedup_results = dedup.dedup_posts(kept_posts, dedup_index)
 
     bot_index = bot_filter.RedisBotFilterIndex()
-    burst_index = topicality.RedisBurstIndex()
-    topicality_results = topicality.score_topicality(kept_posts, burst_index)
-
-    # One ONNX call for the whole batch, not one per post -- see the wiki's
-    # Categorization page.
-    category_results = category_model.categorize_batch(kept_posts, topicality_results)
-
-    # Same batched shape as category_results above -- see the wiki's
-    # Sentiment page.
-    sentiment_results = sentiment.score_sentiment_batch(kept_posts)
+    entities_by_post = dict(
+        zip((post.id for post in kept_posts), entities.extract_entities_batch([post.text for post in kept_posts]))
+    )
 
     # Same batched/deduped shape as quote/reply-context resolution --
     # resolve_context() runs on its own throttled sweep instead (see
@@ -247,9 +238,7 @@ def run_cycle(batch_size: int) -> int:
             mod.post_shape_config,
             is_self_declared_bot=_mastodon_self_declared_bot(post.source, post.raw_json),
         )
-        topic = topicality_results[post.id]
-        sentiment_score = sentiment_results[post.id]
-
+        post_entities = entities_by_post[post.id]
         political_score = political_results.get(post.id)
 
         # A "pending" post (Bluesky reply/quote awaiting resolve_context())
@@ -278,17 +267,13 @@ def run_cycle(batch_size: int) -> int:
             text=post.text,
             created_at=post.created_at,
             quality_score=quality_score,
-            entities=topic.entities,
+            entities=post_entities,
             is_bot=bot_score.is_bot,
             is_dedup_canonical=cluster.is_canonical,
             source=post.source,
             author_id=post.author_id,
         )
         base_score = ranking.compute_base_score(rankable, now)
-
-        # Deliberately not threaded into RankablePost/ranking.py -- see
-        # CLAUDE.md's Category taxonomy section.
-        category = category_results[post.id]
 
         thumbnail_url = thumbnail_urls_by_post.get(post.id)
         generated_thumbnail_url = thumbnail_by_url.get(thumbnail_url) if thumbnail_url else None
@@ -298,18 +283,13 @@ def run_cycle(batch_size: int) -> int:
                 raw_post_id=post.id,
                 source=post.source,
                 dedup_cluster_id=cluster.cluster_id,
-                sentiment_score=sentiment_score,
-                sentiment_method=sentiment.SENTIMENT_METHOD,
-                topicality_score=topic.score,
                 pipeline_version=PIPELINE_VERSION,
                 is_dedup_canonical=cluster.is_canonical,
                 is_bot=bot_score.is_bot,
                 bot_score=bot_score.bot_score,
-                entities=topic.entities,
+                entities=post_entities,
                 base_score=base_score,
                 rank_score=None,
-                category=category,
-                category_method=category_model.CATEGORY_METHOD,
                 penalty_multiplier=penalty.multiplier,
                 penalty_detail=penalty.detail,
                 generated_thumbnail_url=generated_thumbnail_url,

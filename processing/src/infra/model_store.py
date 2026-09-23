@@ -6,8 +6,11 @@ from infra import r2
 
 
 class ModelStore(Protocol):
+    prefix: str
+
     def resolve_version(self) -> str: ...
-    def fetch(self, version: str) -> tuple[bytes, dict, dict]: ...  # (onnx_bytes, vocab, config)
+    def get_bytes(self, key: str) -> bytes: ...
+    def get_json(self, key: str) -> dict: ...
 
 
 class R2ModelStore:
@@ -38,15 +41,3 @@ class R2ModelStore:
     def resolve_version(self) -> str:
         latest = self.get_json(f"{self.prefix}/latest.json")
         return latest["version"]
-
-    def fetch(self, version: str) -> tuple[bytes, dict, dict]:
-        """model.onnx + vocab.json + config.json — the sentiment CNN's
-        artifact shape. The category classifier has no vocab file (its
-        TF-IDF vocabulary is baked into the exported ONNX graph), so it
-        calls get_bytes/get_json directly instead of this method — see
-        category_model.py."""
-        key_prefix = f"{self.prefix}/{version}"
-        model_bytes = self.get_bytes(f"{key_prefix}/model.onnx")
-        vocab = self.get_json(f"{key_prefix}/vocab.json")
-        model_config = self.get_json(f"{key_prefix}/config.json")
-        return model_bytes, vocab, model_config

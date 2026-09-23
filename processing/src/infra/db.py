@@ -10,7 +10,7 @@ from psycopg_pool import ConnectionPool
 import config
 
 # No try/except anywhere in this file, deliberately -- unlike Redis (an
-# auxiliary signal input dedup/bot_filter/topicality can degrade without),
+# auxiliary signal input dedup/bot_filter can degrade without),
 # a Postgres write here IS the actual deliverable of most pipeline stages
 # (upsert_processed_posts, update_rank_scores, mark_moderation_checked,
 # purge_blocked_authors, etc.). Silently swallowing a write failure would
@@ -66,9 +66,6 @@ class ProcessedPostUpsert:
     raw_post_id: UUID
     source: str
     dedup_cluster_id: UUID
-    sentiment_score: float
-    sentiment_method: str
-    topicality_score: float
     pipeline_version: str
     is_dedup_canonical: bool = True
     is_bot: bool = False
@@ -76,8 +73,6 @@ class ProcessedPostUpsert:
     entities: list | None = None
     base_score: float | None = None
     rank_score: float | None = None
-    category: str | None = None
-    category_method: str | None = None
     penalty_multiplier: float = 1.0
     penalty_detail: dict | None = None
     generated_thumbnail_url: str | None = None
@@ -98,8 +93,7 @@ DB_UPSERT_PROCESSED_POSTS_CHUNK_SIZE = int(os.environ.get("DB_UPSERT_PROCESSED_P
 
 _PROCESSED_POSTS_COLUMNS = (
     "raw_post_id, source, dedup_cluster_id, is_dedup_canonical, is_bot, bot_score, "
-    "sentiment_score, sentiment_method, topicality_score, entities, "
-    "base_score, rank_score, category, category_method, "
+    "entities, base_score, rank_score, "
     "penalty_multiplier, penalty_detail, generated_thumbnail_url, pipeline_version, "
     "political_score, political_method, quality_score, quality_method, "
     "context_status, context_kind, context_content"
@@ -112,8 +106,7 @@ _PROCESSED_POSTS_COLUMNS = (
 # update_rank_scores' own VALUES join.
 _PROCESSED_POSTS_ROW_SQL = (
     "(%s::uuid, %s::text, %s::uuid, %s::boolean, %s::boolean, %s::real, "
-    "%s::real, %s::text, %s::real, %s::jsonb, "
-    "%s::real, %s::real, %s::text, %s::text, "
+    "%s::jsonb, %s::real, %s::real, "
     "%s::real, %s::jsonb, %s::text, %s::text, "
     "%s::real, %s::text, %s::real, %s::text, "
     "%s::text, %s::text, %s::jsonb)"
@@ -150,14 +143,9 @@ def _build_processed_posts_upsert_sql(row_count: int) -> str:
             is_dedup_canonical     = EXCLUDED.is_dedup_canonical,
             is_bot                 = EXCLUDED.is_bot,
             bot_score              = EXCLUDED.bot_score,
-            sentiment_score        = EXCLUDED.sentiment_score,
-            sentiment_method       = EXCLUDED.sentiment_method,
-            topicality_score       = EXCLUDED.topicality_score,
             entities               = EXCLUDED.entities,
             base_score             = EXCLUDED.base_score,
             rank_score             = EXCLUDED.rank_score,
-            category               = EXCLUDED.category,
-            category_method        = EXCLUDED.category_method,
             penalty_multiplier     = EXCLUDED.penalty_multiplier,
             penalty_detail         = EXCLUDED.penalty_detail,
             generated_thumbnail_url = EXCLUDED.generated_thumbnail_url,
@@ -194,14 +182,9 @@ def upsert_processed_posts(rows: list[ProcessedPostUpsert]) -> None:
                     row.is_dedup_canonical,
                     row.is_bot,
                     row.bot_score,
-                    row.sentiment_score,
-                    row.sentiment_method,
-                    row.topicality_score,
                     Jsonb(row.entities) if row.entities is not None else None,
                     row.base_score,
                     row.rank_score,
-                    row.category,
-                    row.category_method,
                     row.penalty_multiplier,
                     Jsonb(row.penalty_detail) if row.penalty_detail is not None else None,
                     row.generated_thumbnail_url,
@@ -691,8 +674,6 @@ class ExportablePost:
     source: str
     text: str
     created_at: datetime
-    category: str | None
-    category_method: str | None
     pipeline_version: str
     dedup_cluster_id: UUID
     processed_at: datetime
@@ -724,7 +705,7 @@ def fetch_unexported_posts(batch_size: int, min_age_hours: int) -> list[Exportab
         rows = conn.execute(
             """
             SELECT p.raw_post_id, r.source, r.text, r.created_at,
-                   p.category, p.category_method, p.pipeline_version,
+                   p.pipeline_version,
                    p.dedup_cluster_id, p.processed_at, p.is_dedup_canonical
             FROM processed_posts p
             JOIN raw_posts r ON r.id = p.raw_post_id

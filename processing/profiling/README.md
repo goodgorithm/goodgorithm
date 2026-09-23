@@ -29,14 +29,14 @@ hold real rows — an empty or stale schema will error out in the first stage.
 - `--network skip` — the external-API stages in `run_cycle` (Bluesky quote
   resolution, thumbnail resolution) are stubbed. They are wall-time, not CPU,
   and add variance. `--network allow` includes them.
-- Redis writes (dedup / bot-filter / topicality state) are **not** stubbed —
+- Redis writes (dedup / bot-filter state) are **not** stubbed —
   that state is ephemeral and its cost is part of what we are measuring. Run
   against a local Redis.
 
 ## Output
 
 Per stage: a warmup pass (primes lazy model loads — spaCy, the ONNX
-sentiment/category sessions, fastText), an unprofiled wall-clock pass
+political/quality sessions, fastText), an unprofiled wall-clock pass
 (min / mean / median per call), then a cProfile pass printing the top functions
 by the chosen `--sort` key.
 

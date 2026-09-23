@@ -21,7 +21,7 @@ For the full step-by-step walkthrough of how a post moves from ingestion to the 
 | `processing/` | Python | Dedup, bot filter, quality/political classification, ranking — the actual algorithm. |
 | `api/` | TypeScript (Fastify) | Read-only `/v1/feed` and `/health` endpoints. |
 | `web/` | TypeScript (React + Vite) | PWA frontend — infinite-scroll feed, deployed as static assets on Cloudflare Workers. |
-| `training/` | Python (notebook) | Sentiment CNN training, run manually on Colab/Kaggle, plus model-release tooling. |
+| `training/` | Python (notebook) | Political/quality classifier training notebooks, run manually, plus model-release tooling. |
 | `supabase/migrations/` | SQL | Postgres schema. |
 
 Each service has its own `package.json` / `pyproject.toml` and expects its own `.env` — see `.env.example` in the repo root for the full list of variables and which services need which.
@@ -39,7 +39,7 @@ The app itself only surfaces a condensed FAQ in-app (`web/src/content/faq.md`, l
 
 ## A note on LLMs
 
-The content-selection pipeline itself — quality/topic/political classification, ranking — runs on classic, well-understood ML: TF-IDF + logistic regression classifiers, named entity recognition, small CNNs over word embeddings. Not a large language model.
+The content-selection pipeline itself — quality/political classification, ranking — runs on classic, well-understood ML: TF-IDF + logistic regression classifiers, a nearest-centroid over word embeddings, named entity recognition. Not a large language model.
 
 That's a fit-for-purpose choice, not a blanket stance against LLMs. The whole premise of this project is that people can trust *why* a post got selected. Classical ML gives us models that are small, auditable, and predictable in ways LLMs generally aren't today — the training data and decision logic can be published and inspected end to end, and behavior doesn't drift or hallucinate the way a less constrained model can. For a feed whose entire pitch is "trust the selection," that predictability matters more to us than the extra flexibility an LLM could offer elsewhere in the pipeline.
 

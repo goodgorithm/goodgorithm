@@ -50,7 +50,7 @@ PENALTIES: tuple[Penalty, ...] = (Penalty("aggregator", _aggregator),)
 
 @dataclass(frozen=True)
 class PenaltyResult:
-    multiplier: float  # product of every penalty's multiplier; base_score reads this
+    multiplier: float  # product of every penalty's multiplier; audit-only, never applied to base_score
     detail: dict  # {penalty_name: multiplier, ...} + merged extras; persisted as penalty_detail JSONB
 
 

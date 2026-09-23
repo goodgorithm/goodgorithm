@@ -9,8 +9,7 @@ from util.text_normalize import normalize_text
 
 logger = logging.getLogger("processing")
 
-# None until a model loads successfully -- unlike category_model.py/
-# sentiment.py, there is no keyword-matcher-style fallback here, so
+# None until a model loads successfully -- there is no fallback, so
 # political_score/political_method simply stay NULL on every post while
 # this is unset. Set to "tfidf_lr_v1" on a successful load.
 POLITICAL_METHOD: str | None = None
@@ -26,9 +25,8 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     """Attempts to load the trained classifier from R2. On any failure —
     R2 not configured, network error, missing/corrupt objects, a label-
     order mismatch — logs once and leaves political_score/political_method
-    NULL for every post. Mirrors category_model.py's load_model() shape,
-    minus the fallback (there is no cheap keyword equivalent worth building
-    for political-topic detection)."""
+    NULL for every post. No fallback -- there is no cheap keyword
+    equivalent worth building for political-topic detection."""
     global _session, _political_label_index, POLITICAL_METHOD, POLITICAL_MODEL_LOADED_VERSION
 
     if store is None:
@@ -46,7 +44,8 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
         political_label_index = labels.index("political")
 
         # Catches a silent-wrong-answer failure a static shape check
-        # wouldn't -- same reasoning as category_model.py's smoke test.
+        # wouldn't: an ONNX graph whose output width disagrees with
+        # config.json's label list would otherwise index the wrong column.
         probe = session.run(["probabilities"], {"input": np.array([["smoke test"]], dtype=object)})
         probe_width = probe[0].shape[-1]
         if probe_width != len(labels):
@@ -73,7 +72,7 @@ def _ensure_loaded() -> None:
 
 def score_batch(posts: list) -> dict:
     """Batched P(political) per post -- one ONNX call for the whole batch,
-    same shape as category_model.categorize_batch(). Returns {} for every
+    same shape as quality_model.score_batch(). Returns {} for every
     post.id if no model is loaded (R2 unconfigured, or load failed) rather
     than a partial/guessed score. Observational only for now: nothing
     reads this dict's values to exclude or devalue a post yet."""
