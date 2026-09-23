@@ -33,7 +33,7 @@ Five services, each independently deployable:
 | Path | Language | Deployed as | What it does |
 |---|---|---|---|
 | `ingestion/` | TypeScript | Railway service `goodgorithm-ingestion` | Long-lived process: Bluesky Jetstream WebSocket + Mastodon polling → `raw_posts` in Postgres. |
-| `processing/` | Python | Railway service `goodgorithm-processing` | Long-lived loop: content filter → political/quality exclude → dedup → bot filter → quote/thumbnail resolution → base score → MMR ranking → `processed_posts`. |
+| `processing/` | Python | Railway service `goodgorithm-processing` | Long-lived loop: content filter → political/quality exclude → dedup → thumbnail resolution → bot filter → base score → `processed_posts`, plus separate throttled sweeps for reply/quote context resolution, moderation recheck, and MMR ranking (`rank_score`). |
 | `api/` | TypeScript (Fastify) | Railway service `goodgorithm-api` | Stateless, read-only, unauthenticated HTTP — no outbound calls of its own (see Post attachments & embeds below). `/v1/feed` (cursor-paginated, ordered by `rank_score`), `/health`. |
 | `web/` | TypeScript (React + Vite) | Cloudflare Workers static assets (`goodgorithm-web`, staging/production named environments) | PWA *and* Capacitor-wrapped native iOS/Android app, same codebase: infinite-scroll feed consuming `api/`'s `/v1/feed`, no accounts/personalization. `VITE_API_BASE_URL` baked in at build time (static site, no server component). |
 | `training/` | Python (notebooks) | Run manually (Colab/Kaggle or locally), not deployed | Trains the political classifier/centroid and the quality classifier, exports them (ONNX / JSON), publishes versioned artifacts to R2. |
