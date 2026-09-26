@@ -52,8 +52,11 @@ def _cosine(a: np.ndarray | None, b: np.ndarray | None) -> float:
 
 def load_model(store: model_store.ModelStore | None = None) -> None:
     """Attempts to load the political/non-political centroid vectors from
-    R2, plus the word embeddings needed to score incoming posts against
-    them. On any failure — R2 not configured, network error, missing/
+    the configured model source (R2, or LOCAL_MODELS_DIR -- see
+    model_store.default_store), plus the word embeddings needed to score
+    incoming posts against them (downloaded by gensim into GENSIM_DATA_DIR,
+    not from the model source). On any failure — no source configured,
+    network error, missing/
     corrupt objects, the embeddings download failing — logs once and leaves
     the centroid signal unavailable. Mirrors political_model.py's
     load_model() shape."""
@@ -61,10 +64,10 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     global POLITICAL_CENTROID_METHOD, POLITICAL_CENTROID_MODEL_LOADED_VERSION
 
     if store is None:
-        if not config.r2_configured():
-            logger.info("R2 not configured — political centroid signal unavailable")
+        store = model_store.default_store("political-centroid")
+        if store is None:
+            logger.info("no model source configured — political centroid signal unavailable")
             return
-        store = model_store.R2ModelStore(prefix="political-centroid")
 
     try:
         version = config.POLITICAL_CENTROID_MODEL_VERSION or store.resolve_version()
@@ -81,7 +84,7 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     _non_political_centroid = non_political_centroid
     POLITICAL_CENTROID_METHOD = "nearest_centroid_v1"
     POLITICAL_CENTROID_MODEL_LOADED_VERSION = version
-    logger.info("loaded political centroid signal %s", version)
+    logger.info("loaded political centroid signal %s (%s)", version, type(store).__name__)
 
 
 def _ensure_loaded() -> None:

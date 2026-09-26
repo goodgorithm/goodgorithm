@@ -161,3 +161,25 @@ def test_load_model_uses_env_override_without_hitting_r2(fixture_quality_onnx_by
     assert store.resolve_version_calls == 0
     assert quality_model.QUALITY_METHOD == "tfidf_lr_v1"
     assert all("v7-pinned" in key for key in store.requested_keys)
+
+
+def test_score_batch_loads_from_local_models_dir(monkeypatch, tmp_path, fixture_quality_onnx_bytes):
+    # Real LocalDirModelStore end to end, selected through LOCAL_MODELS_DIR
+    # with no R2 vars set.
+    import json
+
+    version_dir = tmp_path / "quality-classifier" / "v1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "model.onnx").write_bytes(fixture_quality_onnx_bytes)
+    (version_dir / "config.json").write_text(json.dumps(_config()))
+    (tmp_path / "quality-classifier" / "latest.json").write_text(json.dumps({"version": "v1"}))
+    for name in ("R2_MODELS_ACCOUNT_ID", "R2_MODELS_ACCESS_KEY_ID", "R2_MODELS_SECRET_ACCESS_KEY", "R2_MODELS_BUCKET_NAME"):
+        monkeypatch.setattr(quality_model.config, name, None)
+    monkeypatch.setattr(quality_model.config, "LOCAL_MODELS_DIR", str(tmp_path))
+
+    posts = [FakePost(id=uuid4(), text="a local shelter found homes for 40 rescue dogs this weekend")]
+    scores = quality_model.score_batch(posts)
+
+    assert quality_model.QUALITY_METHOD == "tfidf_lr_v1"
+    assert quality_model.QUALITY_MODEL_LOADED_VERSION == "v1"
+    assert 0.0 <= scores[posts[0].id] <= 1.0

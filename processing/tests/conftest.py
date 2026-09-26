@@ -1,6 +1,14 @@
 import pytest
 
+import config
 from infra import degradation
+
+
+@pytest.fixture(autouse=True)
+def _no_local_models_dir(monkeypatch):
+    """A developer's processing/.env may set LOCAL_MODELS_DIR -- keep every
+    test on the R2/injected-store paths unless it opts in itself."""
+    monkeypatch.setattr(config, "LOCAL_MODELS_DIR", None)
 
 
 @pytest.fixture(autouse=True)

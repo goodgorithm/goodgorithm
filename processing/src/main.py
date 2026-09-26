@@ -197,6 +197,7 @@ def main() -> None:
             "redis_max_bytes": config.REDIS_MAX_BYTES,
             "redis_soft_limit_ratio": config.REDIS_SOFT_LIMIT_RATIO,
             "r2_configured": config.r2_configured(),
+            "models_source": config.models_source(),
             "corpus_export_enabled": corpus_enabled,
             "batch_size": args.batch_size,
             "interval_seconds": args.interval,

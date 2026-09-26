@@ -22,18 +22,19 @@ _load_attempted = False
 
 
 def load_model(store: model_store.ModelStore | None = None) -> None:
-    """Attempts to load the trained classifier from R2. On any failure —
-    R2 not configured, network error, missing/corrupt objects, a label-
+    """Attempts to load the trained classifier from the configured model
+    source (R2, or LOCAL_MODELS_DIR -- see model_store.default_store). On
+    any failure — no source configured, network error, missing/corrupt objects, a label-
     order mismatch — logs once and leaves political_score/political_method
     NULL for every post. No fallback -- there is no cheap keyword
     equivalent worth building for political-topic detection."""
     global _session, _political_label_index, POLITICAL_METHOD, POLITICAL_MODEL_LOADED_VERSION
 
     if store is None:
-        if not config.r2_configured():
-            logger.info("R2 not configured — political classifier unavailable")
+        store = model_store.default_store("political-classifier")
+        if store is None:
+            logger.info("no model source configured — political classifier unavailable")
             return
-        store = model_store.R2ModelStore(prefix="political-classifier")
 
     try:
         version = config.POLITICAL_MODEL_VERSION or store.resolve_version()
@@ -53,14 +54,14 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
                 f"ONNX output width {probe_width} doesn't match config.json's {len(labels)} labels"
             )
     except Exception:
-        logger.exception("failed to load political classifier from R2 — political_score stays unset")
+        logger.exception("failed to load political classifier — political_score stays unset")
         return
 
     _session = session
     _political_label_index = political_label_index
     POLITICAL_METHOD = "tfidf_lr_v1"
     POLITICAL_MODEL_LOADED_VERSION = version
-    logger.info("loaded political classifier %s", version)
+    logger.info("loaded political classifier %s (%s)", version, type(store).__name__)
 
 
 def _ensure_loaded() -> None:
