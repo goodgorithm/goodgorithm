@@ -23,7 +23,7 @@ Check-and-report only — never auto-install anything:
 
 2. **Local Redis**: `docker run -d --name goodgorithm-valkey -p 6379:6379 valkey/valkey:8-alpine` (skip if a container with that name already exists and is running — check `docker ps` first). Checkpoint: `docker exec goodgorithm-valkey valkey-cli ping` → `PONG`.
 
-3. **R2**: don't configure it. Leave the `R2_MODELS_*` vars unset in `processing/.env` — this is the normal local-dev path, not a shortcut. Tell the user this means VADER/keyword-taxonomy fallbacks, not the real trained models.
+3. **Models**: leave the `R2_MODELS_*` vars unset in `processing/.env` — local dev doesn't need the private bucket. Without a model source, the political and quality classifiers fail open (nothing excluded, every `base_score` 0.0, feed order from MMR diversity alone). To run the real models, follow the wiki's "Real models locally" step: `cd processing && uv run python scripts/fetch_local_models.py` (fills the gitignored `models/` from the public GitHub Releases), then set `LOCAL_MODELS_DIR` and `GENSIM_DATA_DIR` in `processing/.env` as step 4 shows. Ask the user which they want. Setting `LOCAL_MODELS_DIR` alongside any `R2_MODELS_*` var makes `processing/` refuse to start.
 
 4. **Wire `.env` per service** — three separate files, each in its own service directory (not a shared root `.env`):
    - `ingestion/.env`: `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`, `BLUESKY_SAMPLE_RATE=0.05`

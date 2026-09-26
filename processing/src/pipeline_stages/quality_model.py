@@ -23,8 +23,9 @@ _load_attempted = False
 
 
 def load_model(store: model_store.ModelStore | None = None) -> None:
-    """Attempts to load the trained classifier from R2. On any failure —
-    R2 not configured, network error, missing/corrupt objects, a label-
+    """Attempts to load the trained classifier from the configured model
+    source (R2, or LOCAL_MODELS_DIR -- see model_store.default_store). On
+    any failure — no source configured, network error, missing/corrupt objects, a label-
     order mismatch — logs once and leaves quality_score/quality_method
     NULL for every post. Mirrors political_model.py's load_model() shape
     exactly, minus the label name (genuinely_uplifting_and_substantive
@@ -32,10 +33,10 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
     global _session, _quality_label_index, QUALITY_METHOD, QUALITY_MODEL_LOADED_VERSION
 
     if store is None:
-        if not config.r2_configured():
-            logger.info("R2 not configured — quality classifier unavailable")
+        store = model_store.default_store("quality-classifier")
+        if store is None:
+            logger.info("no model source configured — quality classifier unavailable")
             return
-        store = model_store.R2ModelStore(prefix="quality-classifier")
 
     try:
         version = config.QUALITY_MODEL_VERSION or store.resolve_version()
@@ -55,14 +56,14 @@ def load_model(store: model_store.ModelStore | None = None) -> None:
                 f"ONNX output width {probe_width} doesn't match config.json's {len(labels)} labels"
             )
     except Exception:
-        logger.exception("failed to load quality classifier from R2 — quality_score stays unset")
+        logger.exception("failed to load quality classifier — quality_score stays unset")
         return
 
     _session = session
     _quality_label_index = quality_label_index
     QUALITY_METHOD = "tfidf_lr_v1"
     QUALITY_MODEL_LOADED_VERSION = version
-    logger.info("loaded quality classifier %s", version)
+    logger.info("loaded quality classifier %s (%s)", version, type(store).__name__)
 
 
 def _ensure_loaded() -> None:

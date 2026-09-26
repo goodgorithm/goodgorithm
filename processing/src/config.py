@@ -23,8 +23,13 @@ if REDIS_MAX_BYTES <= 0:
 # margins against.
 REDIS_SOFT_LIMIT_RATIO = float(os.environ.get("REDIS_SOFT_LIMIT_RATIO", "0.70"))
 
-# R2 / trained models — all optional, never blocks the rest of the service
-# starting. See the wiki's Configuration page.
+# Trained models — all optional, never blocks the rest of the service
+# starting. Two mutually exclusive sources: the R2_MODELS_* set (the
+# goodgorithm-models bucket), or LOCAL_MODELS_DIR, a directory laid out like
+# the bucket (see scripts/fetch_local_models.py) for local dev without R2
+# credentials. Setting both is a startup error (validate()). See the wiki's
+# Configuration page.
+LOCAL_MODELS_DIR = os.environ.get("LOCAL_MODELS_DIR")
 R2_MODELS_ACCOUNT_ID = os.environ.get("R2_MODELS_ACCOUNT_ID")
 R2_MODELS_ACCESS_KEY_ID = os.environ.get("R2_MODELS_ACCESS_KEY_ID")
 R2_MODELS_SECRET_ACCESS_KEY = os.environ.get("R2_MODELS_SECRET_ACCESS_KEY")
@@ -86,6 +91,9 @@ def validate() -> None:
     if missing:
         print(f"missing required env vars: {', '.join(missing)}", file=sys.stderr)
         sys.exit(1)
+    if models_sources_conflict():
+        print("LOCAL_MODELS_DIR and R2_MODELS_* are both set -- use one model source", file=sys.stderr)
+        sys.exit(1)
 
 
 def r2_configured() -> bool:
@@ -95,6 +103,25 @@ def r2_configured() -> bool:
         and R2_MODELS_SECRET_ACCESS_KEY
         and R2_MODELS_BUCKET_NAME
     )
+
+
+def models_sources_conflict() -> bool:
+    """Any R2_MODELS_* var alongside LOCAL_MODELS_DIR, not just a complete
+    R2 set -- a half-configured R2 next to a local dir is still ambiguous
+    about which models the service runs."""
+    return bool(LOCAL_MODELS_DIR) and any(
+        (R2_MODELS_ACCOUNT_ID, R2_MODELS_ACCESS_KEY_ID, R2_MODELS_SECRET_ACCESS_KEY, R2_MODELS_BUCKET_NAME)
+    )
+
+
+def models_source() -> str | None:
+    """'local', 'r2', or None when no model source is configured. Assumes
+    validate() has already rejected a conflicting configuration."""
+    if LOCAL_MODELS_DIR:
+        return "local"
+    if r2_configured():
+        return "r2"
+    return None
 
 
 def corpus_r2_configured() -> bool:

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import Protocol
 
 import config
@@ -41,3 +42,40 @@ class R2ModelStore:
     def resolve_version(self) -> str:
         latest = self.get_json(f"{self.prefix}/latest.json")
         return latest["version"]
+
+
+class LocalDirModelStore:
+    """Reads model artifacts from a local directory laid out exactly like
+    the goodgorithm-models bucket (<root>/<prefix>/<version>/<artifact>
+    plus <root>/<prefix>/latest.json), for local dev without R2
+    credentials -- populated from the public GitHub Releases by
+    scripts/fetch_local_models.py."""
+
+    def __init__(self, root: str, prefix: str) -> None:
+        self.prefix = prefix
+        self.root = Path(root)
+
+    def get_bytes(self, key: str) -> bytes:
+        return (self.root / key).read_bytes()
+
+    def get_json(self, key: str) -> dict:
+        return json.loads(self.get_bytes(key))
+
+    def resolve_version(self) -> str:
+        latest = self.get_json(f"{self.prefix}/latest.json")
+        return latest["version"]
+
+
+def default_store(prefix: str) -> ModelStore | None:
+    """The configured model source for `prefix`, or None when there isn't
+    one (every model-backed stage then fails open). Raises rather than
+    choosing when both sources are set -- config.validate() stops a real
+    service from starting that way, so this only guards direct callers."""
+    if config.models_sources_conflict():
+        raise ValueError("LOCAL_MODELS_DIR and R2_MODELS_* are both set -- use one model source")
+    source = config.models_source()
+    if source == "local":
+        return LocalDirModelStore(config.LOCAL_MODELS_DIR, prefix)
+    if source == "r2":
+        return R2ModelStore(prefix)
+    return None

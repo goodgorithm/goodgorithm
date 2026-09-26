@@ -55,4 +55,9 @@ supabase/.temp/
 # measurement stays reproducible without committing throwaway analysis tools
 research/
 
+# Trained model artifacts for local dev (LOCAL_MODELS_DIR), fetched from the
+# public GitHub Releases by processing/scripts/fetch_local_models.py, plus the
+# gensim download cache (GENSIM_DATA_DIR). Never committed.
+models/
+
 .claude/settings.local.json
