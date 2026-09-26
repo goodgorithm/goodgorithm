@@ -1,11 +1,11 @@
 ---
 name: local-dev-setup
-description: Set up and run Goodgorithm's full stack locally (Postgres via the Supabase CLI, Redis via a Valkey container, ingestion/processing/api/web wired together) for interactive development, checking prerequisites at each stage and reporting what's working and what isn't. Use when asked to run the app locally, set up a local dev environment, or get Goodgorithm running end-to-end outside staging.
+description: Set up and run Goodgorithm's full stack locally (Postgres via the Supabase CLI, Redis via a Valkey container, ingestion/processing/api/web wired together, optionally labeling and the real trained models) for interactive development, checking prerequisites at each stage and reporting what's working and what isn't. Use when asked to run the app locally, set up a local dev environment, or get Goodgorithm running end-to-end outside staging.
 ---
 
 # Local development setup
 
-Four independent services plus Postgres plus Redis, with no `docker-compose.yml` tying them together — this skill checks prerequisites, brings each piece up in the right order, and verifies each checkpoint before moving to the next, rather than starting everything at once and hoping.
+Four independent services (plus the optional `labeling/` tool) plus Postgres plus Redis, with no `docker-compose.yml` tying them together — this skill checks prerequisites, brings each piece up in the right order, and verifies each checkpoint before moving to the next, rather than starting everything at once and hoping.
 
 This skill **follows** the wiki's [Local Development](https://github.com/goodgorithm/goodgorithm/wiki/Local-Development) page step by step — it doesn't re-derive or duplicate it. If the two ever disagree, that page is the source of truth; update it first, then this skill. Read `CLAUDE.md` in the repo root first if you haven't — this assumes the architecture it describes.
 
@@ -19,26 +19,32 @@ Check-and-report only — never auto-install anything:
 
 ## Steps
 
-1. **Local Postgres**: `supabase start` from the repo root (`supabase/config.toml` is already committed — no `supabase init` needed). Applies all migrations automatically. Checkpoint: parse its printed output for `DB_URL`/`STUDIO_URL`; confirm via `curl -s http://127.0.0.1:54322 -o /dev/null` isn't meaningful for Postgres (it's not HTTP) — instead run a real query: `docker exec supabase_db_goodgorithm psql -U postgres -c "select count(*) from raw_posts;"` should succeed (any count, even 0).
+1. **Local Postgres**: `supabase start` from the repo root (`supabase/config.toml` is already committed — no `supabase init` needed). A new database gets every migration; an existing local volume is reused and does **not** get migrations added since, so if the output says `Starting database from backup...`, run `supabase migration up --local` next. Checkpoint: `supabase migration list --local` shows every migration file with a local entry, and `docker exec supabase_db_goodgorithm psql -U postgres -c "select count(*) from raw_posts;"` succeeds (any count, even 0). Never run `supabase stop --no-backup` or `supabase db reset` (both wipe the local database) without asking first.
 
 2. **Local Redis**: `docker run -d --name goodgorithm-valkey -p 6379:6379 valkey/valkey:8-alpine` (skip if a container with that name already exists and is running — check `docker ps` first). Checkpoint: `docker exec goodgorithm-valkey valkey-cli ping` → `PONG`.
 
 3. **Models**: leave the `R2_MODELS_*` vars unset in `processing/.env` — local dev doesn't need the private bucket. Without a model source, the political and quality classifiers fail open (nothing excluded, every `base_score` 0.0, feed order from MMR diversity alone). To run the real models, follow the wiki's "Real models locally" step: `cd processing && uv run python scripts/fetch_local_models.py` (fills the gitignored `models/` from the public GitHub Releases), then set `LOCAL_MODELS_DIR` and `GENSIM_DATA_DIR` in `processing/.env` as step 4 shows. Ask the user which they want. Setting `LOCAL_MODELS_DIR` alongside any `R2_MODELS_*` var makes `processing/` refuse to start.
 
-4. **Wire `.env` per service** — three separate files, each in its own service directory (not a shared root `.env`):
+4. **Wire `.env` per service** — separate files, each in its own service directory (not a shared root `.env`):
    - `ingestion/.env`: `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres`, `BLUESKY_SAMPLE_RATE=0.05`
    - `processing/.env`: same `DATABASE_URL`, `REDIS_URL=redis://localhost:6379`, `PROCESSING_BATCH_SIZE=20`, `PROCESSING_INTERVAL_SECONDS=60`, `PORT=8081` (keeps the long-lived loop's status server off `ingestion/`'s `8080`; harmless for `--once`)
    - `api/.env`: same `DATABASE_URL`
    - `web/.env`: `cp web/.env.example web/.env` if it doesn't already exist (default `VITE_API_BASE_URL=http://localhost:3000` is already correct)
+   - `labeling/.env` (only if the user wants the labeling tool): same `DATABASE_URL`, `LABELING_ACCESS_TOKEN=local-dev-token` (required — the service won't start without it), `PORT=3001` (off `api/`'s `3000`)
+   - plus, for the real models, `LOCAL_MODELS_DIR=../models` and `GENSIM_DATA_DIR=../models/gensim-data` in `processing/.env` (step 3)
    Only create files that don't already exist — never overwrite an existing `.env` without asking first, it may hold values the user set deliberately.
 
 5. **Ingestion**: `cd ingestion && npm install && npm run dev` (background it). Checkpoint: `curl -s localhost:8080/health | python3 -m json.tool` shows connection state; after ~30-60s, `docker exec supabase_db_goodgorithm psql -U postgres -c "select count(*) from raw_posts;"` should show a rising count.
 
-6. **Processing**: `cd processing && uv sync && uv run python src/main.py --once`. Checkpoint: console output shows `processed N posts` with no errors; `docker exec supabase_db_goodgorithm psql -U postgres -c "select count(*) from processed_posts where rank_score is not null;"` should be > 0. If it's 0, re-run `--once` a couple more times (ingestion accumulates backlog in the background) before treating it as a real problem.
+6. **Processing**: `cd processing && uv sync && uv run python src/main.py --once` (a pass takes a minute or two — mostly live Bluesky AppView calls; occasional `… recheck failed … Read timed out` lines are transient and retried next pass). Checkpoint: console output shows `processed N posts` and `refreshed rankings for N posts` with no traceback; with local models it also logs `loaded … v1 (LocalDirModelStore)` three times; `docker exec supabase_db_goodgorithm psql -U postgres -c "select count(*) from processed_posts where rank_score is not null;"` should be > 0. If it's 0, re-run `--once` a couple more times (ingestion accumulates backlog in the background) before treating it as a real problem.
 
 7. **API**: `cd api && npm install && npm run dev` (background it). Checkpoint: `curl -s localhost:3000/health` → `"reachable": true`, then `curl -s "localhost:3000/v1/feed" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['posts']))"` returns > 0. That's the real end-to-end check — it needs a ranked post.
 
 8. **Web**: `cd web && npm install && npm run dev` (background it). Report the URL (`http://localhost:5173`) for the user to open themselves — don't try to screenshot/verify visually unless asked; step 7's curl check is the real verification.
+
+9. **Labeling (optional)**: `cd labeling && npm install && npm run dev` (background it). A fresh database has no studies; if the user wants to try the tool, give them the wiki's step 5f `insert into labeling.studies …` to run in Studio rather than running it yourself. Checkpoint: `curl -s localhost:3001/health` → `"reachable": true`, and `curl -s -o /dev/null -w "%{http_code}" localhost:3001/api/studies` → `401` (the token gate works).
+
+For `api/`/`web/`-only work, the wiki's seed script (`scripts/seed-local-feed.sql`) gives a rendered feed after step 1 alone — offer it instead of steps 5–6 when that's all the user needs.
 
 ## What this can't do
 
@@ -52,8 +58,10 @@ Bluesky Jetstream and Mastodon's public timelines are always-live, unauthenticat
 - **`supabase start` reports a port already allocated** (54321-54324) — another local stack or a stray Postgres is bound to it; `supabase stop` first, or `lsof -iTCP -sTCP:LISTEN` to find the culprit.
 - **`command not found: supabase`** — `brew install supabase/tap/supabase`.
 - **`EADDRINUSE` on 6379** — a stray Redis/Valkey is already listening (`docker ps`, or `lsof -ti:6379 -sTCP:LISTEN`).
-- **`EADDRINUSE` on 3000 / 8080 / 5173** — a previous run's `api`/`ingestion`/`web` dev server is still up: `lsof -ti:<port> -sTCP:LISTEN | xargs -r kill`.
-- **`DATABASE_URL is required`** (from `ingestion`/`api`) — that service's own `.env` wasn't created (step 4); a root `.env` doesn't count.
+- **`EADDRINUSE` on 3000 / 3001 / 8080 / 5173** — a previous run's dev server is still up, or `labeling` started without `PORT=3001`: `lsof -ti:<port> -sTCP:LISTEN | xargs -r kill`.
+- **A column or table is missing locally** — the local database predates a migration: `supabase migration up --local`.
+- **`DATABASE_URL is required`** (from `ingestion`/`api`/`labeling`) — that service's own `.env` wasn't created (step 4); a root `.env` doesn't count.
+- **`LABELING_ACCESS_TOKEN is required`** — add it to `labeling/.env` (step 4).
 - **`missing required env vars: DATABASE_URL, REDIS_URL`** (from `processing`) — same, for `processing/.env`.
 - **No rows in `raw_posts` after a couple of minutes** — expected sometimes; `BLUESKY_SAMPLE_RATE` is probabilistic. Wait longer before treating it as broken.
 - **`processing` long-lived loop exits with `OSError: [Errno 48] Address already in use`** — its status server defaults to `8080`, already held by `ingestion`. Set `PORT=8081` in `processing/.env` (step 4).
