@@ -123,6 +123,7 @@ function studyHtml(slug: string): string {
   .attachment .link-title { font-weight: 600; }
   .attachment .link-desc, .attachment .link-url { color: var(--ink-dim); }
   .quote-block { background: var(--ground); font-style: italic; }
+  .quote-block .context-label { display: block; font-style: normal; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-dim); margin-bottom: 4px; }
   .ai-suggestion { margin-top: 22px; padding-top: 16px; border-top: 1px dashed var(--line); font-size: 12.5px; color: var(--ink-dim); }
   .category-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 14px; }
   .cat-btn { all: unset; cursor: pointer; text-align: center; padding: 13px 6px 11px; border-radius: 10px; border: 1.5px solid var(--line); font-size: 12px; font-weight: 500; }
@@ -227,12 +228,21 @@ function studyHtml(slug: string): string {
       (a.description ? '<div class="link-desc">' + esc(a.description) + '</div>' : '') +
       '<div class="link-url">' + esc(a.url) + '</div></div>';
     if (a.kind === "video") return '<div class="attachment">[video' + (a.isGif ? ", gif-like" : "") + ']</div>';
-    if (a.kind === "quote") {
-      var c = a.content;
-      if (c && c.status === "available") return '<div class="quote-block">"' + esc(c.text) + '" — ' + esc(c.author.displayName || c.author.handle || "unknown") + '</div>';
-      return '<div class="quote-block">[quoted post unavailable]</div>';
-    }
+    if (a.kind === "quote") return renderContext(a.content, "quote");
     return "";
+  }
+
+  // One block for the post a candidate quotes or replies to -- used both for
+  // a Bluesky quote embed's attachment and for the stored quote_content of
+  // everything else (replies, Mastodon references). kind is "quote",
+  // "reply", or null for rows that don't record which it is.
+  var CONTEXT_LABELS = { quote: ["Quoting", "quoted post unavailable"], reply: ["Replying to", "replied-to post unavailable"] };
+  function renderContext(content, kind) {
+    var labels = CONTEXT_LABELS[kind] || ["Context", "context unavailable"];
+    var body = content && content.status === "available"
+      ? '"' + esc(content.text) + '" — ' + esc(content.author.displayName || content.author.handle || "unknown")
+      : "[" + labels[1] + "]";
+    return '<div class="quote-block"><span class="context-label">' + labels[0] + '</span>' + body + '</div>';
   }
 
   function render() {
@@ -269,6 +279,8 @@ function studyHtml(slug: string): string {
     }).join("");
 
     var attachmentsHtml = (post.attachments || []).map(renderAttachment).join("");
+    var hasQuoteAttachment = (post.attachments || []).some(function (a) { return a.kind === "quote"; });
+    var contextHtml = post.quote_content && !hasQuoteAttachment ? renderContext(post.quote_content, post.context_kind) : "";
     var hashtagsHtml = (post.hashtags || []).length
       ? '<div class="hashtags">' + post.hashtags.map(function (h) { return '<span class="hashtag-chip">#' + esc(h) + '</span>'; }).join("") + '</div>'
       : "";
@@ -277,7 +289,7 @@ function studyHtml(slug: string): string {
       + '<div class="meta-row"><span class="pill mono">' + esc(post.source || "") + '</span>'
       + (post.rank_score != null ? '<span class="pill mono">rank ' + Number(post.rank_score).toFixed(3) + '</span>' : '')
       + '<span class="mono">' + esc((post.original_created_at || "").slice(0, 16)) + '</span></div>'
-      + '<div class="post-card"><div class="post-text">' + esc(post.text) + '</div>' + hashtagsHtml + attachmentsHtml
+      + '<div class="post-card"><div class="post-text">' + esc(post.text) + '</div>' + hashtagsHtml + attachmentsHtml + contextHtml
       + '<div class="ai-suggestion">AI-drafted suggestion: <b>' + esc(aiCat || "none") + '</b></div></div>'
       + '<div class="category-grid">' + buttons + '</div>'
       + '<div class="flag-row"><button class="flag-btn' + (post.maintainer_label && post.maintainer_label.taxonomy_flag ? " active" : "") + '" data-action="flag">&#9873; Doesn\\'t fit the taxonomy</button></div>'

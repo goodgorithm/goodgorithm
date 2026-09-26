@@ -7,6 +7,8 @@
 
 export type Source = "bluesky" | "mastodon";
 
+export type ContextKind = "quote" | "reply";
+
 export type QuoteContent =
   | {
       status: "available";
@@ -66,6 +68,9 @@ export interface LabelingPost {
   hashtags: string[];
   attachments: Attachment[] | null;
   quote_content: QuoteContent | null;
+  // Whether quote_content is the quoted post or the replied-to thread root;
+  // null when there's no context, or for rows that predate the column.
+  context_kind: ContextKind | null;
   batch: string | null;
   created_at: string;
 }
