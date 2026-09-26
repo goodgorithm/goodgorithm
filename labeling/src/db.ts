@@ -1,6 +1,6 @@
 import postgres from "postgres";
 
-import type { Attachment, Category, Label, LabelingPost, PostWithLabels, QuoteContent, Study } from "./types";
+import type { Attachment, Category, ContextKind, Label, LabelingPost, PostWithLabels, QuoteContent, Study } from "./types";
 
 // Same instance every other service connects to (DATABASE_URL), just a
 // dedicated `labeling` schema within it -- see the add_labeling_schema
@@ -44,6 +44,7 @@ interface PostWithLabelsRow {
   hashtags: string[];
   attachments: Attachment[] | null;
   quote_content: QuoteContent | null;
+  context_kind: string | null;
   batch: string | null;
   created_at: Date;
   ai_category: string | null;
@@ -61,7 +62,7 @@ function postsQuery(studyId: string, filter: PostFilter) {
 
   return sql<PostWithLabelsRow[]>`
     SELECT p.id, p.study_id, p.source, p.rank_score, p.original_created_at, p.text,
-           p.hashtags, p.attachments, p.quote_content, p.batch, p.created_at,
+           p.hashtags, p.attachments, p.quote_content, p.context_kind, p.batch, p.created_at,
            al.category AS ai_category,
            ml.category AS maintainer_category,
            ml.taxonomy_flag AS maintainer_flag,
@@ -94,6 +95,7 @@ function toPostWithLabels(r: PostWithLabelsRow): PostWithLabels {
     hashtags: r.hashtags,
     attachments: r.attachments,
     quote_content: r.quote_content,
+    context_kind: r.context_kind === "quote" || r.context_kind === "reply" ? r.context_kind : null,
     batch: r.batch,
     created_at: r.created_at.toISOString(),
     ai_label: r.ai_category ? { category: r.ai_category } : null,
@@ -117,6 +119,7 @@ export interface NewPost {
   hashtags: string[];
   attachments: Attachment[] | null;
   quote_content: QuoteContent | null;
+  context_kind?: ContextKind | null;
   batch: string | null;
   ai_category: string;
 }
@@ -132,10 +135,10 @@ export async function insertPosts(studyId: string, posts: NewPost[]): Promise<nu
     for (const p of posts) {
       const [row] = await tx<{ id: string }[]>`
         INSERT INTO labeling.posts
-          (study_id, source, rank_score, original_created_at, text, hashtags, attachments, quote_content, batch)
+          (study_id, source, rank_score, original_created_at, text, hashtags, attachments, quote_content, context_kind, batch)
         VALUES (${studyId}, ${p.source}, ${p.rank_score}, ${p.original_created_at}, ${p.text},
                 ${p.hashtags}, ${p.attachments ? tx.json(p.attachments) : null},
-                ${p.quote_content ? tx.json(p.quote_content) : null}, ${p.batch})
+                ${p.quote_content ? tx.json(p.quote_content) : null}, ${p.context_kind ?? null}, ${p.batch})
         RETURNING id
       `;
       await tx`

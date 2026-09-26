@@ -25,6 +25,7 @@ SELECT
   p.hashtags,
   p.attachments,
   p.quote_content,
+  p.context_kind,
   p.original_created_at,
   p.rank_score,
   p.batch,
