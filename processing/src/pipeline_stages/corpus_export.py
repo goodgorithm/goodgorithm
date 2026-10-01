@@ -71,7 +71,7 @@ def build_objects(prefix: str, posts: list[ExportablePost]) -> list[CorpusObject
 
 
 def iter_records(data: bytes) -> Iterator[dict]:
-    for line in gzip.decompress(data).decode("utf-8").splitlines():
+    for line in gzip.decompress(data).decode("utf-8").split("\n"):
         line = line.strip()
         if line:
             yield json.loads(line)

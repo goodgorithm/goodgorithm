@@ -95,6 +95,14 @@ def test_iter_records_round_trips_build_objects_output():
     assert [r["text"] for r in corpus_export.iter_records(obj.data)] == ["round trip me", "and me too"]
 
 
+def test_iter_records_keeps_unicode_line_separators_inside_text():
+    # json.dumps(ensure_ascii=False) leaves these raw inside a string; a
+    # reader that splits on them cuts the record mid-string.
+    texts = ["line\u2028separator", "paragraph\u2029separator", "next\u0085line", "plain"]
+    data = corpus_export._serialize([{"text": t, "source": "bluesky"} for t in texts])
+    assert [r["text"] for r in corpus_export.iter_records(data)] == texts
+
+
 def test_dedup_key_is_stripped_text():
     assert corpus_export.dedup_key({"text": "  spaced  "}) == "spaced"
     assert corpus_export.dedup_key({"text": "a b"}) == "a b"  # internal whitespace preserved
