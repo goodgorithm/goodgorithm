@@ -71,7 +71,11 @@ def build_objects(prefix: str, posts: list[ExportablePost]) -> list[CorpusObject
 
 
 def iter_records(data: bytes) -> Iterator[dict]:
-    for line in gzip.decompress(data).decode("utf-8").splitlines():
+    # Split on "\n" only -- the one separator _serialize writes. Not
+    # str.splitlines(): ensure_ascii=False leaves U+2028/U+2029/U+0085 raw
+    # inside a record's text (valid JSON), and splitlines() breaks on those
+    # too, cutting a record mid-string.
+    for line in gzip.decompress(data).decode("utf-8").split("\n"):
         line = line.strip()
         if line:
             yield json.loads(line)
