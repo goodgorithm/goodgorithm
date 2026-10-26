@@ -33,3 +33,13 @@ def test_ping_swallows_request_failures(monkeypatch):
     monkeypatch.setattr(requests, "get", raise_error)
 
     heartbeat.ping("https://hc-ping.com/some-uuid")  # must not raise
+
+
+def test_failed_ping_hits_the_fail_endpoint(monkeypatch):
+    calls = []
+    monkeypatch.setattr(requests, "get", lambda url, **kwargs: calls.append(url))
+
+    heartbeat.ping("https://hc-ping.com/some-uuid", failed=True)
+    heartbeat.ping("https://hc-ping.com/some-uuid/", failed=True)
+
+    assert calls == ["https://hc-ping.com/some-uuid/fail", "https://hc-ping.com/some-uuid/fail"]
