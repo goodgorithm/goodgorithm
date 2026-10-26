@@ -289,7 +289,7 @@ def main() -> None:
         # endpoint's "degraded" field mean "not degraded since this cycle",
         # not just "never degraded since process start".
         degradation.record_cycle_success()
-        heartbeat.ping(config.HEARTBEAT_URL_PROCESSING)
+        heartbeat.ping(config.HEARTBEAT_URL_PROCESSING, failed=bool(degradation.snapshot()))
         if _shutdown:
             break
         time.sleep(args.interval if processed_count == 0 else args.backlog_buffer)
